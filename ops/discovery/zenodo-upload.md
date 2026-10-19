@@ -7,6 +7,16 @@ related identifier pointing at the repository). This file is the procedure.
 No token is ever written into a file: it comes from the environment and is
 revoked when done.
 
+## Published version — 19 October 2026
+
+Version `0.2-draft` is published at [Zenodo record 23476344](https://zenodo.org/records/23476344),
+with version DOI [10.5281/zenodo.23476344](https://doi.org/10.5281/zenodo.23476344)
+and concept DOI [10.5281/zenodo.23476343](https://doi.org/10.5281/zenodo.23476343).
+All five public downloads match the prepared bytes and checksum manifest. The
+protocol documents were archived unchanged; add the assigned DOI only to a
+future specification version. The procedure below is for future deposits, not
+an instruction to duplicate this published record.
+
 ## 0. Preconditions (all must hold before touching the API)
 
 - [ ] `docs/spec/AICS-1.md` says `0.2-draft` in its publication-metadata table;
