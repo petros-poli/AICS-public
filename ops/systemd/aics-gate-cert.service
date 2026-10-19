@@ -1,0 +1,29 @@
+# Copy only the gate certificate from Caddy's store to the gate's read-only volume.
+# The application's certificate watcher reloads the copy; this never restarts it.
+[Unit]
+Description=AICS daily gate TLS certificate refresh
+Documentation=file:///opt/wesupport-ai/ops/RUNBOOK-first-deploy.md
+Requires=docker.service
+Wants=network-online.target
+After=docker.service network-online.target
+ConditionPathExists=/opt/wesupport-ai/deploy/.env
+ConditionPathExists=/opt/wesupport-ai/deploy/docker-compose.yml
+ConditionPathExists=/opt/wesupport-ai/deploy/gate-tls.yml
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/wesupport-ai/deploy
+# Compose reads its own .env, including the active pilot/recovery overrides.
+# Never source that file into the shell or print the expanded configuration.
+ExecCondition=/bin/sh -c '/usr/bin/docker compose config --services | /usr/bin/grep -qx gate-cert'
+ExecStart=/usr/bin/docker compose run --rm gate-cert
+TimeoutStartSec=120
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

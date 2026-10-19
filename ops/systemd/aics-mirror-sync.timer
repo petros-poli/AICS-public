@@ -1,0 +1,13 @@
+[Unit]
+Description=Publish AICS tile mirrors every minute
+
+[Timer]
+OnCalendar=*-*-* *:*:00
+AccuracySec=1s
+Persistent=true
+Unit=aics-mirror-sync.service
+# systemd never starts another instance of an active oneshot service.
+# The script's flock also excludes manual invocations on this host.
+
+[Install]
+WantedBy=timers.target

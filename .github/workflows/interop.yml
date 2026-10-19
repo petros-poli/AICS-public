@@ -1,0 +1,64 @@
+name: Interop
+
+# Cross-implementation suite (packages/aics-interop): AICS-1 artifacts produced
+# by one package and verified by another, and the generated fixtures that
+# other implementations consume.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: interop-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: packages/aics-interop
+
+jobs:
+  interop:
+    name: Interop suite and fixtures (Python ${{ matrix.python }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        # requires-python is >=3.12; exact patch releases, as the setup-uv pin below
+        python: ["3.12.12", "3.13.15", "3.14.7"]
+    env:
+      # The openssl, ssh-keygen and git tests fail instead of skipping, so a
+      # runner image without one of the tools cannot drop them silently.
+      AICS_INTEROP_REQUIRE_TOOLS: "1"
+    steps:
+      # The entire checkout: the suite uses the five sibling packages as path
+      # dependencies, reads docs/spec/AICS-1.md, and checks citations at git HEAD.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.12.6"
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+          cache-suffix: aics-interop-py${{ matrix.python }}
+          cache-dependency-glob: |
+            packages/*/pyproject.toml
+            packages/*/uv.lock
+      - name: Tools the suite drives (required)
+        run: |
+          for tool in openssl ssh-keygen git; do
+            command -v "$tool" || { echo "::error::$tool is not installed"; exit 1; }
+          done
+          openssl version
+          ssh -V
+      - name: Install from the lock file
+        run: uv sync --locked --dev
+      - name: Interop tests (open findings are strict xfails; skips and xfails are listed)
+        run: uv run --locked pytest -q -rsx
+      - name: Fixtures match a fresh generation
+        run: uv run --locked aics-interop-fixtures --check

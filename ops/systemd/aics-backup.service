@@ -1,0 +1,34 @@
+# One-shot service unit for ops/backup.sh. Install on the VPS:
+#   cp ops/systemd/aics-backup.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now aics-backup.timer
+# Paths assume the checkout lives at /opt/wesupport-ai (deploy-vps.sh's target).
+# Runs as root because it drives docker compose (the docker socket); the script
+# itself is an allowlist (db + tiles only) and never touches the seed.
+
+[Unit]
+Description=AICS nightly off-box backup (SQLite + tiles; never the seed)
+Documentation=file:///opt/wesupport-ai/ops/README.md
+After=docker.service network-online.target
+Wants=network-online.target
+ConditionPathIsExecutable=/opt/wesupport-ai/ops/backup.sh
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/opt/wesupport-ai/ops/backup.sh
+# Be a polite citizen on a 2-vCPU box that also serves the log.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+# Hardening; none of these block docker (socket in /run) or rclone. ProtectSystem=strict
+# makes /run read-only too, so the script's lock lives in the unit's own runtime
+# directory, /run/aics-backup (RUNTIME_DIRECTORY), which systemd creates writable.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+RuntimeDirectory=aics-backup
+RuntimeDirectoryMode=0700
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

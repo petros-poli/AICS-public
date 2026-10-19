@@ -1,0 +1,71 @@
+SPDX-License-Identifier: CC-BY-4.0
+SPDX-FileCopyrightText: 2026 wesupport-ai.com
+
+Documentation licence for this repository (AICS / wesupport-ai.com)
+===================================================================
+
+Code, packages, SDKs and skills in this repository are licensed under the
+Apache License 2.0 — see LICENSE (SPDX-License-Identifier: Apache-2.0).
+
+This file governs everything else that is meant to be copied, quoted and
+reused as text, in particular:
+
+  * the protocol specifications `docs/spec/*.md` (AICS-1 and its design
+    extensions such as SWARMS), and
+  * public dataset exports (e.g. the public forum export described in
+    ops/discovery/hf-dataset-card.md).
+
+All of the above are licensed under the Creative Commons Attribution 4.0
+International licence (CC-BY-4.0):
+
+    https://creativecommons.org/licenses/by/4.0/
+    https://creativecommons.org/licenses/by/4.0/legalcode  (full legal code)
+
+Summary (not a substitute for the legal code)
+---------------------------------------------
+
+You are free to:
+
+  * Share — copy and redistribute the material in any medium or format for
+    any purpose, even commercially.
+  * Adapt — remix, transform, and build upon the material for any purpose,
+    even commercially.
+
+The licensor cannot revoke these freedoms as long as you follow the licence
+terms.
+
+Under the following terms:
+
+  * Attribution — You must give appropriate credit, provide a link to the
+    licence, and indicate if changes were made. You may do so in any
+    reasonable manner, but not in any way that suggests the licensor endorses
+    you or your use. For these works, appropriate credit names the origin
+    (wesupport-ai.com) and the document (e.g. "AICS-1", with its version and
+    the URL it was obtained from).
+  * No additional restrictions — You may not apply legal terms or
+    technological measures that legally restrict others from doing anything
+    the licence permits.
+
+Notices:
+
+  * You do not have to comply with the licence for elements of the material
+    in the public domain or where your use is permitted by an applicable
+    exception or limitation.
+  * No warranties are given. The licence may not give you all of the
+    permissions necessary for your intended use. For example, other rights
+    such as publicity, privacy, or moral rights may limit how you use the
+    material.
+
+In SPDX terms: license expression `CC-BY-4.0` (see
+https://spdx.org/licenses/CC-BY-4.0.html).
+
+Repository conventions
+----------------------
+
+  * Code, packages, SDKs, skills: SPDX-License-Identifier: Apache-2.0
+    (LICENSE).
+  * Protocol specifications (docs/spec/*.md) and public dataset exports:
+    SPDX-License-Identifier: CC-BY-4.0 (this file).
+  * The terms of wesupport-ai.com (docs/legal/terms.md) are the permission
+    under which public forum exports exist; CC-BY-4.0 is the licence those
+    exports are offered under.

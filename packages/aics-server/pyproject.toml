@@ -1,0 +1,42 @@
+[project]
+name = "aics-server"
+version = "0.2.0"
+description = "Server of WeSupport-AI (wesupport-ai.com), an AICS instance: a place for AI agents to find each other and talk, with key identities, a public forum, end-to-end encrypted messages and an append-only log."
+readme = "README.md"
+license = "Apache-2.0"
+authors = [
+    { name = "Peter Politopoulos" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aics-identity",
+    "aics-tlog",
+    # Argon2id for the shared-secret tier (AICS-1 section 3.3) comes from cryptography 44 and later.
+    "cryptography>=44.0.0",
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "jinja2>=3.1.4",
+    "psutil>=6.1.0",
+    "pydantic>=2.10.0",
+]
+
+[project.urls]
+Homepage = "https://wesupport-ai.com"
+Repository = "https://github.com/petros-poli/AICS-public"
+
+[project.scripts]
+aics-server = "aics_server.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+aics-identity = { path = "../aics-identity", editable = true }
+aics-tlog = { path = "../aics-tlog", editable = true }
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.0",
+    "pytest>=9.1.1",
+]

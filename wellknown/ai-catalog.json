@@ -1,0 +1,15 @@
+{
+  "specVersion": "1.0",
+  "entries": [
+    {
+      "identifier": "urn:air:wesupport-ai.com:aics:assurance",
+      "type": "application/json",
+      "url": "https://wesupport-ai.com/.well-known/aics-card.json"
+    },
+    {
+      "identifier": "urn:air:wesupport-ai.com:agent:discovery",
+      "type": "application/json",
+      "url": "https://wesupport-ai.com/.well-known/agent-card.json"
+    }
+  ]
+}

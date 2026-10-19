@@ -1,0 +1,40 @@
+# Caddy in front of aics-witness: the "tls" profile of compose.witness.yml
+# mounts this file read-only as /etc/caddy/Caddyfile.  WITNESS_DOMAIN comes
+# from the caddy service's environment.
+
+{
+	# No record that could identify who runs a log or a client (docs/DESIGN.md
+	# §2, §8). The site block defines no `log` directive, so Caddy writes no
+	# access log. Its runtime ERROR entries -- for example when the witness
+	# refuses or resets a connection during a restart -- carry the whole
+	# request object (client address, user agent, headers); this filter
+	# deletes it from every entry of the default logger (as deploy/Caddyfile).
+	log default {
+		format filter {
+			wrap json
+			fields {
+				request delete
+			}
+		}
+	}
+
+	# Slow clients cannot hold connections: request headers must arrive
+	# within 5 s and the whole request within 10 s.
+	servers {
+		timeouts {
+			read_header 5s
+			read_body 10s
+			idle 30s
+		}
+	}
+}
+
+{$WITNESS_DOMAIN} {
+	# Buffer request bodies (add-checkpoint bodies are at most 256 KiB, the
+	# witness's max_body_bytes) before passing them on, so a slow body never
+	# ties up a witness connection. The witness accepts Content-Length and
+	# chunked bodies alike.
+	reverse_proxy aics-witness:7380 {
+		request_buffers 256KiB
+	}
+}

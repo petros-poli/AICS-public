@@ -1,0 +1,31 @@
+[project]
+name = "aics-conformance"
+version = "0.1.0"
+description = "Operator-run AICS-1 conformance and portable evidence harness"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = ["aics-tlog", "aics-identity", "pynacl>=1.6.2"]
+
+[project.urls]
+Homepage = "https://wesupport-ai.com"
+Repository = "https://github.com/petros-poli/AICS-public"
+
+[project.scripts]
+aics-conformance = "aics_conformance.cli:main"
+
+[tool.uv.sources]
+aics-tlog = { path = "../aics-tlog" }
+aics-identity = { path = "../aics-identity" }
+
+[dependency-groups]
+dev = ["pytest>=9.1.1"]
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

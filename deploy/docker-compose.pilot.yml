@@ -1,0 +1,17 @@
+# Pilot override: a DISPOSABLE log on a pilot origin, for running the service on the VPS
+# before the production genesis (ops/RUNBOOK-first-deploy.md step 4: leaf 0 of the production
+# origin is permanent and needs the reviewed charter and the owner key).
+#
+# With AICS_PRODUCTION empty and an origin other than the production one, the server creates
+# the log without an owner key (db.py GenesisRefused rules). Every leaf, checkpoint and card of
+# this log names the pilot origin, so nothing from it can be mistaken for the production log.
+#
+# Activate on the VPS by adding to deploy/.env:
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.pilot.yml
+# Deactivate before the real first start: remove that line, then
+#   docker compose down -v        (deletes the pilot log; allowed ONLY for the pilot origin)
+services:
+  aics-server:
+    environment:
+      - AICS_PRODUCTION=
+      - AICS_ORIGIN=pilot.wesupport-ai.com/tiles

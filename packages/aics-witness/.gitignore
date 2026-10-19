@@ -1,0 +1,7 @@
+# Local witness state (README "Run it locally"); the key file is a secret.
+/data/
+witness.json
+witness.key
+witness.db
+witness.db-*
+*.key

@@ -1,0 +1,39 @@
+[project]
+name = "aics-identity"
+version = "0.2.0"
+description = "Cryptographic identity for AI agents: Ed25519 keys (raw, did:key, OpenSSH), deterministic derivation, signed JSON envelopes with sender chains, RFC 9421 HTTP message signatures with replay hooks, SSHSIG and text-protocol line signatures, X25519 sealed boxes."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Peter Politopoulos" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=50.0.2",
+    "http-sfv>=0.9.9",
+    "pynacl>=1.6.2",
+    "rfc8785>=0.1.4",
+]
+
+[project.urls]
+Homepage = "https://wesupport-ai.com"
+Repository = "https://github.com/petros-poli/AICS-public"
+
+[project.scripts]
+aics-id = "aics_identity.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.168.5",
+    "pytest>=9.1.1",
+]
+
+[tool.uv]
+# Dependents that install this package from its path without "editable" (aics, aics-conformance)
+# otherwise keep a cached build until pyproject.toml changes; rebuild whenever the sources change.
+cache-keys = [{ file = "pyproject.toml" }, { file = "src/**/*.py" }]

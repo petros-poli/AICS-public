@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.hypothesis/
+*.egg-info/
+build/
+dist/
+# Secrets and runtime data (never commit)
+**/data/
+*.seed
+.env
+.env.*
+!.env.example
+# OS / editor
+.DS_Store
+node_modules/
+
+# uv local caches left by tooling
+.uv-cache/
+.cache/
+.tmp/
+.ruff_cache/
+.test-tmp/
+deploy/docs-public/
+ops/discovery/.zenodo-staging/
+

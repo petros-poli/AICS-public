@@ -1,0 +1,368 @@
+{
+  "cases": [
+    {
+      "ciphertext_hex": "066a931ab81e21612b08dfe188b228739987edf34ae116246d1519bff1bfa8647db0299a79a43a80fa92d8b24f7994d8cbbde81c60b5b7914ef4fd2a6663c735e5f860eba22bc75781d235eba2421aff9ceac6bf50210c863777632d8f659df3f1947c686787f144a9cfbb14990681a980ec844eeb9c4e84468afc092c2cebf7120f8adba476136efb9f7d93550e369af0dc85aa9c28c662a5f0a5529d3d6b9869f34a9d793f14cb33597c06e17689bcde47b78c6e7ec1fdb08be89b1cffc670a43337d5fa1cd842fdbdebb8194013a8769f838c36e31224a35c4beac07b6fb187b4d8a086d59aca0549e3d60194251c139ebf3a909af6e815da7263dd9e0582",
+      "content_text": "hello, Bob — private\n",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ct_hash": "a31a49d2fc5d458e7d4b1783a61c6da946b821243e043e9c8d46d5d4ef981b04",
+          "encryption": "x25519-xsalsa20-poly1305",
+          "eph_pk": "BmqTGrgeIWErCN_hiLIoc5mH7fNK4RYkbRUZv_G_qGQ",
+          "grant_index": 2,
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seq": 1,
+          "size": 256,
+          "to_key_leaf_index": 2,
+          "to_kid": "did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "nonce": "RXjdNdLkunpzbRTgqxp5WA",
+          "origin": "api.interop.test/tiles",
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seen": {
+            "checkpoint_note_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "size": 3
+          },
+          "seq": 1,
+          "type": "dm"
+        },
+        "sig": "5pgdEzXgHk8vRVXMO5g46nD4cXMfq0f4Ic-BHHA4vU0pCtoib-Rhqs0oou6POgKzrF4Q6M52awXQqL5Xg2X-AQ",
+        "v": 1
+      },
+      "expect": "valid",
+      "header_jcs": "{\"envelope_nonce\":\"RXjdNdLkunpzbRTgqxp5WA\",\"from_kid\":\"did:key:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"to_kid\":\"did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA\"}",
+      "name": "valid",
+      "plaintext_hex": "000000b57b22656e76656c6f70655f6e6f6e6365223a2252586a644e644c6b756e707a62525467717870355741222c2266726f6d5f6b6964223a226469643a6b65793a7a364d6b6f764a3732446535634450597734764c73364670465266646831384c6b79783436504b48396a3751656b4b7a222c22746f5f6b6964223a226469643a6b65793a7a364d6b73714d523368526b36684c476774314d583371414167785744725470425662656435784b626b736858434241227d68656c6c6f2c20426f6220e2809420707269766174650a"
+    },
+    {
+      "ciphertext_hex": "066a931ab81e21612b08dfe188b228739987edf34ae116246d1519bff1bfa864bcf5cd91c40d11e9cbd94945211f31abcbbde81c60b5b7914ef4fd2a6663c735e5f860eba22bc75781d235eba2421aff9ceac6bf50210c863777632d8f659df3f1947c686787f144a9cfbb14990681a980ec844eeb9c4e8d5695b27d06028bee233ea0daf9440676b4976ba46f2d15c0b9d5aa94d222c71eaff8ac11b47d4aba51e9099d793f14cb33597c06e17689bcde47b78c6e7ec1fdb08be89b1cffc670a43337d5fa1cd842fdbdebb8194013a8769f838c36e31224a35c4beac07b6fb187b4d8a086d59aca0549e3d60194251c139ebf3a909af6e815da7263dd9e0582",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ct_hash": "627b272f3413af55d2b90d33d76fe6f1d15c47cf2f51f28180e09404f86d1c67",
+          "encryption": "x25519-xsalsa20-poly1305",
+          "eph_pk": "BmqTGrgeIWErCN_hiLIoc5mH7fNK4RYkbRUZv_G_qGQ",
+          "grant_index": 2,
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seq": 1,
+          "size": 256,
+          "to_key_leaf_index": 2,
+          "to_kid": "did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "nonce": "RXjdNdLkunpzbRTgqxp5WA",
+          "origin": "api.interop.test/tiles",
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seen": {
+            "checkpoint_note_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "size": 3
+          },
+          "seq": 1,
+          "type": "dm"
+        },
+        "sig": "qmwmh2LQEbpeEpOTus0fuP_pK7A_W4zUFyZmlPFUiLc9T-ThUFxNrAf9EDnBJ4Hj1qjVMHs0aHPai0pehaWrAw",
+        "v": 1
+      },
+      "expect": "invalid",
+      "header_jcs": "{\"envelope_nonce\":\"RXjdNdLkunpzbRTgqxp5WA\",\"from_kid\":\"did:key:z6MkffUyFnKUzuasviDYkyNfqhEG2x1cU7r5JZCAzCwpGSQ9\",\"to_kid\":\"did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA\"}",
+      "name": "inner-header:from_kid",
+      "reason": "inner-header binding mismatch"
+    },
+    {
+      "ciphertext_hex": "066a931ab81e21612b08dfe188b228739987edf34ae116246d1519bff1bfa8649ca605b8eea4de0536686bebaab1bbb3cbbde81c60b5b7914ef4fd2a6663c735e5f860eba22bc75781d235eba2421aff9ceac6bf50210c863777632d8f659df3f1947c686787f144a9cfbb14990681a980ec844eeb9c4e84468afc092c2cebf7120f8adba476136efb9f7d93550e369af0dc85aa9c28c662a5f0a5529d3d6b9869f34a9d793f14cb33597c06e17689bcde47b78c6e7ec1fdb08be88e0be7ed05a22a0999e731ec53e0c8ff8b537f349879a293fa3c860133c24c1bc4af4065a9afb0c0bf96c6e2ca0549e3d60194251c139ebf3a909af6e815da7263dd9e0582",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ct_hash": "409047a7d871d20f1fa4ee8178255e494f2c2971dedeca0f398e28afc52d0460",
+          "encryption": "x25519-xsalsa20-poly1305",
+          "eph_pk": "BmqTGrgeIWErCN_hiLIoc5mH7fNK4RYkbRUZv_G_qGQ",
+          "grant_index": 2,
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seq": 1,
+          "size": 256,
+          "to_key_leaf_index": 2,
+          "to_kid": "did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "nonce": "RXjdNdLkunpzbRTgqxp5WA",
+          "origin": "api.interop.test/tiles",
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seen": {
+            "checkpoint_note_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "size": 3
+          },
+          "seq": 1,
+          "type": "dm"
+        },
+        "sig": "BlqRU8jmb9L7uuuYT6XpBJjKMUxH_Gqyn53lvolzQ590VdhSlyOPT3zFR41PCA7obGSpLbhIfUIy1vo1rL_VAA",
+        "v": 1
+      },
+      "expect": "invalid",
+      "header_jcs": "{\"envelope_nonce\":\"RXjdNdLkunpzbRTgqxp5WA\",\"from_kid\":\"did:key:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"to_kid\":\"did:key:z6MkffUyFnKUzuasviDYkyNfqhEG2x1cU7r5JZCAzCwpGSQ9\"}",
+      "name": "inner-header:to_kid",
+      "reason": "inner-header binding mismatch"
+    },
+    {
+      "ciphertext_hex": "066a931ab81e21612b08dfe188b228739987edf34ae116246d1519bff1bfa864e44cd8735835166ba9daa232b6f964bbcbbde81c60b5b7914ef4fd2a6663c735e5f860eba22bc74498f910e4874f30cbb3dbfd9c43342ab60e46173b8f659df3f1947c686787f144a9cfbb14990681a980ec844eeb9c4e84468afc092c2cebf7120f8adba476136efb9f7d93550e369af0dc85aa9c28c662a5f0a5529d3d6b9869f34a9d793f14cb33597c06e17689bcde47b78c6e7ec1fdb08be89b1cffc670a43337d5fa1cd842fdbdebb8194013a8769f838c36e31224a35c4beac07b6fb187b4d8a086d59aca0549e3d60194251c139ebf3a909af6e815da7263dd9e0582",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ct_hash": "f99808bface09e2dc6dad28c2d78779c43d7b70a78a8bca977413212de7ea2b7",
+          "encryption": "x25519-xsalsa20-poly1305",
+          "eph_pk": "BmqTGrgeIWErCN_hiLIoc5mH7fNK4RYkbRUZv_G_qGQ",
+          "grant_index": 2,
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seq": 1,
+          "size": 256,
+          "to_key_leaf_index": 2,
+          "to_kid": "did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "nonce": "RXjdNdLkunpzbRTgqxp5WA",
+          "origin": "api.interop.test/tiles",
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seen": {
+            "checkpoint_note_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "size": 3
+          },
+          "seq": 1,
+          "type": "dm"
+        },
+        "sig": "uKZBI-z9T0ffuMzlgqk1bykuHEJ3vvGMbN3Zpiue5auXihDv9Wqphs9_6q13xE57Bkc-4Q2h7xssTuHrxIBICA",
+        "v": 1
+      },
+      "expect": "invalid",
+      "header_jcs": "{\"envelope_nonce\":\"AAAAAAAAAAAAAAAAAAAAAA\",\"from_kid\":\"did:key:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz\",\"to_kid\":\"did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA\"}",
+      "name": "inner-header:envelope_nonce",
+      "reason": "inner-header binding mismatch"
+    },
+    {
+      "ciphertext_hex": "066a931ab81e21612b08dfe188b228739987edf34ae116246d1519bff1bfa8647db0299a79a43a80fa92d8b24f7994d8cbbde81c60b5b7914ef4fd2a6663c735e5f860eba22bc75781d235eba2421aff9ceac6bf50210c863777632d8f659df3f1947c686787f144a9cfbb14990681a980ec844eeb9c4e84468afc092c2cebf7120f8adba476136efb9f7d93550e369af0dc85aa9c28c662a5f0a5529d3d6b9869f34a9d793f14cb33597c06e17689bcde47b78c6e7ec1fdb08be89b1cffc670a43337d5fa1cd842fdbdebb8194013a8769f838c36e31224a35c4beac07b6fb187b4d8a086d59aca0549e3d60194251c139ebf3a909af6e815da7263dd9e0582",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ct_hash": "a31a49d2fc5d458e7d4b1783a61c6da946b821243e043e9c8d46d5d4ef981b04",
+          "encryption": "x25519-xsalsa20-poly1305",
+          "eph_pk": "BmqTGrgeIWErCN_hiLIoc5mH7fNK4RYkbRUZv_G_qGQ",
+          "grant_index": 2,
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seq": 1,
+          "size": 256,
+          "to_key_leaf_index": 2,
+          "to_kid": "did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkffUyFnKUzuasviDYkyNfqhEG2x1cU7r5JZCAzCwpGSQ9",
+          "nonce": "RXjdNdLkunpzbRTgqxp5WA",
+          "origin": "api.interop.test/tiles",
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seen": {
+            "checkpoint_note_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "size": 3
+          },
+          "seq": 1,
+          "type": "dm"
+        },
+        "sig": "BQSZFwE2ZQTwBdD8AIXuLrjyfqV3wtncf1MYRHM2JDykqEk8XdwZDle0WJEA10BNhyIX1Vfbeyu4bSK7j3DnBQ",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "rewrap:sender",
+      "reason": "§8.1: rewrapping someone else's ciphertext in a newly signed envelope"
+    },
+    {
+      "ciphertext_hex": "066a931ab81e21612b08dfe188b228739987edf34ae116246d1519bff1bfa8647db0299a79a43a80fa92d8b24f7994d8cbbde81c60b5b7914ef4fd2a6663c735e5f860eba22bc75781d235eba2421aff9ceac6bf50210c863777632d8f659df3f1947c686787f144a9cfbb14990681a980ec844eeb9c4e84468afc092c2cebf7120f8adba476136efb9f7d93550e369af0dc85aa9c28c662a5f0a5529d3d6b9869f34a9d793f14cb33597c06e17689bcde47b78c6e7ec1fdb08be89b1cffc670a43337d5fa1cd842fdbdebb8194013a8769f838c36e31224a35c4beac07b6fb187b4d8a086d59aca0549e3d60194251c139ebf3a909af6e815da7263dd9e0582",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ct_hash": "a31a49d2fc5d458e7d4b1783a61c6da946b821243e043e9c8d46d5d4ef981b04",
+          "encryption": "x25519-xsalsa20-poly1305",
+          "eph_pk": "BmqTGrgeIWErCN_hiLIoc5mH7fNK4RYkbRUZv_G_qGQ",
+          "grant_index": 2,
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seq": 1,
+          "size": 256,
+          "to_key_leaf_index": 2,
+          "to_kid": "did:key:z6MkffUyFnKUzuasviDYkyNfqhEG2x1cU7r5JZCAzCwpGSQ9"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "nonce": "RXjdNdLkunpzbRTgqxp5WA",
+          "origin": "api.interop.test/tiles",
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seen": {
+            "checkpoint_note_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "size": 3
+          },
+          "seq": 1,
+          "type": "dm"
+        },
+        "sig": "t_zqxZ_GhDIEz5L8_TgE_tsSi5RNiu3MvBOlVHQxOvvmbtU2Ale6dk1zQCqMeGTkWOG0ICfZE9pIorp8Tr4sDQ",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "rewrap:recipient",
+      "reason": "§8.1: rewrapping someone else's ciphertext in a newly signed envelope"
+    },
+    {
+      "ciphertext_hex": "066a931ab81e21612b08dfe188b228739987edf34ae116246d1519bff1bfa8647db0299a79a43a80fa92d8b24f7994d8cbbde81c60b5b7914ef4fd2a6663c735e5f860eba22bc75781d235eba2421aff9ceac6bf50210c863777632d8f659df3f1947c686787f144a9cfbb14990681a980ec844eeb9c4e84468afc092c2cebf7120f8adba476136efb9f7d93550e369af0dc85aa9c28c662a5f0a5529d3d6b9869f34a9d793f14cb33597c06e17689bcde47b78c6e7ec1fdb08be89b1cffc670a43337d5fa1cd842fdbdebb8194013a8769f838c36e31224a35c4beac07b6fb187b4d8a086d59aca0549e3d60194251c139ebf3a909af6e815da7263dd9e0582",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ct_hash": "a31a49d2fc5d458e7d4b1783a61c6da946b821243e043e9c8d46d5d4ef981b04",
+          "encryption": "x25519-xsalsa20-poly1305",
+          "eph_pk": "BmqTGrgeIWErCN_hiLIoc5mH7fNK4RYkbRUZv_G_qGQ",
+          "grant_index": 2,
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seq": 1,
+          "size": 256,
+          "to_key_leaf_index": 2,
+          "to_kid": "did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "nonce": "AAECAwQFBgcICQoLDA0ODw",
+          "origin": "api.interop.test/tiles",
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seen": {
+            "checkpoint_note_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "size": 3
+          },
+          "seq": 1,
+          "type": "dm"
+        },
+        "sig": "mH8KXDguyqlYk-ddF-dEyjzMYeDzQQhtYW4QSCMOs-dFnRaOsymwtLuEqJsIRBSH9LbvQp6xQ_4MQ8dL-R17Dg",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "rewrap:nonce",
+      "reason": "§8.1: rewrapping someone else's ciphertext in a newly signed envelope"
+    },
+    {
+      "ciphertext_hex": "066a931ab81e21612b08dfe188b228739987edf34ae116246d1519bff1bfa86431365b09b58f3d034ee86cd761229ab0b09f8dc76df2be9048f4ce2b7968fb3ea8ac21dcd87b814bbdf43ad0a87e0be8a0cedbac7a055ea00e257a58a835debcc88d7a611ad6ba44e291a31b951b81b8d3d8d55bab9b12d974a5fe582c1987e362299fdfa6462f5b9fbf69bd36501e99b89cfdf7b51bba6d9f8cbc0e9c4140df2e9a44d00a7609c04e083706aa2891b3d25ab79d3d4a90f4f78bd1db05e0ff75a42d1b84e661d27dbafde7a14d4905ad63b3a48a12d50702c04665ec9e704c8baf85f1dab89db38d144de9964db9665e71135d8e526a10a113c96f70b6",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ct_hash": "f34f79688bff8bc07435c191021f2a241d24d8897aecbc470de310b9d1143f21",
+          "encryption": "x25519-xsalsa20-poly1305",
+          "eph_pk": "BmqTGrgeIWErCN_hiLIoc5mH7fNK4RYkbRUZv_G_qGQ",
+          "grant_index": 2,
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seq": 1,
+          "size": 253,
+          "to_key_leaf_index": 2,
+          "to_kid": "did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "nonce": "RXjdNdLkunpzbRTgqxp5WA",
+          "origin": "api.interop.test/tiles",
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seen": {
+            "checkpoint_note_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "size": 3
+          },
+          "seq": 1,
+          "type": "dm"
+        },
+        "sig": "dvz_GfpUgvMKZtgf2r47yJLInlk1A3L5IRcowxmyx_0TASap65p5pnL19RMsKn1SuFuhQCRznfX-bCut1obpAA",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "framing:jcs-lf-body",
+      "plaintext_hex": "7b22656e76656c6f70655f6e6f6e6365223a2252586a644e644c6b756e707a62525467717870355741222c2266726f6d5f6b6964223a226469643a6b65793a7a364d6b6f764a3732446535634450597734764c73364670465266646831384c6b79783436504b48396a3751656b4b7a222c22746f5f6b6964223a226469643a6b65793a7a364d6b73714d523368526b36684c476774314d583371414167785744725470425662656435784b626b736858434241227d0a68656c6c6f2c20426f6220e2809420707269766174650a",
+      "reason": "not the §8.1 uint32be(len) || header || content framing (JCS(header) || LF || content, which aics-identity sealed until F05 was fixed)"
+    },
+    {
+      "ciphertext_hex": "066a931ab81e21612b08dfe188b228739987edf34ae116246d1519bff1bfa864629e85466b07463187860861fddd543ecbbdfb2160b5b7914ef4fd2a6663c735e5f860eba22bc75781d235eba2421aff9ceac6bf50210c863777632d8f659df3f1947c686787f144a9cfbb14990681a980ec844eeb9c4e84468afc092c2cebf7120f8adba476136efb9f7d93550e369af0dc85aa9c28c662a5f0a5529d3d6b9869f34a9d793f14cb33597c06e17689bcde47b78c6e7ec1fdb08be89b1cffc670a43337d5fa1cd842fdbdebb8194013a8769f838c36e31224a35c4beac07b6fb187b4d8a086d59aca0549e3d60194251c139ebf3a909af6e815da7263dd9e0582",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ct_hash": "1f62979a6af7cfda74273b96b2dded976fc6f992a28c49b9b6125c0a8b51608d",
+          "encryption": "x25519-xsalsa20-poly1305",
+          "eph_pk": "BmqTGrgeIWErCN_hiLIoc5mH7fNK4RYkbRUZv_G_qGQ",
+          "grant_index": 2,
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seq": 1,
+          "size": 256,
+          "to_key_leaf_index": 2,
+          "to_kid": "did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkovJ72De5cDPYw4vLs6FpFRfdh18Lkyx46PKH9j7QekKz",
+          "nonce": "RXjdNdLkunpzbRTgqxp5WA",
+          "origin": "api.interop.test/tiles",
+          "prev": "efefefefefefefefefefefefefefefefefefefefefefefefefefefefefefefef",
+          "seen": {
+            "checkpoint_note_hash": "cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd",
+            "size": 3
+          },
+          "seq": 1,
+          "type": "dm"
+        },
+        "sig": "bSTwbKiLO8hKoBoI3HsMvsYN43OJvqyUWEP9FFteM3gsHOQ-zj4MkEdPjtahLxvGBZ3a5ilBegv8Q4vKMbflBA",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "framing:header-length-5000",
+      "reason": "§8.1 header length at most 4096 and fully contained"
+    }
+  ],
+  "ephemeral_secret_hex": "9595959595959595959595959595959595959595959595959595959595959595",
+  "note": "deterministic test ephemeral key (Appendix A.5 technique)",
+  "recipient": {
+    "kid": "did:key:z6MksqMR3hRk6hLGgt1MX3qAAgxWDrTpBVbed5xKbkshXCBA",
+    "x25519_public_hex": "726ffda9ad119a1b28d57aeb7143313b493b3234b15835ba13327b5f96c0bc74",
+    "x25519_secret_hex": "9494949494949494949494949494949494949494949494949494949494949494"
+  }
+}

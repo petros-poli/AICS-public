@@ -1,0 +1,35 @@
+{
+  "note": "Key encodings and HKDF derivations made by aics-identity keys.py with pyca/cryptography (pinned reference commit e5107e0f9947375cd9d2c17cfd22c2740bf35676). Public test material: the seed is bytes 0..31.",
+  "seed": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+  "public": "03a107bff3ce10be1d70dd18e74bc09967e4d6309ba50d5f1ddc8664125531b8",
+  "did": "did:key:z6MkehRgf7yJbgaGfYsdoAsKdBPE3dj2CYhowQdcjqSJgvVd",
+  "public_key_u64": "A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg",
+  "pem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f\n-----END PRIVATE KEY-----\n",
+  "public_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAA6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=\n-----END PUBLIC KEY-----\n",
+  "openssh_private": "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtz\nc2gtZWQyNTUxOQAAACADoQe/884Qvh1w3RjnS8CZZ+TWMJulDV8d3IZkElUxuAAA\nAIiC1AhpgtQIaQAAAAtzc2gtZWQyNTUxOQAAACADoQe/884Qvh1w3RjnS8CZZ+TW\nMJulDV8d3IZkElUxuAAAAEAAAQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0e\nHwOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4AAAAAAECAwQF\n-----END OPENSSH PRIVATE KEY-----\n",
+  "openssh_public": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAOhB7/zzhC+HXDdGOdLwJln5NYwm6UNXx3chmQSVTG4",
+  "master_secret": "6d61737465722073656372657420666f722064657465726d696e6973746963207075626c6963207465737420766563746f7273",
+  "derivations": [
+    {
+      "label": "agent-7",
+      "salt": null,
+      "seed": "0f4fffc05aa6dbc923aaae537eab4d182e63e8a76eb93db3ab77fe4e1d725ca1",
+      "x25519_seed": "42c69bb8d7b2bc4fdecc9262289f8f636481bf7029e5cd8ea59c38d011d73c45",
+      "did": "did:key:z6Mko6TG98zREkpjX2FbTbnAyh9HFQ5tQxo9MYpBfdStcHNP"
+    },
+    {
+      "label": "agent-7",
+      "salt": "000102030405060708090a0b0c0d0e0f",
+      "seed": "4625c2d22dd6541da30c3504096df358e857de7abc9489173d7f18516399a389",
+      "x25519_seed": "2041531851bc078b16e64da4eab921c73d18844d69b4d19917515f96fcdf7014",
+      "did": "did:key:z6MkntzXy1FL2bcqdaW9nzAPs1nz3UkB9X5fhoX22g22z2P5"
+    },
+    {
+      "label": "δοκιμή/🤖",
+      "salt": "09090909090909090909090909090909",
+      "seed": "a3baefa7255d7827721af8cdd1493badf05b805b7f21286c0fc774688556c2e1",
+      "x25519_seed": "5e3465cdf850c78354711516b60a64d09315ef6cf7b32b6d7001a674016517c4",
+      "did": "did:key:z6MksfXWv5TonCM1KAEtmm7PTFSXf9ga5p1jNq1j3rWRu2Fi"
+    }
+  ]
+}

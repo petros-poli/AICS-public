@@ -1,0 +1,21 @@
+[Unit]
+Description=AICS public tile mirrors (tiles first, checkpoint last)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+WorkingDirectory=/opt/wesupport-ai
+EnvironmentFile=-/etc/aics/mirror-sync.env
+ExecStart=/bin/bash /opt/wesupport-ai/ops/mirror-sync.sh
+TimeoutStartSec=0
+UMask=0077
+Nice=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/run
+# Set AICS_TILES_DIR to the host path of the shared aics_tiles volume.
+# Rclone credentials remain in its config; environment file contains paths only.

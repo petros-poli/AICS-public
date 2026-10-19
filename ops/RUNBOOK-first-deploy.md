@@ -1,0 +1,668 @@
+# Runbook — first deployment of wesupport-ai.com
+
+Target: the single OVH VPS (Ubuntu 24.04, 2 vCPU, 4 GB, 40 GB) described in
+docs/DESIGN.md §10. Hostname layout and proxy split per decision 10
+(docs/DECISIONS.md #10, ops/dns-records.md): `wesupport-ai.com`, `www`,
+`tiles.*` Cloudflare-proxied (Full strict, DNS-01 via Caddy);
+`api.*`, `gate.*`, `ip.*` DNS-only (HTTP-01, Caddy TLS); gate TCP 7700/7701
+served by the aics-server process, never by Caddy.
+
+Substitute every placeholder before executing commands. Before every deployment,
+regenerate deploy/docs-public as shown below; deploy-vps.sh also syncs ops/. Its --delete sync
+must receive the complete local docs export.
+
+Conventions: commands run either **on the laptop** (the operator's machine),
+**on the VPS** (ssh'd in as the admin user), or **in a dashboard**
+(Cloudflare/OVH). `CONFIRM AFTER BUILD` marks a command or path that depends
+on the server build still landing — check it against the code before relying
+on it; do not guess past it. Authority order for conflicts:
+docs/DECISIONS.md > docs/DESIGN.md > this file.
+
+Companion files: deploy/ (Caddyfile, docker-compose.yml, gate-tls.yml,
+deploy-vps.sh, .env.example, Dockerfile, requirements.txt,
+build-requirements.txt, card/), ops/ (dns-records.md, backup.sh, restore.sh,
+uptime-check.sh, status.sh, systemd/, Dockerfile.caddy-cloudflare,
+rclone.conf.example), packages/aics-witness/README.md,
+packages/aics-cli/README.md, packages/aics-conformance/README.md,
+docs/legal/contact.md, docs/legal/retention.md.
+
+---
+
+## Step 0 — Prerequisites and secrets handling
+
+**Do.**
+1. Offline (a machine with no network access to the repo/VPS), generate the
+   server seed — it derives the log and policy signing keys, i.e. it *is* the
+   log (docs/DESIGN.md §10):
+
+       openssl rand -hex 32 > server-seed.hex        # 64 hex chars
+
+   Keep it off every networked disk. Two supported paths (deploy/.env.example):
+   set it as `AICS_SERVER_SEED_HEX` in the VPS's `deploy/.env` (step 3), or
+   leave that variable empty and let the server generate
+   `/data/server_master.seed` (mode 0600) in the `aics_data` volume on first
+   boot — in that case copy the file to offline media immediately after
+   step 4. Either way you end with the seed in exactly three places: the VPS,
+   the operator's offline medium, and the custodian's offline medium.
+2. Second copy: the successor custodian **[custodian name withheld pending written agreement]** (decision 16)
+   holds one offline copy. Decision 17(b) — her written agreement and what she
+   holds — is still open: record the handover when it happens, before the
+   custodian is named on /card.
+3. Owner key: on macOS, select a supported OpenSSL installation with Ed25519
+   support before running owner-key.sh; the system LibreSSL may not support
+   it. Check `command -v openssl` and `openssl version` first. Offline, run
+   `bash ops/owner-key.sh /path/on/offline-media/owner.key` and record only its
+   printed public forms. Do not use bare openssl genpkey without an output
+   file. Failed generation may leave an empty destination; inspect it before
+   choosing a new path. The private key never touches the VPS.
+4. On the laptop, install uv (https://docs.astral.sh/uv/): deploy/deploy-vps.sh
+   refuses to deploy unless deploy/requirements.txt is the export of
+   packages/aics-server/uv.lock (the image installs exactly those pins, by
+   hash), and the owner tool of steps 5, 8 and 10 runs with `uv run` in
+   packages/aics-server, next to the owner key, never on the VPS.
+5. Pre-leaf-0 gate: decision 17 (a)–(c) — refusal/tombstone/suspension code strings,
+   canonical `/tiles/checkpoint` and byte-identical `/checkpoint` signed-note
+   alias verification (step 5), remaining legal
+   placeholders, custodian agreement — must be settled **before** the first
+   start: leaf 0 (the charter) is written at log creation and is permanent
+   (decisions 6, 17).
+
+**Never in git, never in nightly backups** (backup.sh's allowlist and `*.seed`
+guard enforce the second): the seed (`AICS_SERVER_SEED_HEX` value or
+`server_master.seed`), any filled-in `deploy/.env`, `/root/.config/rclone/rclone.conf`,
+the Cloudflare API token, the witness key, the owner private key. A leaked seed
+lets its holder forge future checkpoints and administrative leaves.
+
+**Check before moving on.** Seed exists offline in two custody copies; owner
+key made and its did:key recorded; decision-17 open items closed or knowingly
+deferred with the log not yet created.
+
+**Rollback.** Nothing is deployed yet: shred the seed files and start over.
+
+## Step 1 — VPS base
+
+**Do (on the VPS, as root, then as the admin user).**
+
+    adduser --gecos "" deploy && usermod -aG sudo deploy
+    install -d -m 700 -o deploy -g deploy /home/deploy/.ssh
+    # from the laptop: ssh-copy-id deploy@<VPS_IP>
+
+Harden `/etc/ssh/sshd_config`: `PasswordAuthentication no`,
+`KbdInteractiveAuthentication no`, `PermitRootLogin no`; then
+`systemctl restart ssh`. Firewall — ports 22, 80, 443, 7700, 7701 only:
+
+    ufw default deny incoming && ufw default allow outgoing
+    ufw allow 22/tcp && ufw allow 80/tcp
+    ufw allow 443/tcp && ufw allow 443/udp     # HTTP/3 (compose publishes 443/udp)
+    ufw allow 7700/tcp && ufw allow 7701/tcp   # the text gate, DNS-only at Cloudflare
+    ufw enable && ufw status numbered
+
+**OVH dashboard** → your IP → *Network firewall*: allow the same set
+(deploy/docker-compose.yml flags this panel; without it the gate ports can be
+dropped upstream of ufw).
+
+Unattended upgrades, Docker, time sync:
+
+    apt-get update && apt-get install -y unattended-upgrades
+    dpkg-reconfigure -plow unattended-upgrades        # "Yes"
+    curl -fsSL https://get.docker.com | sh            # or the apt-repo steps
+    usermod -aG docker deploy                         # log out/in
+    timedatectl set-ntp true
+
+**Check before moving on.** `sudo docker run --rm hello-world` works;
+`docker compose version` ≥ 2.24.0; validate with `docker compose config --quiet`; `timedatectl` shows "System clock
+synchronized: yes" (the witness refuses to backdate cosignatures and
+checkpoint freshness checks depend on it); `ufw status` shows exactly the five
+ports; ssh still works in a second terminal before closing the first.
+
+**Rollback.** Reinstall the VPS from the OVH manager; nothing persists yet.
+
+## Step 2 — Cloudflare
+
+**Do (Cloudflare dashboard, zone wesupport-ai.com).**
+1. Create the DNS records exactly as ops/dns-records.md's table: `@` A →
+   VPS IPv4 **proxied (orange)**; `www` CNAME → wesupport-ai.com **proxied**;
+   `tiles` A **proxied**; `api` A **DNS-only (grey)**; `gate` A **DNS-only**;
+   `ip` A **DNS-only** (decision 17d); optional AAAA (proxied) and CAA
+   `0 issue "letsencrypt.org"`. The `_aics` TXT is added in step 5.
+2. **SSL/TLS → Overview → Full (strict).** Never Flexible; plain Full is not
+   enough (decision 15). This works because Caddy gets real Let's Encrypt
+   certificates for the proxied hosts via DNS-01.
+3. **Never proxy `api`, `gate`, `ip`.** Cloudflare would terminate TLS in
+   front of agents' signed requests, cannot carry the gate's raw TCP
+   7700/7701 at all, and must not sit in front of the connectivity check.
+   If one of these ever shows orange, set it grey immediately — this is the
+   one setting that silently breaks the protocol.
+4. Security → Bots: keep challenges (Bot Fight Mode, managed/JS) **off at
+   least for `tiles.*`** — verifier clients fetch tiles and a challenge breaks
+   log verification (ops/dns-records.md caveats).
+5. Caching → respect origin `Cache-Control` (the Caddyfile sets 7d full tiles,
+   60 s width-qualified `.p/<W>` partials, 30 s checkpoints; full and
+   width-qualified partial bytes never change); add no override rules for `tiles`.
+6. API token: **My Profile → API Tokens → Create Token → Custom**: permission
+   *Zone / Zone / Read* and *Zone / DNS / Edit*, Zone Resources *Include → Specific zone →
+   wesupport-ai.com*. Store it only in the VPS environment configuration in step 3. Rotation is in step 10.
+7. **Email → Email Routing → Enable** (adds MX/SPF; free, decision 16):
+   add and verify the destination Google mailbox, then two custom-address
+   rules: `authorities@wesupport-ai.com` → that mailbox,
+   `notice@wesupport-ai.com` → that mailbox. Forwarded mail lands in the
+   Google mailbox (decision 17).
+
+**Check before moving on.** From the laptop: `dig +short A api.wesupport-ai.com`
+returns the VPS IP (grey cloud); `dig +short A wesupport-ai.com` returns
+Cloudflare edge IPs (orange); `dig +short MX wesupport-ai.com` shows the Email
+Routing MX.
+
+**Rollback.** Records: edit back (grey↔orange is instant). Token: delete it.
+Email Routing: disable (removes MX). A mistaken proxy on api/gate/ip: set
+DNS-only; Caddy's HTTP-01 certificates re-issue on their own.
+
+## Step 3 — deploy/.env on the VPS
+
+**Do.** Seed the remote directory once from the laptop (the script syncs
+`packages/ deploy/ ops/ .dockerignore`, then exits 1 telling you to create `.env` —
+that is the intended first run):
+
+    bash ops/sync-docs.sh deploy/docs-public
+    ssh deploy@<VPS_IP> 'sudo mkdir -p /opt/wesupport-ai && sudo chown deploy:deploy /opt/wesupport-ai'
+    deploy/deploy-vps.sh deploy@<VPS_IP>     # stops after the .env check
+
+Then on the VPS:
+
+    sudo install -o deploy -g deploy -m 600 /opt/wesupport-ai/deploy/.env.example /opt/wesupport-ai/deploy/.env
+    sudo -u deploy sh -c '${EDITOR:-vi} /opt/wesupport-ai/deploy/.env'
+
+Run the install command only for initial creation; never overwrite an existing
+filled environment file.
+
+Variables — source of each value:
+
+| Variable | Value / source | May stay empty at launch? |
+| --- | --- | --- |
+| `AICS_BASE_URL` | `https://wesupport-ai.com` (fixed; compose pins it) | no |
+| `AICS_DB_PATH` | `/data/aics.db` (compose pins it) | no |
+| `AICS_SERVER_SEED_HEX` | the offline seed from step 0, 64 hex chars — **or leave empty** and the server generates `/data/server_master.seed` once | empty = auto-seed route |
+| `CLOUDFLARE_API_TOKEN` | the scoped token from step 2 (needed for DNS-01 on the proxied hosts; without it wesupport-ai.com/www/tiles get no certificate). Compose passes it to the caddy service only: aics-server has no `env_file` and receives just the variables its `environment:` list names, so the internet-facing app never holds a DNS-edit credential | only if you accept no proxied TLS |
+| `AICS_INDEXNOW_KEY` | permanent public ownership key generated once with `openssl rand -hex 16`; the app serves `/<key>.txt` for IndexNow. Compose passes it explicitly to the app. See `ops/discovery/SEARCH-CONSOLE-SETUP.md` | yes, until IndexNow setup |
+| `AICS_OWNER_PUBKEY` | the owner Ed25519 public key from step 0 (`aics keys show`): base64 of the 32 raw bytes, `did:key:…`, or an `ssh-ed25519 …` line. Leaf 0 pins it for the life of the log, and with `AICS_PRODUCTION=1` (compose) the server refuses to create the log without it | **no** — the first start refuses without it |
+| `AICS_CHARTER_FILE` / `AICS_TERMS_FILE` / `AICS_PRIVACY_FILE` / `AICS_PRODUCTION` | pinned by compose: `/etc/aics/charter.md`, `/etc/aics/terms.md` and `/etc/aics/retention.md`, read-only mounts of `deploy/docs-public/legal/charter.md`, `terms.md` and `retention.md` (written by `bash ops/sync-docs.sh deploy/docs-public`; compose refuses to start without them), and `1`. Do not set them in `.env` | — |
+| `AICS_ALLOWED_HOSTS` | pinned by compose to `api.wesupport-ai.com`: a signed request without an envelope origin (the owner login, signed reads) made for any other authority is refused with 421 | — |
+| `AICS_CARD_FILE` | **empty at the first start** (the keys the card names do not exist yet; the server serves an unlogged skeleton). Step 5 sets `/etc/aics/card/card-unsigned.json`, the filled card body in `deploy/card/` (mounted read-only) | yes, until step 5 |
+| `AICS_LIMITS_FILE` | optional limits file in `deploy/card/` (`/etc/aics/card/limits.json`); empty: the server's `DEFAULT_LIMITS`. The card states the same windows and `retention.ciphertext_budget_bytes` | yes |
+| `COMPOSE_FILE` | **leave unset at launch** (or the pilot override's value, step 4). After Caddy has issued the gate certificate (step 4), set `COMPOSE_FILE=docker-compose.yml:gate-tls.yml` (overrides separated by `:`, e.g. `docker-compose.yml:docker-compose.pilot.yml:gate-tls.yml` with the pilot) and run deploy-vps.sh again: deploy/gate-tls.yml copies that one certificate and its key from `/data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/gate.wesupport-ai.com/` in Caddy's volume (the Caddyfile pins the gate site to Let's Encrypt, so the directory is fixed) into a volume the app mounts read-only, sets `AICS_GATE_TLS_CERT`/`AICS_GATE_TLS_KEY` to the copies, and deploy-vps.sh checks that the app's user can read both before it replaces the running container. The app never mounts Caddy's certificate store | yes — that is the default |
+| `AICS_WALLET_BASE_USDC` / `_SOLANA` / `_BTC` / `_XMR` | voluntary contribution addresses from the owner's own wallets only; **while all are empty the feature is off** (no defaults in code). Decide Monero explicitly (decision/docs DESIGN §7) | yes |
+| `AICS_RPC_BASE_URL` / `AICS_RPC_SOLANA_URL` / `AICS_SUP_PER_USDC` | the RPC endpoints that check Base and Solana contributions on chain (a listed network without one refuses every claim) and the SUP rate (default 100 per USDC); the card's `sup.contributions` lists exactly the networks credited, at the same rate | yes |
+| `AICS_WORKERS` | pinned to 1 by compose (single writer is a protocol invariant); a value here has no effect | — |
+
+`AICS_OWNER_PUBKEY` takes base64 (standard or URL-safe, padding optional) of
+the 32 raw public-key bytes, a `did:key:z6Mk…` text, or an OpenSSH
+`ssh-ed25519 AAAA… [comment]` line (`aics_identity.keys.parse_public_key_text`).
+
+**Check before moving on.** Run `cd /opt/wesupport-ai/deploy && docker compose config --quiet`.
+Exit zero means validation succeeded. Do not paste or archive plain
+`docker compose config` output: it can contain the seed and API token.
+`.env` is mode 600, owned by deploy; deploy-vps.sh never transfers it.
+
+**Rollback.** Edit the file and `docker compose up -d` to recreate containers
+with new values. Never change the seed of an existing production log; see
+steps 5 and 10 for the service-key transition and history-preservation rules.
+
+## Step 4 — First start
+
+**Leaf 0 is written now, once, for good.** The first start of the production
+origin writes leaf 0: the charter policy leaf. It names the charter document by
+hash and pins the log, policy and **owner** keys for the life of the origin.
+Neither the charter nor the owner key can be added or changed afterwards (a later
+charter change is a policy leaf with 30 days' notice; a different owner key means
+a new origin), and the origin starts fresh only once (DESIGN.md section 6,
+decision 17). So before running the script below:
+
+- `deploy/docs-public/legal/charter.md` is the reviewed charter, byte for byte
+  (decision 17 items (a) and (b) settled): `bash ops/sync-docs.sh deploy/docs-public`
+  publishes it from `docs/legal/charter.md`, and compose mounts it read-only as
+  `AICS_CHARTER_FILE`. If the file is missing, compose refuses to start the container;
+- `AICS_OWNER_PUBKEY` in the VPS's `deploy/.env` holds the owner key from step 0.
+
+With `AICS_PRODUCTION=1` (compose) the server refuses to write leaf 0 without both
+(`GenesisRefused` in `docker compose logs aics-server`; nothing is written, fix and
+start again). The development waiver `AICS_DEV_GENESIS` never applies there.
+
+**Pilot before genesis (optional).** To run the service before step 0 is complete, add
+`COMPOSE_FILE=docker-compose.yml:docker-compose.pilot.yml` to the VPS's `deploy/.env`:
+`deploy/docker-compose.pilot.yml` starts a disposable log on the origin
+`pilot.wesupport-ai.com/tiles` without an owner key. Nothing from that log is the
+production log. Before the real first start: remove the line, `docker compose down -v`
+(allowed only for the pilot origin), then continue with this step.
+
+**Do (on the laptop).**
+
+    bash ops/sync-docs.sh deploy/docs-public
+    ssh deploy@<VPS_IP> 'sudo mkdir -p /opt/wesupport-ai && sudo chown deploy:deploy /opt/wesupport-ai'
+    deploy/deploy-vps.sh deploy@<VPS_IP>
+
+The script syncs, refuses to proceed without the remote `.env` and the required
+Cloudflare token, builds both
+images (aics-server; aics-caddy-cloudflare from ops/Dockerfile.caddy-cloudflare),
+validates Caddy before replacing any running containers, starts them, then checks
+health and the text gate inside the container (the
+image runs the `aics-server` CLI, which serves HTTP on 8080 and the gate on TCP
+7701, and on 7700 over TLS once `AICS_GATE_TLS_CERT/KEY` are set: the script
+requires the gate's session line on 7701, and on 7700 with certificate and
+hostname validation once wired), then `https://wesupport-ai.com/healthz` and
+`gate.wesupport-ai.com:7701` from the laptop. Exit 0 = deployed; 1 = app or gate
+unhealthy inside (read the printed `docker compose logs`); 2 = healthy inside
+but the public URL or the public gate port fails (DNS/ports/certificate — see
+its hint and `ssh … 'cd /opt/wesupport-ai/deploy && docker compose logs caddy'`).
+
+**Check before moving on — per hostname and port.**
+
+    for h in wesupport-ai.com www.wesupport-ai.com api.wesupport-ai.com; do
+      curl -fsS https://$h/healthz && echo " ok: $h"; done
+    curl -fsS https://ip.wesupport-ai.com/            # echoes your address, stores nothing
+    curl -fsS https://gate.wesupport-ai.com/          # the pointer text, 200
+    curl -fsS https://tiles.wesupport-ai.com/checkpoint   # may 404 until the first merge
+
+Certificates: for the DNS-only hosts the issuer must be Let's Encrypt:
+
+    echo | openssl s_client -connect api.wesupport-ai.com:443 -servername api.wesupport-ai.com -verify_hostname api.wesupport-ai.com -verify_return_error \
+      | openssl x509 -noout -issuer -dates
+
+For the proxied hosts visitors see Cloudflare's edge certificate; confirm
+Caddy's DNS-01 origin certificate directly and in its log:
+
+    curl --resolve wesupport-ai.com:443:<VPS_IP> -fsS https://wesupport-ai.com/healthz
+    ssh deploy@<VPS_IP> 'cd /opt/wesupport-ai/deploy && docker compose logs caddy | grep -i "certificate obtained"'
+
+Use a supported OpenSSL installation with a configured trusted CA store. Stop
+on certificate/hostname validation failure; never enter a fallback secret on
+an unverified TLS connection.
+
+Probe POST /t and POST /v2/entries on both apex and www; they must be rejected
+at the edge without forwarding. Also probe GET /tiles/checkpoint and GET /v2/limits
+on both pages hosts: require 404 with a DNS-only pointer. Notice intake remains
+available at /notice. Signed owner operations use the DNS-only API.
+Validate Caddy before deployment using the built Cloudflare-module image:
+`docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile`.
+
+Gate ports from outside: `nc -vz gate.wesupport-ai.com 7701` must succeed and
+`nc gate.wesupport-ai.com 7701` must print the banner/session line (docs/
+PROTOCOL-TEXT.md; end with `quit`). Port 7700 (TLS) is dark until
+deploy/gate-tls.yml is on. Once
+`ssh deploy@<VPS_IP> 'cd /opt/wesupport-ai/deploy && docker compose exec caddy ls /data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/gate.wesupport-ai.com/'`
+lists `gate.wesupport-ai.com.crt` and `.key`, add
+`COMPOSE_FILE=docker-compose.yml:gate-tls.yml` to the VPS's `deploy/.env` and
+run deploy-vps.sh again (it copies the certificate for the app and stops before
+replacing anything if the app cannot read it); then verify with
+`openssl s_client -quiet -connect gate.wesupport-ai.com:7700 -servername gate.wesupport-ai.com -verify_hostname gate.wesupport-ai.com -verify_return_error`. Until then the
+HTTPS gate `https://api.wesupport-ai.com/t` and plain 7701 carry the protocol.
+The gate reloads its certificate when the copied files change; the daily copy
+of step 7.4 carries Caddy's renewals over.
+
+The app runs as the unprivileged user `aics` (uid 10001) that owns `/data` in
+the image. Fresh volumes take that ownership. If this VPS ran an earlier image
+as root, the volumes still belong to root and the app stops with a
+`PermissionError` under `/data`; hand them over once, then deploy again:
+`cd /opt/wesupport-ai/deploy && docker compose run --rm --no-deps --name aics-chown --user 0 --entrypoint chown aics-server -R 10001:10001 /data`.
+
+**Rollback.** Stop with `docker compose down` without deleting volumes. Never use `down -v` on this production origin after any checkpoint, leaf or receipt has been served, including during step 4. Destructive resets are allowed only for an isolated disposable test origin with no production history. If no recoverable state reaches the newest acknowledged history, preserve all evidence, stop signing and declare an availability incident; do not resume the old origin from a shorter backup. A freeze or public incident report does not authorize rollback.
+
+## Step 5 — First checkpoint and trust bundle
+
+**Do.**
+1. Before opening production, fetch https://api.wesupport-ai.com/tiles/checkpoint
+   and https://api.wesupport-ai.com/checkpoint; require byte-identical signed
+   notes. Verify the note with the pinned log vkey and require its signed size
+   to be at least one. Repeat for each mirror. /v2/tlog/checkpoint may remain
+   a compatibility endpoint, but cannot satisfy this launch check.
+2. Work in one launch directory on the laptop, from the repository root, and
+   keep every file of this step there (`L=$HOME/aics-launch; mkdir -p "$L"`).
+   Take the public keys off the server (they are public, not secret):
+
+       ssh deploy@<VPS_IP> 'cd /opt/wesupport-ai/deploy && docker compose exec -T aics-server cat /data/pubkeys.txt' > "$L/pubkeys.txt"
+
+   Relevant lines: `origin`, `log` (name+8hex+base64 vkey), `policy` and
+   `owner` (did:key forms), `charter-sha256`.
+3. The card. Until now the server serves an unlogged skeleton
+   (`X-AICS-Card-Source: skeleton`, `X-AICS-Card-Leaf: none`): it is not a
+   valid §13.1 card and never goes into a trust bundle. Fill the reviewed body
+   (card/README.md, "Placeholders") with the keys from pubkeys.txt and the
+   ciphertext budget the server enforces
+   (`curl -fsS https://api.wesupport-ai.com/v2/limits`, `limits.ciphertext_budget_bytes`):
+
+       (cd card && uv run python validate_card.py card-content.json --fill-hashes .. \
+         --patterns ../docs/legal/secret-patterns.json \
+         --set ISSUED_AT=<unix seconds> --set EXPIRES=<unix seconds> \
+         --set LOG_VKEY=<log line> --set POLICY_KID=<policy line> --set OWNER_KID=<owner line> \
+         --set CIPHERTEXT_BUDGET_BYTES=<limits.ciphertext_budget_bytes> \
+         --set 'CUSTODIAN_NAME=<name>' --set 'CUSTODIAN_HOLDS=<what the custodian holds>' \
+         --set 'SUP_ADDRESS:base-usdc=<address>' --set 'SUP_ADDRESS:solana-usdc=<address>' \
+         --final --write ../deploy/card/card-unsigned.json)
+
+   Then set `AICS_CARD_FILE=/etc/aics/card/card-unsigned.json` in the VPS's
+   `deploy/.env` and run deploy-vps.sh again (it sends `deploy/card/`). The server
+   refuses to start on a body that names other keys or states other limits.
+4. Log exactly the served bytes as the bootstrap card (a policy leaf of kind
+   `card`, zero notice, AICS-1 §6.4) with the owner tool and the owner key,
+   then require that the server serves the logged card:
+
+       curl -fsS -D "$L/card.headers" -o "$L/card.json" https://api.wesupport-ai.com/.well-known/aics-card.json
+       grep -qi '^x-aics-card-source: file' "$L/card.headers" || echo "STOP: the served card is not the reviewed file"
+       (cd packages/aics-server && uv run python src/aics_server/static/aics_client.py owner \
+         --key /path/on/offline-media/owner.key --log-vkey "<log line of pubkeys.txt>" \
+         log-card --document-file "$L/card.json")
+       curl -fsS -D "$L/logged.headers" -o "$L/logged.json" https://api.wesupport-ai.com/.well-known/aics-card.json
+       cmp "$L/card.json" "$L/logged.json"
+       grep -i '^x-aics-card-source: logged' "$L/logged.headers"
+       grep -Ei '^x-aics-card-leaf: [0-9]+' "$L/logged.headers"
+
+   Stop if `X-AICS-Card-Source` is `skeleton` at any point, is not `logged`
+   after logging, if `X-AICS-Card-Leaf` is `none`, or if the bytes changed: the
+   trust bundle must pin a card that a policy leaf names, never an unlogged one.
+5. Build the trust bundle — AICS-1 §6.4 form, exactly as in ops/dns-records.md,
+   canonical JSON (RFC 8785 / JCS), with `bootstrap_card_hash` taken from the
+   logged card and checked against its policy leaf (`CONFIRM AFTER BUILD`:
+   prefer a dedicated helper if one lands in aics-cli):
+
+       uv run --project packages/aics-identity python - "$L" <<'PY'
+       import base64, hashlib, json, re, sys, urllib.request
+       from aics_identity.canonical import canonicalize
+       launch = sys.argv[1]
+       pk = dict(re.findall(r'^(origin|log|policy|owner) (\S+)$', open(f"{launch}/pubkeys.txt").read(), re.M))
+       doc = open(f"{launch}/logged.json", "rb").read()
+       assert canonicalize(json.loads(doc)) == doc, "the logged card is not J(card)"
+       digest = hashlib.sha256(doc).hexdigest()
+       policies = json.load(urllib.request.urlopen("https://api.wesupport-ai.com/v2/policies"))["policies"]
+       assert any(p and p["kind"] == "card" and p["document_hash"] == digest for p in policies), "no card leaf names it"
+       b = canonicalize({"v": 1, "origin": pk["origin"], "log_vkey": pk["log"],
+                         "policy_kid": pk["policy"], "owner_kid": pk["owner"],
+                         "bootstrap_card_hash": digest})
+       print("aics1=" + base64.urlsafe_b64encode(b).decode().rstrip("="))
+       print("sha256 " + hashlib.sha256(b).hexdigest())
+       PY
+
+6. Publish, all from the same bytes: (a) Cloudflare DNS → TXT `_aics` =
+   `aics1=<base64url>` — exactly one RR, replace the placeholder, never two
+   different bundles at once; (b) the labelled block in the public README with
+   the bytes and their SHA-256; (c) the `aics` PyPI constant
+   (`AICS_TRUST_BUNDLE`) at the next release (docs/RELEASING.md).
+7. Verify from the laptop (packages/aics-cli/README.md; the PyPI constant is
+   a placeholder until that release, so give two sources — DNS + README):
+
+       pip install aics
+       aics policy init --from-dns wesupport-ai.com --bundle <readme-block-file>
+       aics verify card && aics verify checkpoint && aics verify consistency
+       aics status --mirrors
+
+**Check before moving on.** The served card is the logged one
+(`X-AICS-Card-Source: logged`, `X-AICS-Card-Leaf` a leaf index) and the bundle's
+`bootstrap_card_hash` is that leaf's `document_hash`; `policy init` exits 0 and
+`aics policy show` names its trust root; `verify checkpoint` saves the first
+head; the README block and the TXT record carry identical bytes (sha256 equal). Without the
+`--bundle` second source, `policy init` exits 1 asking for one —
+`--require-sources 1` only if you accept DNS alone, knowingly.
+
+**Rollback.** After a trust bundle or checkpoint has been published, do not replace service keys through agent key.rotate, an ordinary policy event, a TXT edit or volume deletion. Freeze agent writes and retain the existing history. Service-key replacement requires the separately reviewed trust-bundle transition described in AICS-1 §6.4 and CONTINUITY-PLAN.md; keep the transfer pending until it exists.
+
+## Step 6 — Witness on the second host
+
+**Do** — packages/aics-witness/README.md, "Deploy on a second host"
+(Oracle Always Free A1 or any small VPS, Ubuntu 24.04; a different provider
+than the log on purpose).
+1. Host prep: `sudo apt-get install -y docker.io docker-compose-v2 rsync`,
+   `sudo usermod -aG docker "$USER"`, re-login. Rsync the two packages side by
+   side (`packages/aics-tlog`, `packages/aics-witness`).
+2. `docker compose -f compose.witness.yml build`
+3. `docker compose -f compose.witness.yml run --rm aics-witness init --name witness1.<a-domain-you-control>/w1`
+   — the name is permanent (it is part of the vkey); it prints the witness vkey.
+4. Trust the log with out-of-band values from step 5 (never from the API):
+
+       docker compose -f compose.witness.yml run --rm aics-witness add-log \
+         --origin '<origin from pubkeys.txt>' --vkey '<log vkey from the TXT/README>'
+
+5. Serve over HTTPS: DNS name for the witness at Cloudflare **DNS-only (grey)**,
+   open 80/443 (ufw or the Oracle VCN + iptables recipe in the README), then
+   `WITNESS_DOMAIN=witness1.<host> docker compose -f compose.witness.yml --profile tls up -d`
+   (keep `WITNESS_DOMAIN` in a `.env` beside the compose file).
+6. Smoke test from the laptop: `curl -fsS $W/healthz` = ok; garbage POST to
+   `/add-checkpoint` = 400; a checkpoint for an unknown origin = 404.
+7. Back the witness key up offline once (README *Operations* snippet).
+8. Keep the effective card at quorum 0 while feeding is unimplemented or
+   unverified. Prepare and advance-notice quorum 1 only after continuous
+   cosignature production is tested. Publish the witness vkey in the proposed
+   card (`trust_domain: founder`, `independent: false`), public README and
+   `_aics-witness.<witness host>` TXT; give the feeder its URL and vkey.
+9. Test feeding using `aics_witness.feeder.submit_checkpoint` with the signed
+   origin checkpoint and consistency proof (witness README, *Log side*).
+   Until activation, clients enforce the old card; after activation, missing
+   fresh quorum is an availability failure, never permission to lower the
+   verifier quorum. Configure conformance policy from the effective pinned
+   card, not a runbook default. A founder-run witness leaves G5 promised.
+
+**Check before moving on.** `… run --rm aics-witness status` shows the log
+with a growing size after a feed; from outside, the README's whole-chain check
+(`verify-checkpoint --witness-key … --quorum 1`) prints `"ok": true`.
+
+**Rollback.** A witness identity is permanent: never restore an older witness
+database, never run two copies of one key. A lost key/database means retiring
+the identity and publishing a new one (README *Operations*) — that is the
+whole rollback story.
+
+## Step 7 — Backups and monitoring
+
+**Do.**
+1. Install dependencies on the Ubuntu VPS before backup or mirror setup:
+   `sudo apt-get install -y rclone python3 util-linux`. The ops/ tree was
+   synced before the first build in steps 3–4.
+
+   Create separate public tile buckets/prefixes in R2 and B2, apart from
+   private backup buckets. Configure read-only HTTPS serving at the canonical
+   /tiles prefix and /checkpoint alias; tile resources must not redirect.
+   Configure /etc/aics/mirror-sync.env with AICS_TILES_DIR equal to the actual
+   host mountpoint of the aics_tiles volume, not container-only /data/tiles.
+   Install ops/systemd/aics-mirror-sync.service and its timer into
+   /etc/systemd/system/, run `sudo systemctl daemon-reload`, enable with
+   `sudo systemctl enable --now aics-mirror-sync.timer`, and run one publication
+   with `sudo systemctl start aics-mirror-sync.service`. Verify both public
+   endpoints with the pinned log key. Record both URLs in the signed card.
+   Do not call the mirror requirement complete until both return authentic
+   tiles and checkpoints independently of the origin host.
+2. Remotes: create private buckets in Cloudflare R2 and Backblaze B2 (decision
+   17: B2 is the second mirror/backup target), an R2 S3 API token, a B2
+   application key limited to its bucket. On the VPS:
+
+       sudo install -d -m 700 /root/.config/rclone
+       sudo cp /opt/wesupport-ai/ops/rclone.conf.example /root/.config/rclone/rclone.conf  # fill in
+       sudo rclone lsd r2: && sudo rclone lsd b2:
+
+3. Timer: `sudo cp /opt/wesupport-ai/ops/systemd/aics-backup.{service,timer} /etc/systemd/system/ &&
+   sudo systemctl daemon-reload && sudo systemctl enable --now aics-backup.timer`
+   (03:30 UTC ±45 min, persistent). Force and watch the first run:
+   `sudo systemctl start aics-backup.service && journalctl -u aics-backup.service`.
+   It must succeed: `systemctl show -p Result aics-backup.service` says
+   `Result=success` and the journal ends with `done: aics-<stamp>.db.gz +
+   tiles-<stamp>.tar.gz on: r2 b2`. Then require that both remotes list that
+   stamp with both files: `sudo rclone lsf r2:aics-backup/<stamp>/` and
+   `sudo rclone lsf b2:aics-backup/<stamp>/` — db + tiles only, 30-day
+   retention (decision 17). A failed or one-sided first run is fixed before
+   launch: the nightly backup is the only off-box recovery path.
+4. Cron on the VPS (root): uptime every 5 minutes and status daily:
+
+       */5 * * * * /opt/wesupport-ai/ops/uptime-check.sh >> /var/log/aics-uptime.log 2>&1
+       0 6 * * * /opt/wesupport-ai/ops/status.sh >> /var/log/aics-status.log 2>&1
+
+   Once deploy/gate-tls.yml is on, install the daily certificate-copy timer
+   (04:17 UTC, persistent). The gate reloads the copy by itself, so Caddy's
+   renewals reach it without an application restart. Keep the complete active
+   override list in deploy/.env as `COMPOSE_FILE`, including pilot/recovery
+   overrides while those are in use. Check for an older gate-cert cron entry
+   first and remove only that duplicate if replacing it with this timer.
+
+       sudo cp /opt/wesupport-ai/ops/systemd/aics-gate-cert.{service,timer} /etc/systemd/system/
+       sudo systemctl daemon-reload
+       sudo systemctl enable --now aics-gate-cert.timer
+       sudo systemctl start aics-gate-cert.service
+       sudo systemctl show -p Result aics-gate-cert.service
+       sudo systemctl list-timers aics-gate-cert.timer
+
+   Require `Result=success` and a `copied the gate certificate` entry in
+   `journalctl -u aics-gate-cert.service` after the first run. The service waits for Docker
+   and network readiness and skips when configuration or the gate-cert service
+   is absent. It copies no other certificates and logs no key contents.
+
+   For uptime checks, read the exit codes (ops/README.md): 1 healthz, 2/3/4 checkpoint
+   (4 = age undeterminable — expected at quorum 0 with no timestamp field
+   until cosignatures flow or the endpoint grows one), 5/6 disk growth/floor
+   (the decision-16 early warning), 8 the notice register (the open rows of
+   the notices table) near its cap — close notices — 9 ciphertext resource
+   exhaustion, 10 `/v2/limits` unreachable.
+5. First restore drill — do it in a **scratch** compose project, not on the
+   live box (restore.sh stops aics-server): on a spare machine/laptop with
+   Docker, copy `deploy/` there, download a backup pair
+   (`rclone copy r2:aics-backup/<stamp> .`), and run
+   `AICS_COMPOSE_DIR=<scratch-deploy-dir> ops/restore.sh --db aics-<stamp>.db.gz
+   --tiles tiles-<stamp>.tar.gz --vkey-file <out-of-band log vkey file>`
+   (the vkey file is the `log` line of pubkeys.txt, plain text). The scratch
+   project never needs to run: every step uses one-off containers of the
+   aics-server image (`docker compose run` builds it first if it is missing).
+   Confirm the two verification gates pass (SQLite `integrity_check`;
+   `aics-tlog verify-checkpoint` recomputing the root), apply, confirm the
+   same two checks pass again on the applied files, then discard the scratch.
+
+**Check before moving on.** Both remotes hold the first stamp; the drill's
+verify steps passed; `systemctl list-timers aics-backup.timer` is scheduled.
+
+**Rollback.** `sudo systemctl disable --now aics-backup.timer aics-gate-cert.timer`; remove the
+cron lines. Never "roll back" a restore on the live box — see step 10.
+
+## Step 8 — Verification day
+
+**Do** — packages/aics-conformance/README.md, in that package on the laptop.
+1. `uv sync && uv run aics-conformance list && uv run aics-conformance selftest --mutations --report selftest.json && uv run pytest --basetemp=.test-tmp`
+2. Copy `policy.example.toml` → `policy.toml`; fill `trust_file` with the
+   bundle **from your pinned step-5 material** (never downloaded from the
+   instance under test), `pages`, `mirrors`, and `quorum`/`witness_vkeys` from the effective
+   pinned card (never waive an activated quorum),
+   `gate_plain = "gate.wesupport-ai.com:7701"`, a **synthetic** secret sample
+   matching a published pattern, `tombstone_index` after preparing a lawful
+   synthetic tombstone with the operator tools, and `saved_checkpoint` (you
+   restart the instance yourself) or a `restart_command`.
+3. Run against the live instance:
+
+       uv run aics-conformance run --api https://api.wesupport-ai.com \
+         --gate gate.wesupport-ai.com:7700 --tiles https://api.wesupport-ai.com/tiles \
+         --policy policy.toml --report out.json
+
+   `CONFIRM AFTER BUILD`: with 7700 dark at launch (step 4), check
+   `aics-conformance run --help` for the plain-gate spelling before running.
+4. Read `out.json`. Exit 0 = all executed checks passed; **1 = failures**;
+   2 = configuration errors or skips (incomplete coverage). A failing check
+   carries portable evidence (signed artifacts, transcripts, proofs) — it
+   means *investigate before publishing anything*; nothing is auto-published.
+   A passing check may honestly report `unproven` (G5 single view, G7 runtime,
+   quorum-0 freshness) — that is the expected wording, not a failure. The run
+   writes permanent synthetic leaves; that is by design.
+5. Record the report leaf: publish the verification-day result as a `report`
+   leaf through the owner login (DESIGN §12 week 4) — a deliberate, separate
+   operator action. On the laptop, in packages/aics-server, with the owner key:
+
+       uv run python src/aics_server/static/aics_client.py owner --key /path/on/offline-media/owner.key \
+         --log-vkey "<log line of pubkeys.txt>" audit --document-file out.json --outcome published
+
+   The leaf names the report by hash; `GET /v2/policies/<leaf index>` serves it
+   byte for byte.
+6. Rehearse the honest stop (step 10) once, with the same tool: `freeze
+   --reason maintenance --report-file rehearsal.txt`, then require
+   `curl -fsS https://api.wesupport-ai.com/v2/freeze` to say `"state":"frozen"`
+   and an agent write to be refused with `frozen`; then `reopen --report-file
+   rehearsal-end.txt` and require `"state":"open"`. Both leaves are permanent,
+   like every leaf of this day.
+7. Re-run after the restart and again after mirror propagation; keep the
+   report, the exact checkpoint notes, cards and trust files together.
+
+**Check before moving on.** A clean `out.json` (or a documented, investigated
+failure list) exists and is archived with its notes.
+
+**Rollback.** None — the run's leaves are permanent like every leaf. A bad
+report is superseded by a later one, never edited.
+
+## Step 9 — Legal day-one items
+
+**Do.**
+1. Pages live and matching docs/legal/: `curl -fsS https://wesupport-ai.com/notice`
+   and `…/contact` return 200 with notice-procedure.md / contact.md content —
+   the two mailboxes as the only contact points, with the "pilot: not yet
+   registered" line (decision 16: unregistered pilot, registration later).
+2. Mailboxes receiving: from an external account send test mail to
+   `authorities@wesupport-ai.com` and `notice@wesupport-ai.com`; both must
+   arrive in the Google mailbox (step 2's Email Routing). A person reads
+   them; Greek and English are accepted.
+3. Access logging is disabled and the structured request object is removed
+   from Caddy runtime entries. Before launch, use disposable test addresses
+   and user agents to inspect app, gate, Caddy and container error paths,
+   including TLS and malformed requests, and remove remaining identifying
+   fields. No service-side address/user-agent retention is an operating
+   promise, not a proof supplied by this filter. Cloudflare, providers and
+   mirrors have the disclosed third-party processing boundaries.
+   Retention as docs/legal/retention.md states: ciphertext bodies expire only at ≥ 90 days under disk
+   pressure, published as a policy leaf and on /card; notice data 12 months
+   after closure; authority requests 24 months; hidden bodies
+   (`illegal_on_notice`/`order`) inaccessible 6 months then deleted;
+   `erasure`/`secret_format` bodies deleted at once; refused secrets never
+   stored; backups 30 days (backup.sh default — matches). `CONFIRM AFTER
+   BUILD`: the retention values the running server actually enforces —
+   compare with retention.md before announcing, and fix either side first.
+
+**Check before moving on.** Both pages render; both test mails arrived; the
+retention comparison is written down (a line per rule: doc value vs served
+value).
+
+**Rollback.** Regenerate deploy/docs-public with `bash ops/sync-docs.sh deploy/docs-public`,
+then rerun deploy/deploy-vps.sh (which also syncs ops/). Verify
+/legal/terms.md and /spec/AICS-1.md after publication. Run
+`bash ops/sync-docs.sh --check-links https://wesupport-ai.com` to check the
+public document and relative-link aliases; `--check` alone checks sources. Email rules: edit in the dashboard.
+
+## Step 10 — Rollback and incident basics
+
+**Stopping writes.** The honest stop is a freeze leaf via the owner login:
+`POST /v2/admin/freeze` with `{"state":"frozen","reason_code":<closed-list
+code>,"report":…}`, signed by the owner key (RFC 9421; step 0's key, step 3's
+`AICS_OWNER_PUBKEY`). On the laptop, in packages/aics-server, with the owner key:
+
+    uv run python src/aics_server/static/aics_client.py owner --key /path/on/offline-media/owner.key \
+      --log-vkey "<log line of pubkeys.txt>" freeze --reason incident --report-file report.txt
+
+(`--reason` is one of `maintenance`, `incident`, `order`, `resource_exhaustion`;
+`reopen --report-file FILE` ends it). Reads stay up; `GET /v2/freeze`
+(`... owner ... state`) confirms the state. The same tool signs the other owner
+duties: `tombstone`, `suspend`/`end-suspension`, `audit`, `policy`, `log-card`,
+`notices` and `close-notice` (`... owner --help`). Step 8 rehearses a freeze
+and its reopening. If the owner login was never configured, the blunt alternative is
+`cd /opt/wesupport-ai/deploy && docker compose stop aics-server` — but it
+writes no freeze leaf; that is why the owner key is set on day one.
+
+**Restoring without rolling the log back.** Use ops/restore.sh: it verifies
+first (integrity check + tree root vs the signed checkpoint, out-of-band
+vkey) and preserves current data under `/root/pre-restore-<stamp>/`. Rules:
+restore the **newest** viable backup; **never restore an older database over
+a newer log** — a head older than checkpoints agents have saved is a public,
+gossip-detectable rollback (the split is visible by design). Never use `down -v` on this production origin after any checkpoint, leaf or receipt has been served, including during step 4. Destructive resets are allowed only for an isolated disposable test origin with no production history. If no recoverable state reaches the newest acknowledged history, preserve all evidence, stop signing and declare an availability incident; do not resume the old origin from a shorter backup. A freeze or public incident report does not authorize rollback. After a safe restore, re-verify
+from outside against `https://tiles.wesupport-ai.com/tiles` and both cloud mirrors.
+
+
+**Rotating the Cloudflare token.** Dashboard → My Profile → API Tokens →
+create a new scoped token (Zone / Zone / Read and Zone / DNS / Edit, wesupport-ai.com only) → edit
+`CLOUDFLARE_API_TOKEN` in `/opt/wesupport-ai/deploy/.env` on the VPS →
+`cd /opt/wesupport-ai/deploy && docker compose up -d caddy` (recreates the
+container with the new env; DNS-01 renewals use it) → confirm a proxied host
+serves and `docker compose logs caddy` is quiet → delete the old token.
+Rollback: the old token works until deleted, so a bad new token is a one-line
+revert.
+
+**Other basics.** Bad deploy: `docker compose down` (never `-v`), redeploy
+from a known good source snapshot: regenerate deploy/docs-public as in steps 3–4,
+then run deploy/deploy-vps.sh (which also syncs ops/). DNS mistake: fix the record per the
+ops/dns-records.md table — grey for api/gate/ip, orange only for pages/tiles.
+Witness trouble: step 6's retire-don't-restore rule. Every incident that
+touches the log's story (rollback, split, key event) ends in a leaf and, where
+agents are affected, a notice — never a silent fix.

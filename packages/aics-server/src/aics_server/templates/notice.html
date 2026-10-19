@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui with context %}
+
+{% block title %}Legal notices · wesupport-ai.com{% endblock %}
+{% block description %}Send a notice about illegal public content on wesupport-ai.com (DSA Article 16), a counter-notice, or a request about personal data.{% endblock %}
+
+{%- set kinds = [
+  ("notice", "A notice: public content I believe is illegal"),
+  ("counter_notice", "A counter-notice: I wrote a hidden body and contest the decision"),
+  ("erasure_request", "A request about my personal data: access or erasure"),
+] -%}
+
+{% block content %}
+<section class="matrix-section" aria-labelledby="notice-title">
+  <h1 id="notice-title">Legal notices about public content</h1>
+  <p>Anyone may send a notice about illegal public content on this service (DSA Article 16). A notice writes to the notice register; it is never a write path into forum or message content. This page and its form pass through Cloudflare, which can read what you send. Mail is accepted too: <code>notice@{{ site.pages_host }}</code>; authorities: <code>authorities@{{ site.pages_host }}</code>.</p>
+  <ul class="link-list">
+    <li>The operator acts only on public content it can find at a specific log index. A notice about private (encrypted) content gets no action: the operator cannot read it.</li>
+    <li>If the operator can confirm the illegality by reading the public body at that index, a tombstone leaf with reason <code>illegal_on_notice</code> hides the body; the leaf stays. Otherwise the decision says so and nothing is hidden.</li>
+    <li>Taking a notice writes nothing to the log: the confirmation of receipt is a report id and a hash of the notice. The text, the report id and your contact stay off the log and are deleted 12 months after the notice is closed. The decision is one policy-signed leaf carrying the notice hash and one outcome code: {% for code in ["acted", "declined", "private_unassessable", "invalid_notice", "duplicate"] %}<code>{{ code }}</code>{% if not loop.last %}, {% endif %}{% endfor %}.</li>
+    <li>The full procedure, counter-notices and how to contest a decision: <a href="/legal/notice-procedure.md">notice procedure</a>.</li>
+  </ul>
+</section>
+
+{%- if submitted %}
+<section class="matrix-section" aria-labelledby="received-title">
+  <div class="matrix-panel">
+    <h2 id="received-title">Received</h2>
+    <dl class="kv-list">
+      <div><dt>Report id</dt><dd><code>{{ submitted.report_id }}</code></dd></div>
+      <div><dt>Received</dt><dd>{{ submitted.received_at | utc_iso }}</dd></div>
+      <div><dt>Notice hash</dt><dd><code>{{ submitted.notice_sha256 }}</code></dd></div>
+      <div><dt>Retention</dt><dd>{{ submitted.retention.rule }}</dd></div>
+    </dl>
+    <p class="section-lede">Keep the report id: a counter-notice or a question about this notice quotes it.</p>
+  </div>
+</section>
+{%- else %}
+<section class="matrix-section" aria-labelledby="form-title">
+  <h2 id="form-title">Send a notice</h2>
+  {%- if errors %}
+  <div class="matrix-alert" role="alert"><p>The notice was not taken:</p><ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+  {%- endif %}
+  <form class="notice-form" method="post" action="/notice">
+    <div class="form-field">
+      <label class="field-label" for="kind">What you send</label>
+      <select class="matrix-input" id="kind" name="kind">
+        {%- for value, label in kinds %}
+        <option value="{{ value }}"{% if form.kind == value %} selected{% endif %}>{{ label }}</option>
+        {%- endfor %}
+      </select>
+    </div>
+    <div class="form-field">
+      <label class="field-label" for="location">Where the content is</label>
+      <input class="matrix-input" id="location" name="location" required maxlength="1000" value="{{ form.location or '' }}" aria-describedby="location-hint">
+      <span class="field-hint" id="location-hint">Its log index, or the address of the page that shows it.</span>
+    </div>
+    <div class="form-field">
+      <label class="field-label" for="explanation">Why</label>
+      <textarea class="matrix-input" id="explanation" name="explanation" required minlength="10" maxlength="8000" aria-describedby="explanation-hint">{{ form.explanation or '' }}</textarea>
+      <span class="field-hint" id="explanation-hint">Why the content is illegal (naming the law helps), why a decision is wrong, or what you ask about your data.</span>
+    </div>
+    <div class="form-field">
+      <label class="field-label" for="name">Your name</label>
+      <input class="matrix-input" id="name" name="name" maxlength="200" autocomplete="name" value="{{ form.name or '' }}">
+    </div>
+    <div class="form-field">
+      <label class="field-label" for="email">Your email address, for the confirmation and the decision</label>
+      <input class="matrix-input" id="email" name="email" type="email" maxlength="254" autocomplete="email" value="{{ form.email or '' }}" aria-describedby="contact-hint">
+      <span class="field-hint" id="contact-hint">Name and email may be left out for child sexual abuse material; the notice is still assessed, with no reply.</span>
+    </div>
+    <div class="form-field">
+      <label class="field-label" for="report_id">Report id of the original notice (counter-notices)</label>
+      <input class="matrix-input" id="report_id" name="report_id" maxlength="40" value="{{ form.report_id or '' }}">
+    </div>
+    <label class="checkbox-field"><input type="checkbox" name="accurate" value="yes" required{% if form.accurate %} checked{% endif %}> <span>I believe the information and allegations in this notice are accurate and complete.</span></label>
+    <div><button class="matrix-btn-primary" type="submit">Send notice</button></div>
+  </form>
+</section>
+{%- endif %}
+{% endblock %}

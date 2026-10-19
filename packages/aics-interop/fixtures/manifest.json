@@ -1,0 +1,114 @@
+{
+  "conventions": {
+    "*_b64": "canonical padded standard base64 (AICS-1 B64)",
+    "*_hex": "lowercase hexadecimal bytes",
+    "*_text": "UTF-8 text, exact (signed notes end with LF)",
+    "*_u64": "canonical unpadded base64url (AICS-1 U64)",
+    "expect": "the AICS-1 verdict a conforming implementation reaches: valid | invalid, or a §14.6 relation",
+    "findings": "README findings under which a package in this repository currently disagrees with the case: its expect, or a value it carries (in appendix-a.json: value name -> findings)",
+    "jcs": "the exact RFC 8785 bytes as a UTF-8 string, no trailing LF",
+    "keys": "keys.json: Ed25519 seeds are 32 repeats of one byte; X25519 secrets likewise; public test keys only",
+    "times": "Unix seconds (AICS-1 time)"
+  },
+  "files": {
+    "README.md": {
+      "bytes": 1438,
+      "description": "what the fixtures are and how to use and regenerate them",
+      "sha256": "c0b8f5b7ec258414dc34fbe2c9743d568a6ecd4066fa7522589be92b15d2986c"
+    },
+    "appendix-a.json": {
+      "bytes": 14060,
+      "description": "AICS-1 Appendix A values as read from the specification",
+      "sha256": "2232f63dfce89eace78f5c1354f8ae6080df88e8b31f9ee1c46487514de0d438"
+    },
+    "bundles.json": {
+      "bytes": 46264,
+      "description": "§14.3 wire bundle (aics-tlog writes the same bytes), verification package, the pre-0.2 aics-tlog form as a negative case, tampered bundles",
+      "sha256": "6871283afddd5dda593adc706542a50e2c87665e982a56d3d0e1af07a2bf483b"
+    },
+    "card.json": {
+      "bytes": 74870,
+      "description": "§13 signed assurance card (0.2-draft), the 0.1-draft card, an altered card, refusal-registry variants",
+      "sha256": "bbf0e93836967eede08cde302e608738e1f5703132e1f143a6f58b99abec6011"
+    },
+    "envelopes.json": {
+      "bytes": 59490,
+      "description": "§4 native envelopes, chains, seen, freshness; §11.3 text-scheme envelopes",
+      "sha256": "fcced4f1731cdf4bf0da338c55c54d7d3a76c0b709406ca6a936cba54ee4e1b6"
+    },
+    "http-signatures.json": {
+      "bytes": 19506,
+      "description": "§12.1 RFC 9421 / RFC 9530 request signatures for POST /v2/entries",
+      "sha256": "97271124b4a71b98e9490dec1a5685e0165a39a56bed216322e52a01c2c5eeff"
+    },
+    "keys.json": {
+      "bytes": 8802,
+      "description": "every public test key used below (seeds, raw keys, did:key, vkeys)",
+      "sha256": "15530db981beaced67b5ea0b1777c692da9878768d22d232b3a6740e8228e237"
+    },
+    "linesig.json": {
+      "bytes": 10142,
+      "description": "§11.3 line signatures: raw Ed25519 and SSHSIG over session LF command",
+      "sha256": "498d363fba9e1ce2e9c5a1134eafa085b32b66e9efa36aff35ccca2bb2d1c374"
+    },
+    "receipts.json": {
+      "bytes": 4147,
+      "description": "§10.1 receipt notes",
+      "sha256": "6e4b6e852cefc5f22bde61cde967402f26fed3573b23e1ba0064bc718258174a"
+    },
+    "sealed.json": {
+      "bytes": 20164,
+      "description": "§8.1 sealed boxes with the inner header (deterministic ephemeral key)",
+      "sha256": "89069b8221c6b5c400ac2ab0fd396c36d2f060d47768c28ceb0aa3501e3c6fa7"
+    },
+    "split-view.json": {
+      "bytes": 79956,
+      "description": "§14.6 gossip-check fixtures: two notes, what origin and mirror serve, expected relation",
+      "sha256": "33b4e03ebb83e46d669907a64a272022834f4eead6d53b4e2927ac10c8e77984"
+    },
+    "tlog/log.json": {
+      "bytes": 33880,
+      "description": "§6 log: notes cosigned by two witnesses, inclusion and consistency proofs, note cases",
+      "sha256": "97f9df03d0b5c0ffd9c474672aa3cba5e4b1daad1156f9b5349084e462caf811"
+    },
+    "tlog/tiles/checkpoint": {
+      "bytes": 463,
+      "description": "tile resource of the size-300 log (tlog-tiles prefix)",
+      "sha256": "864b83406958c2b3141c4250e102ab257bd15f4841f9e8d65d84e2247c39ba93"
+    },
+    "tlog/tiles/tile/0/000": {
+      "bytes": 8192,
+      "description": "tile resource of the size-300 log (tlog-tiles prefix)",
+      "sha256": "0453aac4258b963087d0d597dc602300fb390023c796e88ba6651fba8acec924"
+    },
+    "tlog/tiles/tile/0/001.p/44": {
+      "bytes": 1408,
+      "description": "tile resource of the size-300 log (tlog-tiles prefix)",
+      "sha256": "e53f068b49424d6298ddf4688373c963afaddc10482d45c98c6461833cbe07a3"
+    },
+    "tlog/tiles/tile/1/000.p/1": {
+      "bytes": 32,
+      "description": "tile resource of the size-300 log (tlog-tiles prefix)",
+      "sha256": "1998e7584474359768714b8648612929127e33e8c1003ab1233c2d679c99b307"
+    },
+    "tlog/tiles/tile/entries/000": {
+      "bytes": 269954,
+      "description": "tile resource of the size-300 log (tlog-tiles prefix)",
+      "sha256": "5bfa3e132ba510915171d6c238b7f5e64240bdf3e86f75f024480ba2afe33f7d"
+    },
+    "tlog/tiles/tile/entries/001.p/44": {
+      "bytes": 46288,
+      "description": "tile resource of the size-300 log (tlog-tiles prefix)",
+      "sha256": "1cae480614dbd59227efa2a79526a7347ded0f73ec458a151d9e2840da41d1db"
+    },
+    "trust-bundle.json": {
+      "bytes": 8994,
+      "description": "§6.4 trust bundle: JCS bytes, TXT record, README block, DNS response, invalid variants",
+      "sha256": "256b8f752f5b5db13fca2c1d18a98f1829c9910042b98901a51d3c25e530e357"
+    }
+  },
+  "format": "aics-interop-fixtures/v1",
+  "generator": "packages/aics-interop/src/aics_interop/generate.py",
+  "regenerate": "cd packages/aics-interop && uv run aics-interop-fixtures",
+  "spec": "AICS-1 0.2-draft"
+}

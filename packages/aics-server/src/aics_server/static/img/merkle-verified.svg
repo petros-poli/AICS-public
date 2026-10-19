@@ -1,0 +1,51 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320" fill="none" role="img" aria-labelledby="merkle-title merkle-desc">
+  <title id="merkle-title">Merkle verified</title>
+  <desc id="merkle-desc">Four cryptographic leaves converge through two hash nodes into a verified emerald root. A cyan inclusion path and a check-mark seal express independently verifiable integrity.</desc>
+  <defs>
+    <linearGradient id="merkle-edge" x1="57" y1="243" x2="247" y2="64" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#00cc52"/><stop offset="0.55" stop-color="#00ff66"/><stop offset="1" stop-color="#67e8d5"/>
+    </linearGradient>
+    <radialGradient id="merkle-aura">
+      <stop stop-color="#00ff66" stop-opacity="0.1"/><stop offset="1" stop-color="#00ff66" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="merkle-glow" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <circle cx="160" cy="160" r="152" fill="url(#merkle-aura)"/>
+  <path d="m160 17 124 71v144l-124 71-124-71V88Z" stroke="#5ca878" stroke-opacity="0.25"/>
+  <path d="m160 28 114 66v132l-114 66-114-66V94Z" stroke="#5ca878" stroke-opacity="0.28" stroke-dasharray="2 6"/>
+  <path d="M36 112V88l23-13m202 0 23 13v24M36 208v24l23 13m202 0 23-13v-24" stroke="#00cc52" stroke-width="2"/>
+  <g stroke="#5ca878" stroke-opacity="0.25">
+    <path d="M65 112h190M65 170h190M65 228h190M90 89v165m70-165v165m70-165v165" stroke-dasharray="2 7"/>
+    <path d="M20 154v12m280-12v12M154 9h12m-12 302h12"/>
+  </g>
+  <g stroke="#00cc52" stroke-width="1.5" stroke-linejoin="round">
+    <path d="M160 109v19h-63v27m63-27h63v27M97 185v19H62v22m35-22h35v22M223 185v19h-35v22m35-22h35v22"/>
+  </g>
+  <path d="M62 226v-22h35v-34m0-15v-27h63v-19" stroke="#67e8d5" stroke-width="2.5" filter="url(#merkle-glow)"/>
+  <g fill="#06110b" stroke="url(#merkle-edge)" stroke-width="1.5">
+    <path d="m160 54 27 16v31l-27 16-27-16V70Z"/>
+    <path d="m97 150 20 11v23l-20 11-20-11v-23Zm126 0 20 11v23l-20 11-20-11v-23Z"/>
+    <rect x="47" y="226" width="30" height="28" rx="3"/>
+    <rect x="117" y="226" width="30" height="28" rx="3"/>
+    <rect x="173" y="226" width="30" height="28" rx="3"/>
+    <rect x="243" y="226" width="30" height="28" rx="3"/>
+  </g>
+  <path d="m160 63 19 11v23l-19 11-19-11V74Z" stroke="#00ff66" stroke-opacity="0.3"/>
+  <path d="m148 85 8 8 16-18" stroke="#00ff66" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" filter="url(#merkle-glow)"/>
+  <g stroke="#67e8d5" stroke-width="1.5">
+    <path d="M92 163v17m10-17v17m-14-12h18m-18 7h18M218 163v17m10-17v17m-14-12h18m-18 7h18"/>
+    <path d="M55 235h14m-14 5h8m-8 5h12M125 235h14m-14 5h8m-8 5h12M181 235h14m-14 5h8m-8 5h12M251 235h14m-14 5h8m-8 5h12" opacity="0.8"/>
+  </g>
+  <g fill="#00ff66">
+    <circle cx="160" cy="128" r="3"/><circle cx="97" cy="204" r="3"/><circle cx="223" cy="204" r="3"/>
+  </g>
+  <g stroke="#ffb800" stroke-width="1.5">
+    <path d="M211 74h17l9 9v17M213 81h9l8 8"/>
+    <circle cx="237" cy="105" r="3"/>
+  </g>
+  <path d="M114 274h28m36 0h28" stroke="#5ca878" stroke-opacity="0.55"/>
+  <path d="m160 266 8 8-8 8-8-8Z" fill="#06110b" stroke="#00ff66"/>
+  <circle cx="160" cy="274" r="2" fill="#00ff66"/>
+</svg>

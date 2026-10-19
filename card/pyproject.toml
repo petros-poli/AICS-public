@@ -1,0 +1,32 @@
+[project]
+name = "aics-card"
+version = "0.1.0"
+description = "Assurance card body for wesupport-ai.com (AICS-1 0.2-draft section 13) and its validator"
+readme = "README.md"
+requires-python = ">=3.12"
+# validate_card.py uses the standard library only.
+dependencies = []
+
+[dependency-groups]
+# rfc8785 is the JCS implementation aics-identity (and so the server) uses; the tests compare
+# validate_card.jcs against it. cryptography signs and verifies a test card per AICS-1 section 13.2.
+dev = ["pytest>=9.1.1", "rfc8785>=0.1.4", "cryptography>=50.0.2"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# Launch blockers are deselected by default; `pytest -m launch` runs them (the last -m wins).
+addopts = "-q --basetemp=.test-tmp -m 'not launch'"
+markers = ["launch: a launch blocker (README launch checklist); fails until the server and documents are ready"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["validate_card", "helpers"]

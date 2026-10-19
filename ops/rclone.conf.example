@@ -1,0 +1,26 @@
+# Example rclone configuration for ops/backup.sh and ops/restore.sh.
+# PLACEHOLDERS ONLY — no secrets in this file, ever.
+#
+# Copy to the VPS as /root/.config/rclone/rclone.conf (or set RCLONE_CONFIG to
+# its path) and fill in the values. Two independent remotes on purpose
+# (docs/DESIGN.md §10: Cloudflare R2 plus one of Backblaze B2 / GitHub Pages;
+# B2 chosen here). Buckets/containers must already exist and be private;
+# backup.sh uploads under the prefix aics-backup/.
+
+# Cloudflare R2, S3-compatible. Create the bucket and an S3 API token in the
+# R2 dashboard ("Manage R2 API Tokens"); the endpoint embeds the account id.
+[r2]
+type = s3
+provider = Cloudflare
+access_key_id = <R2_ACCESS_KEY_ID>
+secret_access_key = <R2_SECRET_ACCESS_KEY>
+endpoint = https://<R2_ACCOUNT_ID>.r2.cloudflarestorage.com
+acl = private
+no_check_bucket = true
+
+# Backblaze B2. Create a bucket (private) and an application key limited to it.
+[b2]
+type = b2
+account = <B2_KEY_ID>
+key = <B2_APPLICATION_KEY>
+hard_delete = true

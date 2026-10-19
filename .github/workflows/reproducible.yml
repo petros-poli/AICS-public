@@ -1,0 +1,192 @@
+name: Reproducible builds
+
+on:
+  push:
+    branches: [main]
+    tags: ['**']
+  workflow_call:
+    outputs:
+      hashes:
+        description: Base64 SHA-256 subjects for the distributions and their manifest
+        value: ${{ jobs.compare.outputs.hashes }}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    outputs:
+      packages: ${{ steps.inputs.outputs.packages }}
+      epoch: ${{ steps.inputs.outputs.epoch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Discover libraries and read the source commit time
+        id: inputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import json
+          import os
+          import re
+          import subprocess
+          import tomllib
+          from pathlib import Path
+
+          allowed = {"aics-identity", "aics-tlog", "aics-witness", "aics-conformance", "aics-cli", "aics-mcp"}
+          packages = []
+          project_names = set()
+          for path in sorted(Path("packages").glob("*/pyproject.toml")):
+              if path.parent.name not in allowed:
+                  continue
+              project = tomllib.loads(path.read_text())["project"]
+              # Directory names select release members; PyPI names come from metadata.
+              # In particular packages/aics-cli publishes the project named "aics".
+              name = re.sub(r"[-_.]+", "-", project["name"]).lower()
+              if name in project_names:
+                  raise SystemExit(f"Duplicate PyPI project name: {name}")
+              project_names.add(name)
+              packages.append(path.parent.name)
+          if not {"aics-identity", "aics-tlog"}.issubset(packages):
+              raise SystemExit("The identity and tlog libraries are required")
+          # The commits API peels annotated tags; use committer time, never run time.
+          commit = json.loads(subprocess.check_output([
+              "gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/commits/{os.environ['GITHUB_SHA']}"
+          ]))
+          date = datetime.datetime.fromisoformat(commit["commit"]["committer"]["date"].replace("Z", "+00:00"))
+          epoch = int(date.timestamp())
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"packages={json.dumps(packages)}", file=output)
+              print(f"epoch={epoch}", file=output)
+          print(f"Libraries: {', '.join(packages)}; SOURCE_DATE_EPOCH={epoch}; commit={commit['sha']}")
+          PY
+
+  build:
+    name: Build ${{ matrix.package }} (copy ${{ matrix.copy }})
+    needs: discover
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.discover.outputs.packages) }}
+        copy: [1, 2]
+    env:
+      SOURCE_DATE_EPOCH: ${{ needs.discover.outputs.epoch }}
+      PYTHONHASHSEED: ${{ matrix.copy }}
+      TZ: UTC
+      LC_ALL: C.UTF-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # Different absolute paths help expose embedded build-directory names.
+          path: source-${{ matrix.copy }}
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.12.6"
+          python-version: "3.12.12"
+          enable-cache: false
+      - name: Build sdist, then wheel from that sdist
+        working-directory: source-${{ matrix.copy }}/packages/${{ matrix.package }}
+        run: uv build --no-sources --out-dir "$RUNNER_TEMP/dist"
+      - name: Hash the distributions
+        run: |
+          cd "$RUNNER_TEMP/dist" || exit 1
+          sha256sum -- *.whl *.tar.gz | sort -k2 > SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: repro-build-${{ matrix.package }}-${{ matrix.copy }}
+          path: ${{ runner.temp }}/dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  compare:
+    needs: [discover, build]
+    runs-on: ubuntu-24.04
+    permissions: {}
+    outputs:
+      hashes: ${{ steps.compare.outputs.hashes }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: repro-build-*
+          path: builds
+      - name: Compare independently built wheels and sdists
+        id: compare
+        env:
+          PACKAGES: ${{ needs.discover.outputs.packages }}
+          SOURCE_DATE_EPOCH: ${{ needs.discover.outputs.epoch }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import json
+          import os
+          import shutil
+          from pathlib import Path
+
+          dist = Path("dist")
+          evidence = Path("hashes")
+          dist.mkdir()
+          evidence.mkdir()
+          manifest = {}
+          failures = []
+          for package in json.loads(os.environ["PACKAGES"]):
+              copies = []
+              for copy in (1, 2):
+                  root = Path(f"builds/repro-build-{package}-{copy}")
+                  files = sorted([*root.glob("*.whl"), *root.glob("*.tar.gz")])
+                  if not list(root.glob("*.whl")) or not list(root.glob("*.tar.gz")):
+                      raise SystemExit(f"Missing wheel or sdist: {root}")
+                  hashes = {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
+                  text = "".join(f"{digest}  {name}\n" for name, digest in sorted(hashes.items()))
+                  (evidence / f"{package}-{copy}.sha256").write_text(text)
+                  if (root / "SHA256SUMS").read_text() != text:
+                      failures.append(f"{package} copy {copy}: uploaded checksum mismatch")
+                  copies.append(hashes)
+              if copies[0] != copies[1]:
+                  failures.append(f"{package}: build 1 and build 2 differ")
+                  continue
+              for name, digest in copies[0].items():
+                  if name in manifest:
+                      raise SystemExit(f"Duplicate distribution filename: {name}")
+                  manifest[name] = digest
+                  shutil.copyfile(Path(f"builds/repro-build-{package}-1") / name, dist / name)
+                  print(f"REPRODUCIBLE {name} {digest}")
+          (evidence / "build-environment.txt").write_text(
+              f"commit={os.environ['GITHUB_SHA']}\nSOURCE_DATE_EPOCH={os.environ['SOURCE_DATE_EPOCH']}\n"
+              "runner=ubuntu-24.04\nuv=0.12.6\npython=3.12.12\nPYTHONHASHSEED=1,2\n"
+          )
+          if failures:
+              raise SystemExit("\n".join(failures))
+          text = "".join(f"{digest}  {name}\n" for name, digest in sorted(manifest.items()))
+          (dist / "SHA256SUMS").write_text(text)
+          (evidence / "SHA256SUMS").write_text(text)
+          # Attest the inventory too, so verification detects missing release assets.
+          subjects = text + f"{hashlib.sha256(text.encode()).hexdigest()}  SHA256SUMS\n"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"hashes={base64.b64encode(subjects.encode()).decode()}", file=output)
+          PY
+      - name: Preserve both sets of hashes, including on mismatch
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: reproducibility-hashes
+          path: hashes/
+          if-no-files-found: error
+          retention-days: 90
+      - name: Upload the verified release inputs
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verified-dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14

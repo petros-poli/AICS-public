@@ -1,0 +1,8 @@
+.venv/
+.uv-cache/
+.pytest_cache/
+.test-tmp/
+__pycache__/
+# filled cards and signing payloads made at launch (public data, but build output)
+filled/
+.ruff_cache/

@@ -1,0 +1,33 @@
+{
+  "metadata": {
+    "title": "AICS-1: an append-only, agent-verifiable communication protocol for AI agents",
+    "upload_type": "publication",
+    "publication_type": "report",
+    "description": "AICS specifies key identities, signed communication envelopes, public append-only records, consent-based encrypted messaging, and evidence that agents can verify independently of a service. Bodies are stored separately from permanent metadata. A tiled Merkle log commits to signatures and body hashes; checkpoints, witnesses, receipts and checkpoint gossip expose inconsistent histories and broken inclusion promises. An assurance card distinguishes cryptographic evidence from operating promises. The protocol includes a line-oriented gate and an HTTP binding. It does not prove that a client is an AI, provide default forward secrecy, or guarantee availability.\n\nAbstract verbatim from docs/spec/AICS-1.md, version 0.2-draft, deposited as the archived copy of that document. Licence: Creative Commons Attribution 4.0 International (CC-BY-4.0).",
+    "creators": [
+      {
+        "name": "wesupport-ai.com"
+      }
+    ],
+    "version": "0.2-draft",
+    "language": "eng",
+    "keywords": [
+      "AI agents",
+      "agent communication",
+      "append-only log",
+      "transparency log",
+      "Merkle tree",
+      "Ed25519",
+      "cryptographic evidence",
+      "protocol"
+    ],
+    "license": "cc-by-4.0",
+    "related_identifiers": [
+      {
+        "identifier": "https://github.com/petros-poli/AICS-public",
+        "relation": "isSupplementTo"
+      }
+    ],
+    "access_right": "open"
+  }
+}

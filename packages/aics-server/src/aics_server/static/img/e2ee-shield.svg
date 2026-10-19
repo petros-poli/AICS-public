@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="320" height="320" viewBox="0 0 320 320" fill="none" role="img" aria-labelledby="e2ee-title e2ee-desc">
+  <title id="e2ee-title">End-to-end encrypted sanctuary</title>
+  <desc id="e2ee-desc">A sealed emerald shield encloses a cryptographic lock and two interlocking key circuits. Cyan endpoint terminals link through a protected channel, with amber boundary markers.</desc>
+  <defs>
+    <linearGradient id="e2ee-edge" x1="83" y1="66" x2="232" y2="267" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67e8d5"/><stop offset="0.5" stop-color="#00ff66"/><stop offset="1" stop-color="#00cc52"/>
+    </linearGradient>
+    <linearGradient id="e2ee-face" x1="160" y1="43" x2="160" y2="279" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0b2517"/><stop offset="1" stop-color="#030805"/>
+    </linearGradient>
+    <radialGradient id="e2ee-aura">
+      <stop stop-color="#67e8d5" stop-opacity="0.1"/><stop offset="1" stop-color="#67e8d5" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="e2ee-glow" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <circle cx="160" cy="160" r="151" fill="url(#e2ee-aura)"/>
+  <g stroke="#5ca878" stroke-width="1">
+    <circle cx="160" cy="160" r="140" stroke-opacity="0.18"/>
+    <circle cx="160" cy="160" r="130" stroke-dasharray="1 8" stroke-opacity="0.4"/>
+    <path d="M160 12v17m0 263v16M12 160h17m263 0h16M53 65v-12h12m190 0h12v12M53 255v12h12m190 0h12v-12" stroke-opacity="0.65"/>
+  </g>
+  <path d="m160 34 91 36v88c0 57-32 101-91 129-59-28-91-72-91-129V70Z" fill="#030805" stroke="#00cc52" stroke-opacity="0.25"/>
+  <path d="m160 44 81 32v82c0 51-28 91-81 118-53-27-81-67-81-118V76Z" fill="url(#e2ee-face)" stroke="url(#e2ee-edge)" stroke-width="2"/>
+  <path d="m160 57 69 27v74c0 43-24 79-69 105-45-26-69-62-69-105V84Z" stroke="#5ca878" stroke-opacity="0.35"/>
+  <path d="M81 109V76l36-14m87 0 37 14v33M120 249a170 170 0 0 0 40 27" stroke="#00ff66" stroke-width="2.5" filter="url(#e2ee-glow)"/>
+  <g stroke="#67e8d5" stroke-width="1.5" stroke-linejoin="round">
+    <path d="M47 148h56l16 16h15m139-16h-56l-16 16h-15"/>
+    <path d="M47 164h44l16 16h27m139-16h-44l-16 16h-27" stroke-opacity="0.45"/>
+  </g>
+  <g fill="#06110b" stroke="#67e8d5" stroke-width="1.5">
+    <rect x="23" y="137" width="24" height="38" rx="3"/><rect x="273" y="137" width="24" height="38" rx="3"/>
+    <path d="M29 144h12v18H29Zm250 0h12v18h-12Z" stroke-opacity="0.45"/>
+  </g>
+  <path d="M32 168h6m244 0h6" stroke="#00ff66" stroke-width="2"/>
+  <g stroke="#5ca878" stroke-opacity="0.45">
+    <path d="M108 113V96h21m62 0h21v17M107 201v13l18 18h16m38 0h16l18-18v-13"/>
+    <path d="M117 109v-5h12m62 0h12v5M128 238l11 7h42l11-7"/>
+  </g>
+  <path d="M139 141v-18a21 21 0 0 1 42 0v18" stroke="#67e8d5" stroke-width="5"/>
+  <path d="M146 141v-18a14 14 0 0 1 28 0v18" stroke="#00cc52" stroke-width="1" stroke-opacity="0.5"/>
+  <path d="m134 141-8 8v43l8 8h52l8-8v-43l-8-8Z" fill="#06110b" stroke="url(#e2ee-edge)" stroke-width="2"/>
+  <path d="M137 151h46v39h-46Z" stroke="#00cc52" stroke-opacity="0.3"/>
+  <path d="M160 158a7 7 0 0 0-3 13v11h6v-11a7 7 0 0 0-3-13Z" fill="#00ff66" filter="url(#e2ee-glow)"/>
+  <g stroke="#67e8d5" stroke-width="1.5" stroke-linecap="square">
+    <circle cx="146" cy="216" r="4"/><path d="M150 216h18v5m-7-5v4"/>
+    <circle cx="174" cy="226" r="4"/><path d="M170 226h-18v-5m7 5v-4"/>
+  </g>
+  <g fill="#ffb800">
+    <path d="m160 76 4 4-4 4-4-4Z"/><circle cx="63" cy="148" r="2"/><circle cx="257" cy="148" r="2"/>
+  </g>
+  <path d="M135 296h14m7 0h8m7 0h14" stroke="#00cc52" stroke-width="1.5"/>
+</svg>

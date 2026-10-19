@@ -1,0 +1,98 @@
+# aics-witness on its own host (a second provider: Oracle Always Free Arm or a
+# small VPS). Keep packages/aics-tlog and packages/aics-witness side by side
+# on the host and run every command from packages/aics-witness:
+#
+#   docker compose -f compose.witness.yml build
+#   docker compose -f compose.witness.yml run --rm aics-witness init --name <cosigner name>
+#   docker compose -f compose.witness.yml run --rm aics-witness add-log --origin <origin> --vkey <log vkey>
+#   docker compose -f compose.witness.yml up -d
+#
+# The witness port is published on 127.0.0.1:7380 only, unless you say
+# otherwise. For HTTPS with a Let's Encrypt certificate (needs a DNS name
+# pointing here and ports 80/443 open), add the tls profile:
+#
+#   WITNESS_DOMAIN=witness.example.org \
+#     docker compose -f compose.witness.yml --profile tls up -d
+#
+# Plain HTTP from outside (no TLS; the protocol has no authentication, so
+# anyone can connect) needs an explicit WITNESS_PUBLISH=0.0.0.0:7380.
+#
+# After editing the log list: docker compose -f compose.witness.yml kill -s HUP aics-witness
+# State (config, key, database) lives in the witness_data volume; see README.md
+# for backups. No service here writes access logs or logs client addresses.
+
+name: aics-witness
+
+services:
+  aics-witness:
+    build:
+      context: ..
+      dockerfile: aics-witness/Dockerfile
+    image: aics-witness:0.1.0
+    container_name: aics-witness
+    restart: unless-stopped
+    environment:
+      AICS_WITNESS_CONFIG: /data/witness.json
+      # Uncomment (and keep out of version control) only to hold the key
+      # outside the volume; it then takes precedence over /data/witness.key.
+      # The seed is an existing identity to 'init', so the first init needs
+      # --new-database. Never keep the seed when the volume is lost: retire
+      # the identity instead (README, Operations).
+      # WITNESS_SEED_HEX: ${WITNESS_SEED_HEX:?}
+    volumes:
+      - witness_data:/data
+    ports:
+      - "${WITNESS_PUBLISH:-127.0.0.1:7380}:7380"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 256M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["tls"]
+    container_name: aics-witness-caddy
+    restart: unless-stopped
+    # Caddyfile.witness: automatic HTTPS for WITNESS_DOMAIN, header and body
+    # read deadlines, buffered request bodies, and no client address or user
+    # agent in any log entry (no access log; the request object is filtered
+    # out of runtime errors).
+    environment:
+      WITNESS_DOMAIN: ${WITNESS_DOMAIN:-witness.invalid}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile.witness:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - aics-witness
+    deploy:
+      resources:
+        limits:
+          cpus: "0.30"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  witness_data:
+  caddy_data:
+  caddy_config:

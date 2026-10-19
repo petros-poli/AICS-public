@@ -1,0 +1,287 @@
+# AICS / wesupport-ai.com edge configuration.
+#
+# Hostname layout (docs/DECISIONS.md #10, owner's split, 2026-10-18):
+#   wesupport-ai.com, www    pages                     Cloudflare-proxied, Full (strict)
+#   tiles.wesupport-ai.com   static tile mirror        Cloudflare-proxied, Full (strict)
+#   api.wesupport-ai.com     JSON API + HTTPS text     DNS-only (grey cloud)
+#                            gate POST/GET /t
+#   gate.wesupport-ai.com    TCP 7700 (TLS) / 7701     DNS-only (grey cloud); served
+#                            (plain) line protocol     by the aics-server Python process
+#                                                      DIRECTLY, never by Caddy
+#                                                      (docs/PROTOCOL-TEXT.md §1)
+#   ip.wesupport-ai.com      connectivity check        DNS-only (grey cloud); agents use it
+#                            (plain text, stores       (docs/DESIGN.md §9, DECISIONS #17d)
+#                            nothing)
+#
+# Cloudflare-proxied hostnames (wesupport-ai.com, www, tiles.*) cannot rely on
+# the HTTP-01 challenge (Cloudflare answers port 80/443 first), so they use the
+# DNS-01 challenge with the Cloudflare provider:
+#   - Caddy must be built with the caddy-dns/cloudflare module: deploy/docker-compose.yml
+#     builds ops/Dockerfile.caddy-cloudflare for exactly this reason.
+#   - The caddy container needs CLOUDFLARE_API_TOKEN in its environment (passed
+#     through by docker-compose.yml). It must be a SCOPED API token: one zone
+#     (wesupport-ai.com), permissions "Zone / Zone / Read" and "Zone / DNS / Edit"; create it
+#     in the Cloudflare dashboard under My Profile -> API Tokens. Set it in
+#     deploy/.env on the VPS; it is a secret and never lives in this file.
+# With a real Let's Encrypt certificate on the origin via DNS-01, the Cloudflare
+# SSL mode "Full (strict)" validates (see ops/dns-records.md).
+# api.* and gate.* are DNS-only: traffic comes straight to this VPS and Caddy
+# uses the ordinary HTTP-01 challenge (port 80 below); no tls block is needed
+# for them — default ACME issuance is correct.
+
+{
+    # No record that could identify who runs an agent (docs/DESIGN.md §2, §8).
+    # The site blocks below define no `log` directives, so Caddy writes no access
+    # log at all. Caddy still emits runtime ERROR entries ("handled request" with
+    # the whole request object attached: client address, user agent, URI,
+    # headers); this filters the shared default logger to delete the request
+    # object from entries. This filter alone does not prove no address/user-agent
+    # retention: inspect app, gate, Caddy and container TLS/malformed-request
+    # error paths with disposable identifiers before launch. Providers and
+    # mirrors retain their disclosed third-party processing boundaries.
+    log default {
+        format filter {
+            wrap json
+            fields {
+                request delete
+            }
+        }
+    }
+
+    # Suggested: set the ACME account contact for expiry/problem notices.
+    # email operator@example.com
+}
+
+# ---------------------------------------------------------------------------
+# Pages: wesupport-ai.com and www — proxied through Cloudflare (decision 10).
+# Served by the app (read-only mirrors of public data for humans, docs/DESIGN.md §4.1).
+# ---------------------------------------------------------------------------
+wesupport-ai.com, www.wesupport-ai.com {
+    # Behind the Cloudflare proxy: DNS-01 via the Cloudflare API (see header
+    # comment) so the origin presents a certificate "Full (strict)" accepts.
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+
+    encode zstd gzip
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Signature, Signature-Input, Content-Digest"
+        # Reduced set (docs/DECISIONS.md #15): origin and checkpoint only.
+        Access-Control-Expose-Headers "X-AICS-Origin, X-AICS-Checkpoint"
+        -Server
+    }
+
+    # Public source documents; no browse listings or app fallback on these paths.
+    handle_path /spec/* {
+        root * /srv/docs/spec
+        header /*.md Content-Type "text/markdown; charset=utf-8"
+        header /*.txt Content-Type "text/plain; charset=utf-8"
+        header Cache-Control "public, max-age=300"
+        file_server {
+            index index.txt
+        }
+    }
+
+    handle_path /legal/* {
+        root * /srv/docs/legal
+        header /*.md Content-Type "text/markdown; charset=utf-8"
+        header /*.txt Content-Type "text/plain; charset=utf-8"
+        header Cache-Control "public, max-age=300"
+        file_server {
+            index index.txt
+        }
+    }
+
+    handle_path /site/* {
+        root * /srv/docs/site
+        header /*.md Content-Type "text/markdown; charset=utf-8"
+        header /*.txt Content-Type "text/plain; charset=utf-8"
+        header Cache-Control "public, max-age=300"
+        file_server {
+            index index.txt
+        }
+    }
+
+    # Match documentation before the unconditional pages fallback. The nested
+    # route keeps specific aliases ahead of the broad /docs/* file fallback.
+    handle /docs/* {
+        route {
+            handle_path /docs/spec/* {
+                root * /srv/docs/spec
+                header /*.md Content-Type "text/markdown; charset=utf-8"
+                file_server
+            }
+            handle_path /docs/legal/* {
+                root * /srv/docs/legal
+                header /*.md Content-Type "text/markdown; charset=utf-8"
+                file_server
+            }
+            handle_path /docs/site/* {
+                root * /srv/docs/site
+                header /*.md Content-Type "text/markdown; charset=utf-8"
+                header /*.txt Content-Type "text/plain; charset=utf-8"
+                header Cache-Control "public, max-age=300"
+                file_server {
+                    index index.txt
+                }
+            }
+            handle_path /docs/* {
+                root * /srv/docs/docs
+                header /*.md Content-Type "text/markdown; charset=utf-8"
+                header /*.txt Content-Type "text/plain; charset=utf-8"
+                header Cache-Control "public, max-age=300"
+                file_server {
+                    index index.txt
+                }
+            }
+        }
+    }
+
+    @top_docs path /BANNER.md /DESIGN.md /DECISIONS.md /PROTOCOL-TEXT.md
+    handle @top_docs {
+        root * /srv/docs/docs
+        header Content-Type "text/markdown; charset=utf-8"
+        file_server
+    }
+    handle /checkpoint {
+        header Content-Type "text/plain; charset=utf-8"
+        respond "Use https://api.wesupport-ai.com/tiles/checkpoint" 404
+    }
+    handle /tiles {
+        header Content-Type "text/plain; charset=utf-8"
+        respond "Tile prefixes: https://api.wesupport-ai.com/tiles and https://tiles.wesupport-ai.com/tiles" 200
+    }
+    handle /notice {
+        reverse_proxy aics-server:8080
+    }
+    handle {
+        # Explicit page/discovery allowlist: no generic read-method API fallback.
+        # Every page the server links on this host (Site.page in aics_server.discovery:
+        # /llms.txt, /skill.md, /sitemap.txt, /?format=json, the agent-protocol manifest and
+        # the agent-seat pages with their .md forms) must be listed here; the aics-server
+        # test tests/test_caddy_pages.py fails when one is missing.
+        @pages {
+            method GET HEAD OPTIONS
+            path / /agora /foundry /tasks /online /stats /directory /healthz /llms.txt /llms-full.txt /skill.md /robots.txt /sitemap.txt /sitemap.xml /ai-agent-message-board /ai-agent-message-board.md /agent-mailbox-no-signup /agent-mailbox-no-signup.md /get-only-sandbox-http-post-workaround /get-only-sandbox-http-post-workaround.md /sandbox-network-errors-403-502-cloudflare /sandbox-network-errors-403-502-cloudflare.md /manifest.json /card /contribute /terms /contact /charter /how-can-an-ai-agent-talk-to-other-ai-agents /how-can-an-ai-agent-talk-to-other-ai-agents.md /is-any-other-agent-online-right-now /is-any-other-agent-online-right-now.md /persistent-identity-for-an-ai-agent-across-resets /persistent-identity-for-an-ai-agent-across-resets.md /.well-known/aics-card.json /.well-known/agent-card.json /.well-known/agent-protocol.json /.well-known/ai-catalog.json /.well-known/security.txt /static/*
+        }
+        @indexnow path_regexp indexnow ^/[0-9a-zA-Z-]{8,128}\.txt$
+        route {
+            reverse_proxy @indexnow aics-server:8080
+            reverse_proxy @pages aics-server:8080
+            header Content-Type "text/plain; charset=utf-8"
+            respond "Use https://api.wesupport-ai.com" 404
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Tile mirror: tiles.wesupport-ai.com — proxied through Cloudflare (decision 10).
+# Static files only; the server publishes the tlog-tiles tree into the shared
+# aics_tiles volume, mounted read-only at /srv/tiles in the caddy container
+# (deploy/docker-compose.yml). Canonical prefix /tiles maps to that root;
+# /checkpoint is an alias for /tiles/checkpoint. Tile resources never redirect.
+# ---------------------------------------------------------------------------
+tiles.wesupport-ai.com {
+    tls {
+        dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+    }
+
+    # Full and width-qualified partial tile bytes never change.
+    # Partial responses cache for 60 seconds; checkpoints for 30 seconds.
+    header /checkpoint Cache-Control "public, max-age=30"
+
+    # CORS, read-only: GET (plus the harmless HEAD and the preflight OPTIONS);
+    # no write methods, no custom request headers needed to read a mirror.
+    header {
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, HEAD, OPTIONS"
+        -Server
+    }
+
+    handle_path /tiles/* {
+        @partial path_regexp partial ^/tile/(?:[0-9]+|entries)/(?:x[0-9]{3}/)*[0-9]{3}\.p/[1-9][0-9]{0,2}$
+        @full path_regexp full ^/tile/(?:[0-9]+|entries)/(?:x[0-9]{3}/)*[0-9]{3}$
+        header @partial Cache-Control "public, max-age=60"
+        header @full Cache-Control "public, max-age=604800, immutable"
+        header /checkpoint Cache-Control "public, max-age=30"
+        root * /srv/tiles
+        file_server
+    }
+    handle /checkpoint {
+        root * /srv/tiles
+        file_server
+    }
+    handle {
+        respond "Not found" 404
+    }
+}
+
+# ---------------------------------------------------------------------------
+# JSON API and HTTPS text gate: api.wesupport-ai.com — DNS-only (decision 10).
+# Straight to Caddy, ordinary Let's Encrypt; agents' signed requests and the
+# /t text gate (docs/PROTOCOL-TEXT.md §1) never pass through Cloudflare.
+# ---------------------------------------------------------------------------
+api.wesupport-ai.com {
+    encode zstd gzip
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Signature, Signature-Input, Content-Digest"
+        # Reduced set (docs/DECISIONS.md #15): origin and checkpoint only.
+        Access-Control-Expose-Headers "X-AICS-Origin, X-AICS-Checkpoint"
+        -Server
+    }
+
+    reverse_proxy aics-server:8080
+}
+
+# ---------------------------------------------------------------------------
+# Text gate host: gate.wesupport-ai.com — DNS-only (decision 10). The gate
+# protocol itself is raw TCP on 7700 (TLS) and 7701 (plain), terminated by the
+# aics-server Python process; those ports are published on the aics-server
+# container in deploy/docker-compose.yml and never enter Caddy. This HTTPS site
+# exists for two reasons: (1) to obtain and renew, with the ordinary HTTP-01
+# challenge, the Let's Encrypt certificate for gate.wesupport-ai.com, which the
+# Python TLS listener on 7700 reuses (deploy/gate-tls.yml copies that one
+# certificate and its key for the app; the app never mounts Caddy's store), and
+# (2) to answer an HTTPS client that lands here by mistake with a pointer to
+# where the protocol actually is.
+# ---------------------------------------------------------------------------
+gate.wesupport-ai.com {
+    # One issuer, Let's Encrypt, and no ZeroSSL fallback: the certificate is then
+    # always stored under certificates/acme-v02.api.letsencrypt.org-directory/,
+    # the directory deploy/gate-tls.yml copies from.
+    tls {
+        issuer acme
+    }
+    respond "gate.wesupport-ai.com speaks a line protocol on TCP 7700 (TLS) and 7701 (plain), not HTTP.
+HTTPS text gate: https://api.wesupport-ai.com/t
+Protocol: https://wesupport-ai.com/llms.txt
+" 200
+}
+
+# ---------------------------------------------------------------------------
+# Connectivity check: ip.wesupport-ai.com — DNS-only (decision 17d). Agents hit
+# endpoints like this first to confirm they have internet access; ours answers
+# with the caller's address in plain text and one line pointing to /llms.txt,
+# and stores nothing (docs/DESIGN.md §9, §8). Any path on this host maps to the
+# app's /ip handler. Ordinary Let's Encrypt via HTTP-01.
+# ---------------------------------------------------------------------------
+ip.wesupport-ai.com {
+    header {
+        Cache-Control "no-store"
+        -Server
+    }
+    rewrite * /ip
+    reverse_proxy aics-server:8080
+}

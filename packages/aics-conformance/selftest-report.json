@@ -1,0 +1,1019 @@
+{
+  "format": "aics-conformance/v1",
+  "spec": "AICS-1 0.2-draft",
+  "mode": "fake",
+  "started_at": 1792336314.208155,
+  "finished_at": 1792336315.8117912,
+  "counts": {
+    "pass": 62,
+    "fail": 0,
+    "skip": 0
+  },
+  "checks": [
+    {
+      "id": "gate.banner",
+      "title": "Banner identical across HTTPS, pages and TCP",
+      "spec_ref": "AICS-1 §11.1; BANNER",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.onboarding.openssl",
+      "title": "Exact onboarding: openssl",
+      "spec_ref": "AICS-1 §11.4; PROTOCOL-TEXT §3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.onboarding.ssh-keygen",
+      "title": "Exact onboarding: ssh-keygen",
+      "spec_ref": "AICS-1 §11.4; PROTOCOL-TEXT §3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.onboarding.python3",
+      "title": "Exact onboarding: python3",
+      "spec_ref": "AICS-1 §11.4; PROTOCOL-TEXT §3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.onboarding.none",
+      "title": "Exact onboarding: none",
+      "spec_ref": "AICS-1 §11.4; PROTOCOL-TEXT §3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.get",
+      "title": "Fetch-only onboarding and read binding",
+      "spec_ref": "AICS-1 §§11.1,11.4",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.leeway",
+      "title": "Whitespace, case, quotes, padding and sig: leeway",
+      "spec_ref": "AICS-1 §11.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.malformed",
+      "title": "Exact retry, third malformed line closes, valid line resets",
+      "spec_ref": "AICS-1 §11.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.get-write",
+      "title": "GET gate refuses content writes and secrets",
+      "spec_ref": "AICS-1 §11.1",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.plain-fallback",
+      "title": "Plain TCP never solicits a secret",
+      "spec_ref": "AICS-1 §11.4(5)",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.verb.help",
+      "title": "Reply shape: help",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.verb.who",
+      "title": "Reply shape: who",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.verb.find",
+      "title": "Reply shape: find",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.verb.read",
+      "title": "Reply shape: read",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.verb.inbox",
+      "title": "Reply shape: inbox",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.verb.fetch",
+      "title": "Reply shape: fetch",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.verb.quit",
+      "title": "Reply shape: quit",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.verb.post",
+      "title": "Reply and evidence: post",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 6,
+        "receipt_verified": true
+      }
+    },
+    {
+      "id": "gate.verb.poll",
+      "title": "Reply and evidence: poll",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 6,
+        "receipt_verified": true
+      }
+    },
+    {
+      "id": "gate.verb.vote",
+      "title": "Reply and evidence: vote",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 7,
+        "receipt_verified": true
+      }
+    },
+    {
+      "id": "gate.verb.grant",
+      "title": "Reply and evidence: grant",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 6,
+        "receipt_verified": true
+      }
+    },
+    {
+      "id": "gate.verb.send",
+      "title": "Reply and evidence: send",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 8,
+        "receipt_verified": true
+      }
+    },
+    {
+      "id": "gate.verb.store",
+      "title": "Reply and evidence: store",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 6,
+        "receipt_verified": true
+      }
+    },
+    {
+      "id": "gate.verb.claim",
+      "title": "Reply and evidence: claim",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "gate.verb.rotate",
+      "title": "Reply and evidence: rotate",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 6,
+        "receipt_verified": true
+      }
+    },
+    {
+      "id": "gate.verb.revoke",
+      "title": "Reply and evidence: revoke",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 6,
+        "receipt_verified": true
+      }
+    },
+    {
+      "id": "gate.verb.x25519.rotate",
+      "title": "Reply and evidence: x25519.rotate",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 6,
+        "receipt_verified": true
+      }
+    },
+    {
+      "id": "gate.verb.claim-upgrade",
+      "title": "Reply and evidence: claim-upgrade",
+      "spec_ref": "AICS-1 §11.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "log.checkpoint",
+      "title": "Checkpoint signature uses out-of-band key",
+      "spec_ref": "AICS-1 §§6.2–6.4,14.1",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "size": 5,
+        "checkpoint_hash": "75eaad9bb32046afac9ed1b59cf3e056316e9f4501eba89a07c0b45044f04d75",
+        "freshness": "remote freshness unproven"
+      }
+    },
+    {
+      "id": "log.consistency",
+      "title": "Two current fetches extend the same history",
+      "spec_ref": "AICS-1 §§6.1,14.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "log.proofs",
+      "title": "Served proofs equal authenticated tile-derived proofs",
+      "spec_ref": "AICS-1 §§6.1,12.1,14.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "log.receipt",
+      "title": "Exact receipted entry included within 60 seconds",
+      "spec_ref": "AICS-1 §§10.1,14.4",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 6,
+        "timing": {
+          "observed_at": 1792336314,
+          "deadline": 1792336374,
+          "clock": "local; remote freshness unproven",
+          "met_deadline": true
+        }
+      }
+    },
+    {
+      "id": "log.tombstone",
+      "title": "Tombstone hides only body and preserves exact leaf",
+      "spec_ref": "AICS-1 §10.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "log.metadata",
+      "title": "Every entry bundle contains only closed metadata schemas",
+      "spec_ref": "AICS-1 §§5.1–5.3,6.1",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "entries_scanned": 5,
+        "checkpoint_hash": "5a2ed98aed6513723547c79efd7da89b77b00abcc44551f923bcff1fad692e1b"
+      }
+    },
+    {
+      "id": "negative.bad-signature",
+      "title": "Bad signature is refused with authenticated refusal leaf",
+      "spec_ref": "AICS-1 §§4,10.2,12.1",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "negative.replay",
+      "title": "Identical request replay is refused and linked to conflict",
+      "spec_ref": "AICS-1 §§4.3,10.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "negative.stale",
+      "title": "Stale created is refused with a leaf",
+      "spec_ref": "AICS-1 §§4.3,10.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "negative.cleartext",
+      "title": "Cleartext private message refused and logged",
+      "spec_ref": "AICS-1 §§8.1,10.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "negative.closed-inbox",
+      "title": "New inbox is closed; rejected message leaves evidence",
+      "spec_ref": "AICS-1 §§9,10.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "negative.secret",
+      "title": "Published secret format refused, logged, body unavailable",
+      "spec_ref": "AICS-1 §10.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "retention_evidence": "Body service and complete leaves checked; inaccessible internal storage requires operator inspection."
+      }
+    },
+    {
+      "id": "identity.claim-pop",
+      "title": "Claim requires possession of claimed key",
+      "spec_ref": "AICS-1 §7.1",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "identity.rotate",
+      "title": "Rotation requires both proofs and succeeds with both",
+      "spec_ref": "AICS-1 §7.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "identity.fork",
+      "title": "Second event consuming a key predecessor is refused",
+      "spec_ref": "AICS-1 §7.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "identity.revoke",
+      "title": "Revocation permanently prevents reclaim and rotation",
+      "spec_ref": "AICS-1 §7.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "identity.x25519",
+      "title": "Encryption key rotates and lookup proves latest key",
+      "spec_ref": "AICS-1 §7.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "access.owner",
+      "title": "Owner quote/complete endpoints reject non-owner signatures",
+      "spec_ref": "AICS-1 §§3.1,5.3,12.1",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "access.bearer",
+      "title": "No bearer authentication or token issuance surface",
+      "spec_ref": "DECISIONS 1; AICS-1 §§3,12.1",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "scope": "Configured native and legacy routes plus published OpenAPI; arbitrary undisclosed paths cannot be disproved by black-box probing."
+      }
+    },
+    {
+      "id": "access.keygen",
+      "title": "No server-generated key path or private key response",
+      "spec_ref": "DECISIONS 1; AICS-1 §3.1",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "scope": "Configured key-generation and registration routes; no black-box claim about unadvertised paths."
+      }
+    },
+    {
+      "id": "rates.published",
+      "title": "Published per-key limit yields refusal leaves, never silence",
+      "spec_ref": "AICS-1 §§10.2,13.1",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "grants.wildcard",
+      "title": "Wildcard allowance is total across all senders",
+      "spec_ref": "AICS-1 §9",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "grants.exact-revocation",
+      "title": "Exact revocation never falls back to wildcard",
+      "spec_ref": "AICS-1 §9",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "http.binding",
+      "title": "Native HTTP signatures bind the exact envelope metadata",
+      "spec_ref": "AICS-1 §12.1",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "G1",
+      "title": "Authentic message authorship through complete key history",
+      "spec_ref": "AICS-1 §§7,14.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 8,
+        "actor_kid": "did:key:z6MkpjcFTwbxb9ewHXt5ifwPmChyeEZnJvjzuibMjdkSnw1L",
+        "assumptions": [
+          "key possession; exclusive custody is not proven"
+        ]
+      }
+    },
+    {
+      "id": "G2",
+      "title": "Tamper-evident total order from authenticated tiles",
+      "spec_ref": "AICS-1 §§6,14.1–14.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid"
+      }
+    },
+    {
+      "id": "G3",
+      "title": "History survives restart and extends saved checkpoints",
+      "spec_ref": "AICS-1 §§6.1,14.2",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "restart": "executed"
+      }
+    },
+    {
+      "id": "G4",
+      "title": "Receipt promises followed through to exact leaves",
+      "spec_ref": "AICS-1 §§10.1,14.4",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 6,
+        "timing": {
+          "observed_at": 1792336315,
+          "deadline": 1792336375,
+          "clock": "local; remote freshness unproven",
+          "met_deadline": true
+        }
+      }
+    },
+    {
+      "id": "G5",
+      "title": "Single-view gossip across origin, mirrors and time",
+      "spec_ref": "AICS-1 §§6.3,14.6",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "views": 4,
+        "unresolved_gossip_pointers": [],
+        "single_view_prevention": "unproven; requires honest quorum intersection"
+      }
+    },
+    {
+      "id": "G6",
+      "title": "Recipient key provenance and ciphertext/header binding",
+      "spec_ref": "AICS-1 §§8.1,14.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "assumptions": [
+          "local sealed-box implementation",
+          "uncompromised recipient key"
+        ],
+        "excluded": [
+          "metadata secrecy",
+          "default forward secrecy"
+        ]
+      }
+    },
+    {
+      "id": "G7",
+      "title": "Running-code assurance does not overclaim release evidence",
+      "spec_ref": "AICS-1 §13.3 G7; §14.5",
+      "verdict": "pass",
+      "details": {
+        "verification": "unproven",
+        "reason": "No runtime attestation profile in AICS-1; truthful promised status verified.",
+        "release_indices": []
+      }
+    },
+    {
+      "id": "G8",
+      "title": "Portable complete bundle verifies with network removed",
+      "spec_ref": "AICS-1 §14.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "index": 6,
+        "offline": true,
+        "package": {
+          "bundle": {
+            "body_or_ct": "eyJjaGFubmVsIjoiY29uZm9ybWFuY2UiLCJ0ZXh0IjoiY29uZm9ybWFuY2Ugc3ludGhldGljIHB1YmxpYyBib2R5IiwidGl0bGUiOm51bGx9",
+            "checkpoint_note": "ZmFrZS5leGFtcGxlL3RpbGVzCjcKd3FjRlppeDFjZXVpc2tWYjlsNm1HcGRuVk11bGl6M3dzSXBUdCtXdTlGaz0KCuKAlCBmYWtlLmV4YW1wbGUvdGlsZXMgeEgyb091R1FmWnFPekxkVFNZeDFpMytnNktEVkRqTU9sQUVmc0MzYmNhdE1xWGFRUDAxb21NaXc3eXh4bzY1VnNrWUo5eU9ibGRIZFAvcWpURVhsVWVkbG9Bbz0K",
+            "entry_bytes": "eyJhY3Rvcl9raWQiOiJkaWQ6a2V5Ono2TWt0NWtCWFZ5NjlYSENvdUZkUksyaUJleVVGRmZkZE1HZ2lRUVlKRTg1ZlR1MSIsIm9yaWdpbiI6ImZha2UuZXhhbXBsZS90aWxlcyIsInBheWxvYWQiOnsiYm9keV9oYXNoIjoiNDU4MjUxN2I1YTZkYTBkNzk4YjhhYzU1YWFmNDQwNTBjMDEyMmJjNmI4MGMzMzgzYWQyNGNkNTM2MjU3MWJhYiIsImNoYW5uZWxfc2hhMjU2IjoiNmMxZDZjZWRmMjc2ZWEzZmQ3NDg2YTIxMmZkNjJiMzJmYmI5ZWNhYTRkZWE3MDU0NTQ4NjczNzE5OWRkMjRlZCIsImVudmVsb3BlIjp7ImF1dGgiOnsic2NoZW1lIjoiZWQyNTUxOS1qY3MifSwicGF5bG9hZCI6eyJib2R5X2hhc2giOiI0NTgyNTE3YjVhNmRhMGQ3OThiOGFjNTVhYWY0NDA1MGMwMTIyYmM2YjgwYzMzODNhZDI0Y2Q1MzYyNTcxYmFiIiwiY2hhbm5lbF9zaGEyNTYiOiI2YzFkNmNlZGYyNzZlYTNmZDc0ODZhMjEyZmQ2MmIzMmZiYjllY2FhNGRlYTcwNTQ1NDg2NzM3MTk5ZGQyNGVkIiwicGFyZW50X2luZGV4IjpudWxsLCJzaXplIjo4MSwidGl0bGVfc2hhMjU2IjpudWxsfSwicHJvdGVjdGVkIjp7ImFsZyI6IkVkRFNBIiwiY3JlYXRlZCI6MTc5MjMzNjMxNSwiZXhwaXJlcyI6MTc5MjMzNjYxNSwia2lkIjoiZGlkOmtleTp6Nk1rdDVrQlhWeTY5WEhDb3VGZFJLMmlCZXlVRkZmZGRNR2dpUVFZSkU4NWZUdTEiLCJub25jZSI6InBxMkUxTUREVnJITFV6Y1czNkN2MEEiLCJvcmlnaW4iOiJmYWtlLmV4YW1wbGUvdGlsZXMiLCJwcmV2IjoiZGVhNDMwZTg5NDk2NzEzNTU0NzllMDVlZThhOTc5ZDNjYzc2NWQwMTE0OTk5ZThlNDFkNTlhYjA4M2Y2ODVjNiIsInNlZW4iOnsiY2hlY2twb2ludF9ub3RlX2hhc2giOiI5NzIyODY1MTkyMDM0NGEwMTlmOWRiODIwY2QyMDAxOWY5ZjQzOTMwYWI2YzhhOWFkYTI3YmNiMWMxZjcwYjUzIiwic2l6ZSI6Nn0sInNlcSI6MSwidHlwZSI6InBvc3QifSwic2lnIjoialFaX2tIQ2FvSTQxdjdYd0E0Y2tndjg0cUtHR19TQWVHak5EckFROVpvTDA0RnE4TERjbEU2MXdmMW43T0VJT0VmcFMzYXdjZW9ZckxNOHdBd2EzQVEiLCJ2IjoxfSwicGFyZW50X2luZGV4IjpudWxsLCJzaXplIjo4MSwidGl0bGVfc2hhMjU2IjpudWxsfSwidHMiOjE3OTIzMzYzMTUsInR5cGUiOiJwb3N0IiwidiI6Mn0",
+            "envelope": {
+              "auth": {
+                "scheme": "ed25519-jcs"
+              },
+              "payload": {
+                "body_hash": "4582517b5a6da0d798b8ac55aaf44050c0122bc6b80c3383ad24cd5362571bab",
+                "channel_sha256": "6c1d6cedf276ea3fd7486a212fd62b32fbb9ecaa4dea70545486737199dd24ed",
+                "parent_index": null,
+                "size": 81,
+                "title_sha256": null
+              },
+              "protected": {
+                "alg": "EdDSA",
+                "created": 1792336315,
+                "expires": 1792336615,
+                "kid": "did:key:z6Mkt5kBXVy69XHCouFdRK2iBeyUFFfddMGgiQQYJE85fTu1",
+                "nonce": "pq2E1MDDVrHLUzcW36Cv0A",
+                "origin": "fake.example/tiles",
+                "prev": "dea430e8949671355479e05ee8a979d3cc765d0114999e8e41d59ab083f685c6",
+                "seen": {
+                  "checkpoint_note_hash": "97228651920344a019f9db820cd20019f9f43930ab6c8a9ada27bcb1c1f70b53",
+                  "size": 6
+                },
+                "seq": 1,
+                "type": "post"
+              },
+              "sig": "jQZ_kHCaoI41v7XwA4ckgv84qKGG_SAeGjNDrAQ9ZoL04Fq8LDclE61wf1n7OEIOEfpS3awceoYrLM8wAwa3AQ",
+              "v": 1
+            },
+            "inclusion_proof": [
+              "NR6VhE+vpDK9nF1QRHYKP+tmKl2ASJeHdjQwKaU1cXw=",
+              "vqt+r07j3YXxUEHt1gzjtvPJWEHr1zPu/5WpUp5T8Sg="
+            ],
+            "index": 6
+          },
+          "trust_bundle": {
+            "v": 1,
+            "origin": "fake.example/tiles",
+            "log_vkey": "fake.example/tiles+c47da83a+AVuWMsNpqEH7of2ZpYbIkB2uo90olzg/l+dI6s6vRBy8",
+            "policy_kid": "did:key:z6MkmbfW77Ca48jHwjweZBRAfpskvRqWNn4XRd7qZEAJK66H",
+            "owner_kid": "did:key:z6MkjZsAaamkBqwNnx35UxAH732cCQiNU1mzgoMxugqKbAWy",
+            "bootstrap_card_hash": "4549deba94d0d893ecc7095d079fd704162b122a07b8b1358e79944415737354"
+          },
+          "policy_cards": [
+            "eyJhcGlfYmFzZSI6Imh0dHBzOi8vZmFrZSIsImFzc3VyYW5jZXMiOlt7ImFzc3VtcHRpb25zIjpbImxvY2FsIGNsb2NrIl0sImNsYWltIjoiZml4dHVyZSIsImV2aWRlbmNlIjpbXSwiaWQiOiJHMSIsInN0YXR1cyI6InByb21pc2VkIn0seyJhc3N1bXB0aW9ucyI6WyJsb2NhbCBjbG9jayJdLCJjbGFpbSI6ImZpeHR1cmUiLCJldmlkZW5jZSI6W10sImlkIjoiRzIiLCJzdGF0dXMiOiJwcm9taXNlZCJ9LHsiYXNzdW1wdGlvbnMiOlsibG9jYWwgY2xvY2siXSwiY2xhaW0iOiJmaXh0dXJlIiwiZXZpZGVuY2UiOltdLCJpZCI6IkczIiwic3RhdHVzIjoicHJvbWlzZWQifSx7ImFzc3VtcHRpb25zIjpbImxvY2FsIGNsb2NrIl0sImNsYWltIjoiZml4dHVyZSIsImV2aWRlbmNlIjpbXSwiaWQiOiJHNCIsInN0YXR1cyI6InByb21pc2VkIn0seyJhc3N1bXB0aW9ucyI6WyJsb2NhbCBjbG9jayJdLCJjbGFpbSI6ImZpeHR1cmUiLCJldmlkZW5jZSI6W10sImlkIjoiRzUiLCJzdGF0dXMiOiJwcm9taXNlZCJ9LHsiYXNzdW1wdGlvbnMiOlsibG9jYWwgY2xvY2siXSwiY2xhaW0iOiJmaXh0dXJlIiwiZXZpZGVuY2UiOltdLCJpZCI6Ikc2Iiwic3RhdHVzIjoicHJvbWlzZWQifSx7ImFzc3VtcHRpb25zIjpbImxvY2FsIGNsb2NrIl0sImNsYWltIjoiZml4dHVyZSIsImV2aWRlbmNlIjpbXSwiaWQiOiJHNyIsInN0YXR1cyI6InByb21pc2VkIn0seyJhc3N1bXB0aW9ucyI6WyJsb2NhbCBjbG9jayJdLCJjbGFpbSI6ImZpeHR1cmUiLCJldmlkZW5jZSI6W10sImlkIjoiRzgiLCJzdGF0dXMiOiJwcm9taXNlZCJ9LHsiYXNzdW1wdGlvbnMiOlsibG9jYWwgY2xvY2siXSwiY2xhaW0iOiJmaXh0dXJlIiwiZXZpZGVuY2UiOltdLCJpZCI6Ikc5Iiwic3RhdHVzIjoicHJvbWlzZWQifSx7ImFzc3VtcHRpb25zIjpbImxvY2FsIGNsb2NrIl0sImNsYWltIjoiZml4dHVyZSIsImV2aWRlbmNlIjpbXSwiaWQiOiJHMTAiLCJzdGF0dXMiOiJwcm9taXNlZCJ9LHsiYXNzdW1wdGlvbnMiOltdLCJjbGFpbSI6ImV4Y2x1ZGVkIiwiZXZpZGVuY2UiOltdLCJpZCI6Ik4xIiwic3RhdHVzIjoibm90LW9mZmVyZWQifSx7ImFzc3VtcHRpb25zIjpbXSwiY2xhaW0iOiJleGNsdWRlZCIsImV2aWRlbmNlIjpbXSwiaWQiOiJOMiIsInN0YXR1cyI6Im5vdC1vZmZlcmVkIn0seyJhc3N1bXB0aW9ucyI6W10sImNsYWltIjoiZXhjbHVkZWQiLCJldmlkZW5jZSI6W10sImlkIjoiTjMiLCJzdGF0dXMiOiJub3Qtb2ZmZXJlZCJ9LHsiYXNzdW1wdGlvbnMiOltdLCJjbGFpbSI6ImV4Y2x1ZGVkIiwiZXZpZGVuY2UiOltdLCJpZCI6Ik40Iiwic3RhdHVzIjoibm90LW9mZmVyZWQifSx7ImFzc3VtcHRpb25zIjpbXSwiY2xhaW0iOiJleGNsdWRlZCIsImV2aWRlbmNlIjpbXSwiaWQiOiJONSIsInN0YXR1cyI6Im5vdC1vZmZlcmVkIn1dLCJleHBpcmVzIjoxNzkyNDIyNzE1LCJnYXRlIjp7Imh0dHBzX3VybCI6Imh0dHBzOi8vZmFrZS90IiwicGxhaW50ZXh0X3BvcnQiOjc3MDEsInRsc19ob3N0IjoiZmFrZSIsInRsc19wb3J0Ijo3NzAwfSwiaXNzdWVkX2F0IjoxNzkyMzM2MzE1LCJsaW1pdHMiOnsiY2lwaGVydGV4dF9ieXRlcyI6NjU1MzYsImVudmVsb3BlX3dpbmRvd19zZWNvbmRzIjozMDAsImZsb29kX3N1c3BlbnNpb25fc2Vjb25kcyI6NjAsImZ1dHVyZV9za2V3X3NlY29uZHMiOjMwLCJwcmVpZGVudGl0eSI6eyJjb3VudCI6MTAwMCwiaW50ZXJ2YWxfc2Vjb25kcyI6NjB9LCJwdWJsaWNfYm9keV9ieXRlcyI6MzI3NjgsInJlZ2lzdHJhdGlvbnMiOnsiY291bnQiOjIwLCJpbnRlcnZhbF9zZWNvbmRzIjo2MH0sInNlc3Npb25faWRsZV9zZWNvbmRzIjo5MDAsIndyaXRlcyI6eyJjb3VudCI6MjAsImludGVydmFsX3NlY29uZHMiOjYwfX0sImxvZ192a2V5IjoiZmFrZS5leGFtcGxlL3RpbGVzK2M0N2RhODNhK0FWdVdNc05wcUVIN29mMlpwWWJJa0IydW85MG9semcvbCtkSTZzNnZSQnk4IiwibWF4X2NoZWNrcG9pbnRfYWdlIjozMDAsIm1tZF9zZWNvbmRzIjo2MCwib3JpZ2luIjoiZmFrZS5leGFtcGxlL3RpbGVzIiwib3duZXJfa2lkIjoiZGlkOmtleTp6Nk1ralpzQWFhbWtCcXdObngzNVV4QUg3MzJjQ1FpTlUxbXpnb014dWdxS2JBV3kiLCJwb2xpY2llcyI6eyJjaGFydGVyX2hhc2giOiI4YmM4ZDk1MGM4ZjY0NGUwYzg1NWIzNmUyZTg4ODljZjZjYjI0MzhjNzg4NWNlNDdkYmY5ZTlkZTI0MGJmMmFiIiwicHJpdmFjeV9oYXNoIjoiYTRjYzZiYzAxYTkyN2UyYTc4ZmQzYmVjNTFlODY1YWMwZDg1ZTRkYWFiNmY5ODhkNWQzM2QwNTZlMTI1YjFjMyIsInRlcm1zX2hhc2giOiI1MWQyMzYxZjRmYWVhM2JjOGY5ZmFjZGJjN2Q5OWFiYjU1NTU5NmEyZTUxZjdiMjVmZDNiNDFjOTM1ODdlNjE2In0sInBvbGljeV9raWQiOiJkaWQ6a2V5Ono2TWttYmZXNzdDYTQ4akh3andlWkJSQWZwc2t2UnFXTm40WFJkN3FaRUFKSzY2SCIsInBvbGljeV9ub3RpY2Vfc2Vjb25kcyI6MCwicG9saWN5X3BhcmVudF9pbmRleCI6MCwicHJveHkiOlt7Imhvc3QiOiJmYWtlIiwibW9kZSI6ImRucy1vbmx5IiwidGxzX3Rlcm1pbmF0aW9uIjoib3JpZ2luIn1dLCJyZWFzb25fY29kZXMiOnsiZnJlZXplIjpbImluY2lkZW50IiwibWFpbnRlbmFuY2UiLCJvcmRlciIsInJlc291cmNlX2V4aGF1c3Rpb24iLCJyZXN1bWUiXSwib3V0Y29tZSI6WyJhY3RlZCIsImRlY2xpbmVkIiwiZHVwbGljYXRlIiwiaW52YWxpZF9ub3RpY2UiLCJwcml2YXRlX3VuYXNzZXNzYWJsZSIsInB1Ymxpc2hlZCIsInJlc29sdmVkIl0sInJlZnVzYWwiOlsiYWxyZWFkeV92b3RlZCIsImJhZF9zaWduYXR1cmUiLCJkaWdlc3RfbWlzbWF0Y2giLCJleHBpcmVkIiwiZm9yayIsImZvcm1hdCIsImZyb3plbiIsImZ1dHVyZSIsImdyYW50X2V4aGF1c3RlZCIsImtleV9mb3JrIiwia2V5X3JldXNlIiwia2V5X3N0YXRlIiwibWFsZm9ybWVkIiwibmFtZSIsIm5hbWVfdGFrZW4iLCJub19jb25zZW50Iiwibm9fZ3JhbnQiLCJwb2xsX2Nsb3NlZCIsInBvbGxfY29uc3RyYWludCIsInBvbGxfcnVsZSIsInByZWRlY2Vzc29yIiwicXVvdGEiLCJyYXRlIiwicmF0ZV9saW1pdCIsInJlcGxheSIsInJldm9rZWQiLCJzZWNyZXRfZm9ybWF0Iiwic2VxIiwic2VxdWVuY2UiLCJzaWciLCJzaXplIiwic3RhbGVfY2Fwc3VsZSIsInN0YWxlX2dyYW50Iiwic3RhbGVfa2V5Iiwic3VzcGVuZGVkIiwidGllcl9yZXF1aXJlZCIsInRsc19yZXF1aXJlZCIsInRvb19sYXJnZSIsInVua25vd25fa2V5IiwidW5zdXBwb3J0ZWRfc2NoZW1lIiwidW5zdXBwb3J0ZWRfdmVyc2lvbiIsInNlY3JldF9mb3JtYXQ6Z2l0aHViX3BhdCJdLCJyZXZvY2F0aW9uIjpbImNvbXByb21pc2VkIiwicmV0aXJlZCJdLCJzdXNwZW5zaW9uIjpbImZsb29kIiwib3JkZXIiXSwidG9tYnN0b25lIjpbImVyYXN1cmUiLCJpbGxlZ2FsX29uX25vdGljZSIsIm9yZGVyIiwic2VjcmV0X2Zvcm1hdCJdfSwicmV0ZW50aW9uIjp7ImNhcHN1bGVfbWF4X3NlY29uZHMiOjMxNTM2MDAwLCJjaXBoZXJ0ZXh0X2J1ZGdldF9ieXRlcyI6MTAwMDAwMCwiZG1fc2Vjb25kcyI6Nzc3NjAwMCwiZXZpY3Rpb24iOiJvbGRlc3QtdHMtaW5kZXgifSwic2NoZW1lcyI6WyJ4MjU1MTkteHNhbHNhMjAtcG9seTEzMDUiXSwic2VjcmV0X3BhdHRlcm5zIjpbeyJpZCI6ImdpdGh1Yl9wYXQiLCJwYXR0ZXJuX2hhc2giOiI3ZTJmNzI5NTMyY2U5NDdiMzc5NDE2MWU0MWRiNDQ5YzgzMjI2Yjk4ZTJmZTg3YWQ3N2I3ZDI0MmNmZGE1ZjkwIn1dLCJzaWduYXR1cmVzIjpbeyJwcm90ZWN0ZWQiOiJleUpoYkdjaU9pSkZaRVJUUVNJc0ltdHBaQ0k2SW1ScFpEcHJaWGs2ZWpaTmEyMWlabGMzTjBOaE5EaHFTSGRxZDJWYVFsSkJabkJ6YTNaU2NWZE9ialJZVW1RM2NWcEZRVXBMTmpaSUlpd2lkSGx3SWpvaVNrOVRSU0o5Iiwic2lnbmF0dXJlIjoiOVBkVnlINVN0bWVIRWt6SWdESW9Bd2YybjItQ05mWEF0NHZlUm5wd0NWY1ktWGZSamQzdXRaZjl0Y1k2d1Y1eWZGM1Q3ZjhZU3pRdGlTR3FTSWNOQUEifV0sInNwZWMiOiJBSUNTLTEiLCJzcGVjX3ZlcnNpb25zIjp7ImEyYS1jYXJkIjoiMS4wLjAiLCJzaWduZWQtbm90ZSI6IjEuMS4wIiwidGxvZy1jaGVja3BvaW50IjoiMS4xLjAiLCJ0bG9nLWNvc2lnbmF0dXJlIjoiMS4xLjAiLCJ0bG9nLXRpbGVzIjoiMS4wLjAiLCJ0bG9nLXdpdG5lc3MiOiIxLjEuMCJ9LCJ0aWVycyI6WyJ2ZXJpZmllZCIsInRoaXJkLXBhcnR5LWdlbmVyYXRlZCIsInVudmVyaWZpZWQiXSwidGlsZV9wcmVmaXhlcyI6WyJodHRwczovL2Zha2UvdGlsZXMiXSwidmVyc2lvbiI6IjAuMi1kcmFmdCIsIndpdG5lc3NfcG9saWN5Ijp7InF1b3J1bSI6MCwid2l0bmVzc2VzIjpbXX19"
+          ],
+          "entry_prefix": [
+            "eyJhY3Rvcl9raWQiOiJkaWQ6a2V5Ono2TWttYmZXNzdDYTQ4akh3andlWkJSQWZwc2t2UnFXTm40WFJkN3FaRUFKSzY2SCIsIm9yaWdpbiI6ImZha2UuZXhhbXBsZS90aWxlcyIsInBheWxvYWQiOnsiZG9jdW1lbnRfaGFzaCI6IjhiYzhkOTUwYzhmNjQ0ZTBjODU1YjM2ZTJlODg4OWNmNmNiMjQzOGM3ODg1Y2U0N2RiZjllOWRlMjQwYmYyYWIiLCJlZmZlY3RpdmVfYWZ0ZXIiOjAsImVudmVsb3BlIjp7ImF1dGgiOnsic2NoZW1lIjoiZWQyNTUxOS1qY3MifSwicGF5bG9hZCI6eyJkb2N1bWVudF9oYXNoIjoiOGJjOGQ5NTBjOGY2NDRlMGM4NTViMzZlMmU4ODg5Y2Y2Y2IyNDM4Yzc4ODVjZTQ3ZGJmOWU5ZGUyNDBiZjJhYiIsImVmZmVjdGl2ZV9hZnRlciI6MCwia2luZCI6ImNoYXJ0ZXIiLCJsb2dfa2lkIjoiZGlkOmtleTp6Nk1ra2NteXY0cUZOb2hrdjkyOE1tUEg4MXhaNWtVdW41eDVMVEdvUW1SeUJhb1YiLCJsb2dfc2lnIjoibUR6NHF2WVVpWWpzczd1TnB4amVJS3kwWm8zN0xRZUtOWVh2a3J0VDlocHl5bnZ4V0RjMDJMMlJMdnRjZUQ2M21fQndIQ0UtOGwtV1pJeEE2V3BEQUEiLCJub3RfYmVmb3JlIjoxNzkyMzM2MzE1LCJvd25lcl9raWQiOiJkaWQ6a2V5Ono2TWtqWnNBYWFta0Jxd05ueDM1VXhBSDczMmNDUWlOVTFtemdvTXh1Z3FLYkFXeSIsInBvbGljeV9raWQiOiJkaWQ6a2V5Ono2TWttYmZXNzdDYTQ4akh3andlWkJSQWZwc2t2UnFXTm40WFJkN3FaRUFKSzY2SCIsInByZXZfcG9saWN5X2luZGV4IjpudWxsLCJzaXplIjo2OX0sInByb3RlY3RlZCI6eyJhbGciOiJFZERTQSIsImNyZWF0ZWQiOjE3OTIzMzYzMTUsImV4cGlyZXMiOjE3OTIzMzY2MTUsImtpZCI6ImRpZDprZXk6ejZNa21iZlc3N0NhNDhqSHdqd2VaQlJBZnBza3ZScVdObjRYUmQ3cVpFQUpLNjZIIiwibm9uY2UiOiJ5eGFqTm83S3ZJcVhGeFdXSG1KZFhRIiwib3JpZ2luIjoiZmFrZS5leGFtcGxlL3RpbGVzIiwicHJldiI6bnVsbCwic2VlbiI6bnVsbCwic2VxIjowLCJ0eXBlIjoicG9saWN5In0sInNpZyI6IlZZRlVHdlJLS1FsVGpfNjBUZi1MWGhKa2dBSEx4YkxPZFd0Q1c1Mnk3Zm9hWUNfelpCVmZONm1Ld0QzdXlZUURnSW5oRVdHUFBJSXFGY3F1VFNiRkJ3IiwidiI6MX0sImtpbmQiOiJjaGFydGVyIiwibG9nX2tpZCI6ImRpZDprZXk6ejZNa2tjbXl2NHFGTm9oa3Y5MjhNbVBIODF4WjVrVXVuNXg1TFRHb1FtUnlCYW9WIiwibG9nX3NpZyI6Im1EejRxdllVaVlqc3M3dU5weGplSUt5MFpvMzdMUWVLTllYdmtydFQ5aHB5eW52eFdEYzAyTDJSTHZ0Y2VENjNtX0J3SENFLThsLVdaSXhBNldwREFBIiwibm90X2JlZm9yZSI6MTc5MjMzNjMxNSwib3duZXJfa2lkIjoiZGlkOmtleTp6Nk1ralpzQWFhbWtCcXdObngzNVV4QUg3MzJjQ1FpTlUxbXpnb014dWdxS2JBV3kiLCJwb2xpY3lfa2lkIjoiZGlkOmtleTp6Nk1rbWJmVzc3Q2E0OGpId2p3ZVpCUkFmcHNrdlJxV05uNFhSZDdxWkVBSks2NkgiLCJwcmV2X3BvbGljeV9pbmRleCI6bnVsbCwic2l6ZSI6Njl9LCJ0cyI6MTc5MjMzNjMxNSwidHlwZSI6InBvbGljeSIsInYiOjJ9",
+            "eyJhY3Rvcl9raWQiOiJkaWQ6a2V5Ono2TWttYmZXNzdDYTQ4akh3andlWkJSQWZwc2t2UnFXTm40WFJkN3FaRUFKSzY2SCIsIm9yaWdpbiI6ImZha2UuZXhhbXBsZS90aWxlcyIsInBheWxvYWQiOnsiZG9jdW1lbnRfaGFzaCI6IjQ1NDlkZWJhOTRkMGQ4OTNlY2M3MDk1ZDA3OWZkNzA0MTYyYjEyMmEwN2I4YjEzNThlNzk5NDQ0MTU3MzczNTQiLCJlZmZlY3RpdmVfYWZ0ZXIiOjEsImVudmVsb3BlIjp7ImF1dGgiOnsic2NoZW1lIjoiZWQyNTUxOS1qY3MifSwicGF5bG9hZCI6eyJkb2N1bWVudF9oYXNoIjoiNDU0OWRlYmE5NGQwZDg5M2VjYzcwOTVkMDc5ZmQ3MDQxNjJiMTIyYTA3YjhiMTM1OGU3OTk0NDQxNTczNzM1NCIsImVmZmVjdGl2ZV9hZnRlciI6MSwia2luZCI6ImNhcmQiLCJsb2dfa2lkIjoiZGlkOmtleTp6Nk1ra2NteXY0cUZOb2hrdjkyOE1tUEg4MXhaNWtVdW41eDVMVEdvUW1SeUJhb1YiLCJsb2dfc2lnIjpudWxsLCJub3RfYmVmb3JlIjoxNzkyMzM2MzE1LCJvd25lcl9raWQiOiJkaWQ6a2V5Ono2TWtqWnNBYWFta0Jxd05ueDM1VXhBSDczMmNDUWlOVTFtemdvTXh1Z3FLYkFXeSIsInBvbGljeV9raWQiOiJkaWQ6a2V5Ono2TWttYmZXNzdDYTQ4akh3andlWkJSQWZwc2t2UnFXTm40WFJkN3FaRUFKSzY2SCIsInByZXZfcG9saWN5X2luZGV4IjowLCJzaXplIjo0MzExfSwicHJvdGVjdGVkIjp7ImFsZyI6IkVkRFNBIiwiY3JlYXRlZCI6MTc5MjMzNjMxNSwiZXhwaXJlcyI6MTc5MjMzNjYxNSwia2lkIjoiZGlkOmtleTp6Nk1rbWJmVzc3Q2E0OGpId2p3ZVpCUkFmcHNrdlJxV05uNFhSZDdxWkVBSks2NkgiLCJub25jZSI6ImNteDltMnVhSlhfY094cnQ5S3FZVVEiLCJvcmlnaW4iOiJmYWtlLmV4YW1wbGUvdGlsZXMiLCJwcmV2IjoiYTNiNDdhYTJjZWYzNTNiMDFmYTVhM2RjMTJmZWVkYWQxMGNmOWU4Yzk1NjA2NDM1ZTYwYmExNWVhNTA4OGYyMCIsInNlZW4iOm51bGwsInNlcSI6MSwidHlwZSI6InBvbGljeSJ9LCJzaWciOiJVaEYtMjVSQ1YzWk5ma2pDMEJRYTF5YXlYRS1GX0xxWUJnU0ZVRUpZaXFhSU1xY0p0Z0ZoUENsWUlVZXVGZWk0d0FIMnVlbDg3UWRUWnZPeFNDWHpCQSIsInYiOjF9LCJraW5kIjoiY2FyZCIsImxvZ19raWQiOiJkaWQ6a2V5Ono2TWtrY215djRxRk5vaGt2OTI4TW1QSDgxeFo1a1V1bjV4NUxUR29RbVJ5QmFvViIsImxvZ19zaWciOm51bGwsIm5vdF9iZWZvcmUiOjE3OTIzMzYzMTUsIm93bmVyX2tpZCI6ImRpZDprZXk6ejZNa2pac0FhYW1rQnF3Tm54MzVVeEFINzMyY0NRaU5VMW16Z29NeHVncUtiQVd5IiwicG9saWN5X2tpZCI6ImRpZDprZXk6ejZNa21iZlc3N0NhNDhqSHdqd2VaQlJBZnBza3ZScVdObjRYUmQ3cVpFQUpLNjZIIiwicHJldl9wb2xpY3lfaW5kZXgiOjAsInNpemUiOjQzMTF9LCJ0cyI6MTc5MjMzNjMxNSwidHlwZSI6InBvbGljeSIsInYiOjJ9",
+            "eyJhY3Rvcl9raWQiOiJkaWQ6a2V5Ono2TWtzU05qbVAxVHFtdkw3R3NxdW9QZ2ltb0c2OUFrR2FuWHBlN0tSR05hWkZNUSIsIm9yaWdpbiI6ImZha2UuZXhhbXBsZS90aWxlcyIsInBheWxvYWQiOnsiZWQyNTUxOSI6IndPM3FxZ1pxelNfM2pQVUxoWXpMbTNENHhiVkZwVG1QbnVRODU3OFU2b2MiLCJlbnZlbG9wZSI6eyJhdXRoIjp7InNjaGVtZSI6ImVkMjU1MTktamNzIn0sInBheWxvYWQiOnsiZWQyNTUxOSI6IndPM3FxZ1pxelNfM2pQVUxoWXpMbTNENHhiVkZwVG1QbnVRODU3OFU2b2MiLCJpbml0aWFsX2dyYW50IjpudWxsLCJuYW1lX25vcm0iOiJjdC1hMGIxZjQ3NjVlNDU0ZTg1IiwicHJldl9ldmVudF9pbmRleCI6bnVsbCwicmVjb3Zlcnlfa2lkIjpudWxsLCJyZWNvdmVyeV9wb3AiOm51bGwsInRpZXIiOiJ2ZXJpZmllZCIsIngyNTUxOSI6Im44ZnNpZU1yNy1HVjNhMGprQk1zTElQckRyMGVScVZ2VmRkTFJmb0d0M2MifSwicHJvdGVjdGVkIjp7ImFsZyI6IkVkRFNBIiwiY3JlYXRlZCI6MTc5MjMzNjMxNSwiZXhwaXJlcyI6MTc5MjMzNjYxNSwia2lkIjoiZGlkOmtleTp6Nk1rc1NOam1QMVRxbXZMN0dzcXVvUGdpbW9HNjlBa0dhblhwZTdLUkdOYVpGTVEiLCJub25jZSI6IlVia29uaDBPZHRuVlk3aWEyNW5PaXciLCJvcmlnaW4iOiJmYWtlLmV4YW1wbGUvdGlsZXMiLCJwcmV2IjpudWxsLCJzZWVuIjpudWxsLCJzZXEiOjAsInR5cGUiOiJuYW1lLmNsYWltIn0sInNpZyI6Ik1tX0h4ZURpeUVrWFE0UTRicXBRUkp1VXBCVnpxLTNZbWNRc0ZvZk5Mdkx5QlBZNjVHZERiMm1LNUZtTkZCRE9zQ1R2dUtNby0zTmRZNnBXRnFjaEF3IiwidiI6MX0sImluaXRpYWxfZ3JhbnQiOm51bGwsIm5hbWVfbm9ybSI6ImN0LWEwYjFmNDc2NWU0NTRlODUiLCJwcmV2X2V2ZW50X2luZGV4IjpudWxsLCJyZWNvdmVyeV9raWQiOm51bGwsInJlY292ZXJ5X3BvcCI6bnVsbCwidGllciI6InZlcmlmaWVkIiwieDI1NTE5Ijoibjhmc2llTXI3LUdWM2EwamtCTXNMSVByRHIwZVJxVnZWZGRMUmZvR3QzYyJ9LCJ0cyI6MTc5MjMzNjMxNSwidHlwZSI6Im5hbWUuY2xhaW0iLCJ2IjoyfQ",
+            "eyJhY3Rvcl9raWQiOiJkaWQ6a2V5Ono2TWtzU05qbVAxVHFtdkw3R3NxdW9QZ2ltb0c2OUFrR2FuWHBlN0tSR05hWkZNUSIsIm9yaWdpbiI6ImZha2UuZXhhbXBsZS90aWxlcyIsInBheWxvYWQiOnsiYm9keV9oYXNoIjoiMGM2YmE5MGY3OGY5ODQ1ODYyZDA3N2Y5ODc0Mjk4ZWJkNGNjODZlNmI4ZDBmNDJjMTc2MzM1Y2UyZWY3M2YzYiIsImNoYW5uZWxfc2hhMjU2IjoiNmMxZDZjZWRmMjc2ZWEzZmQ3NDg2YTIxMmZkNjJiMzJmYmI5ZWNhYTRkZWE3MDU0NTQ4NjczNzE5OWRkMjRlZCIsImVudmVsb3BlIjp7ImF1dGgiOnsic2NoZW1lIjoiZWQyNTUxOS1qY3MifSwicGF5bG9hZCI6eyJib2R5X2hhc2giOiIwYzZiYTkwZjc4Zjk4NDU4NjJkMDc3Zjk4NzQyOThlYmQ0Y2M4NmU2YjhkMGY0MmMxNzYzMzVjZTJlZjczZjNiIiwiY2hhbm5lbF9zaGEyNTYiOiI2YzFkNmNlZGYyNzZlYTNmZDc0ODZhMjEyZmQ2MmIzMmZiYjllY2FhNGRlYTcwNTQ1NDg2NzM3MTk5ZGQyNGVkIiwicGFyZW50X2luZGV4IjpudWxsLCJzaXplIjo2NSwidGl0bGVfc2hhMjU2IjpudWxsfSwicHJvdGVjdGVkIjp7ImFsZyI6IkVkRFNBIiwiY3JlYXRlZCI6MTc5MjMzNjMxNSwiZXhwaXJlcyI6MTc5MjMzNjYxNSwia2lkIjoiZGlkOmtleTp6Nk1rc1NOam1QMVRxbXZMN0dzcXVvUGdpbW9HNjlBa0dhblhwZTdLUkdOYVpGTVEiLCJub25jZSI6Ii1qQ183aHhFZ2VpTTBJNElpSW9TRWciLCJvcmlnaW4iOiJmYWtlLmV4YW1wbGUvdGlsZXMiLCJwcmV2IjoiNjBjZTI0NDExMWRmMmQzNGMyOWJjNmVkZDc0ZDVjYjk1ZmM4M2Y0OWVmMDViMGU0OGUzODZmOWE1ZjUyNmZiYyIsInNlZW4iOm51bGwsInNlcSI6MSwidHlwZSI6InBvc3QifSwic2lnIjoiclRndTFMVzhUaV9CTFhfRWFuX0ZhYjBiWnNRTmVBU2ZTMS1xSkphZjJNVHpqUXdjMmxzdUVhN0ljUTRoUHEwWU1sQkxpYVZraEZpbU14RjctYVgwQkEiLCJ2IjoxfSwicGFyZW50X2luZGV4IjpudWxsLCJzaXplIjo2NSwidGl0bGVfc2hhMjU2IjpudWxsfSwidHMiOjE3OTIzMzYzMTUsInR5cGUiOiJwb3N0IiwidiI6Mn0",
+            "eyJhY3Rvcl9raWQiOiJkaWQ6a2V5Ono2TWttYmZXNzdDYTQ4akh3andlWkJSQWZwc2t2UnFXTm40WFJkN3FaRUFKSzY2SCIsIm9yaWdpbiI6ImZha2UuZXhhbXBsZS90aWxlcyIsInBheWxvYWQiOnsiZW52ZWxvcGUiOnsiYXV0aCI6eyJzY2hlbWUiOiJlZDI1NTE5LWpjcyJ9LCJwYXlsb2FkIjp7ImV2aWRlbmNlX2hhc2giOm51bGwsInJlYXNvbl9jb2RlIjoiZXJhc3VyZSIsInJlY2VpcHRfaGFzaCI6bnVsbCwidGFyZ2V0X2luZGV4IjozfSwicHJvdGVjdGVkIjp7ImFsZyI6IkVkRFNBIiwiY3JlYXRlZCI6MTc5MjMzNjMxNSwiZXhwaXJlcyI6MTc5MjMzNjYxNSwia2lkIjoiZGlkOmtleTp6Nk1rbWJmVzc3Q2E0OGpId2p3ZVpCUkFmcHNrdlJxV05uNFhSZDdxWkVBSks2NkgiLCJub25jZSI6Ikp6WTFLaVN3Mm1Wc1NsNzJVSlR0LXciLCJvcmlnaW4iOiJmYWtlLmV4YW1wbGUvdGlsZXMiLCJwcmV2IjoiODExMGRkYTZhOGJlZGNjZGZmOWE5MWMxYTk1Njc3YmJkMzE0MGI2MWI3ZWQyMzU4YmE3ZDg4ZDk1YTY1ZTIzMiIsInNlZW4iOm51bGwsInNlcSI6MiwidHlwZSI6InRvbWJzdG9uZSJ9LCJzaWciOiJwaGpnQWdBM1Z2QnEzZVpNMkRQdUtYclctUDlHeU5sSjgtS1ZTNHEzVXNKNGpxcnlzZGxEdk5JZ1hYRkMtNVplckZvRTY0MjdBQ0E2VVJId21Ic0lEdyIsInYiOjF9LCJldmlkZW5jZV9oYXNoIjpudWxsLCJyZWFzb25fY29kZSI6ImVyYXN1cmUiLCJyZWNlaXB0X2hhc2giOm51bGwsInRhcmdldF9pbmRleCI6M30sInRzIjoxNzkyMzM2MzE1LCJ0eXBlIjoidG9tYnN0b25lIiwidiI6Mn0",
+            "eyJhY3Rvcl9raWQiOiJkaWQ6a2V5Ono2TWt0NWtCWFZ5NjlYSENvdUZkUksyaUJleVVGRmZkZE1HZ2lRUVlKRTg1ZlR1MSIsIm9yaWdpbiI6ImZha2UuZXhhbXBsZS90aWxlcyIsInBheWxvYWQiOnsiZWQyNTUxOSI6InlvQ25VRi1iUFNhN3l3aF9rdFVPaFQxN0xlak9BOUVzU2dhdHhUNVRXOEEiLCJlbnZlbG9wZSI6eyJhdXRoIjp7InNjaGVtZSI6ImVkMjU1MTktamNzIn0sInBheWxvYWQiOnsiZWQyNTUxOSI6InlvQ25VRi1iUFNhN3l3aF9rdFVPaFQxN0xlak9BOUVzU2dhdHhUNVRXOEEiLCJpbml0aWFsX2dyYW50IjpudWxsLCJuYW1lX25vcm0iOiJjdC04NTE1ZjZhMzQ1YzE2NDhkIiwicHJldl9ldmVudF9pbmRleCI6bnVsbCwicmVjb3Zlcnlfa2lkIjpudWxsLCJyZWNvdmVyeV9wb3AiOm51bGwsInRpZXIiOiJ2ZXJpZmllZCIsIngyNTUxOSI6Imx5M0pkTFZJdkhNWVZaLUljS3hpbk9oQW5ieXFobndRUlBjLTZzRkJhRTgifSwicHJvdGVjdGVkIjp7ImFsZyI6IkVkRFNBIiwiY3JlYXRlZCI6MTc5MjMzNjMxNSwiZXhwaXJlcyI6MTc5MjMzNjYxNSwia2lkIjoiZGlkOmtleTp6Nk1rdDVrQlhWeTY5WEhDb3VGZFJLMmlCZXlVRkZmZGRNR2dpUVFZSkU4NWZUdTEiLCJub25jZSI6IlBzdHloVmZkajZNTWItZl9QUjNscUEiLCJvcmlnaW4iOiJmYWtlLmV4YW1wbGUvdGlsZXMiLCJwcmV2IjpudWxsLCJzZWVuIjp7ImNoZWNrcG9pbnRfbm90ZV9oYXNoIjoiODM4ZWMzM2Y1MDAwMTQxOGU5MjNhNTU4N2M4ZDIzODVjNzdkYWViOWFjYzk2YzdjNTMwM2UzNjk2Y2ZiYjNiMCIsInNpemUiOjV9LCJzZXEiOjAsInR5cGUiOiJuYW1lLmNsYWltIn0sInNpZyI6IlB1UjhZMS1MZnB2S0RzRnQyQ01TXy1UemZRVTRIc0VLRXRGTldLVV9MRHZzZjFQdG10M0tWdzB6NGhyNzcweU9pbDh5V3laOElvQjhTODlhRG9DdEFBIiwidiI6MX0sImluaXRpYWxfZ3JhbnQiOm51bGwsIm5hbWVfbm9ybSI6ImN0LTg1MTVmNmEzNDVjMTY0OGQiLCJwcmV2X2V2ZW50X2luZGV4IjpudWxsLCJyZWNvdmVyeV9raWQiOm51bGwsInJlY292ZXJ5X3BvcCI6bnVsbCwidGllciI6InZlcmlmaWVkIiwieDI1NTE5IjoibHkzSmRMVkl2SE1ZVlotSWNLeGluT2hBbmJ5cWhud1FSUGMtNnNGQmFFOCJ9LCJ0cyI6MTc5MjMzNjMxNSwidHlwZSI6Im5hbWUuY2xhaW0iLCJ2IjoyfQ",
+            "eyJhY3Rvcl9raWQiOiJkaWQ6a2V5Ono2TWt0NWtCWFZ5NjlYSENvdUZkUksyaUJleVVGRmZkZE1HZ2lRUVlKRTg1ZlR1MSIsIm9yaWdpbiI6ImZha2UuZXhhbXBsZS90aWxlcyIsInBheWxvYWQiOnsiYm9keV9oYXNoIjoiNDU4MjUxN2I1YTZkYTBkNzk4YjhhYzU1YWFmNDQwNTBjMDEyMmJjNmI4MGMzMzgzYWQyNGNkNTM2MjU3MWJhYiIsImNoYW5uZWxfc2hhMjU2IjoiNmMxZDZjZWRmMjc2ZWEzZmQ3NDg2YTIxMmZkNjJiMzJmYmI5ZWNhYTRkZWE3MDU0NTQ4NjczNzE5OWRkMjRlZCIsImVudmVsb3BlIjp7ImF1dGgiOnsic2NoZW1lIjoiZWQyNTUxOS1qY3MifSwicGF5bG9hZCI6eyJib2R5X2hhc2giOiI0NTgyNTE3YjVhNmRhMGQ3OThiOGFjNTVhYWY0NDA1MGMwMTIyYmM2YjgwYzMzODNhZDI0Y2Q1MzYyNTcxYmFiIiwiY2hhbm5lbF9zaGEyNTYiOiI2YzFkNmNlZGYyNzZlYTNmZDc0ODZhMjEyZmQ2MmIzMmZiYjllY2FhNGRlYTcwNTQ1NDg2NzM3MTk5ZGQyNGVkIiwicGFyZW50X2luZGV4IjpudWxsLCJzaXplIjo4MSwidGl0bGVfc2hhMjU2IjpudWxsfSwicHJvdGVjdGVkIjp7ImFsZyI6IkVkRFNBIiwiY3JlYXRlZCI6MTc5MjMzNjMxNSwiZXhwaXJlcyI6MTc5MjMzNjYxNSwia2lkIjoiZGlkOmtleTp6Nk1rdDVrQlhWeTY5WEhDb3VGZFJLMmlCZXlVRkZmZGRNR2dpUVFZSkU4NWZUdTEiLCJub25jZSI6InBxMkUxTUREVnJITFV6Y1czNkN2MEEiLCJvcmlnaW4iOiJmYWtlLmV4YW1wbGUvdGlsZXMiLCJwcmV2IjoiZGVhNDMwZTg5NDk2NzEzNTU0NzllMDVlZThhOTc5ZDNjYzc2NWQwMTE0OTk5ZThlNDFkNTlhYjA4M2Y2ODVjNiIsInNlZW4iOnsiY2hlY2twb2ludF9ub3RlX2hhc2giOiI5NzIyODY1MTkyMDM0NGEwMTlmOWRiODIwY2QyMDAxOWY5ZjQzOTMwYWI2YzhhOWFkYTI3YmNiMWMxZjcwYjUzIiwic2l6ZSI6Nn0sInNlcSI6MSwidHlwZSI6InBvc3QifSwic2lnIjoialFaX2tIQ2FvSTQxdjdYd0E0Y2tndjg0cUtHR19TQWVHak5EckFROVpvTDA0RnE4TERjbEU2MXdmMW43T0VJT0VmcFMzYXdjZW9ZckxNOHdBd2EzQVEiLCJ2IjoxfSwicGFyZW50X2luZGV4IjpudWxsLCJzaXplIjo4MSwidGl0bGVfc2hhMjU2IjpudWxsfSwidHMiOjE3OTIzMzYzMTUsInR5cGUiOiJwb3N0IiwidiI6Mn0"
+          ],
+          "checkpoint_notes": [
+            "ZmFrZS5leGFtcGxlL3RpbGVzCjcKd3FjRlppeDFjZXVpc2tWYjlsNm1HcGRuVk11bGl6M3dzSXBUdCtXdTlGaz0KCuKAlCBmYWtlLmV4YW1wbGUvdGlsZXMgeEgyb091R1FmWnFPekxkVFNZeDFpMytnNktEVkRqTU9sQUVmc0MzYmNhdE1xWGFRUDAxb21NaXc3eXh4bzY1VnNrWUo5eU9ibGRIZFAvcWpURVhsVWVkbG9Bbz0K"
+          ]
+        }
+      }
+    },
+    {
+      "id": "G9",
+      "title": "Inbox completeness and consent reconstructed from all tiles",
+      "spec_ref": "AICS-1 §§9,14.3",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "indices": [
+          8
+        ],
+        "checkpoint_hash": "c64e1dd44dfac9f7376099c6e954984146f7fb2aec8a8b9cee0e1d03a2ffda72",
+        "scope": "metadata completeness at API checkpoint, not timely body delivery"
+      }
+    },
+    {
+      "id": "G10",
+      "title": "Signed card is included, active and continuous with pinned policy",
+      "spec_ref": "AICS-1 §§13,14.5",
+      "verdict": "pass",
+      "details": {
+        "verification": "valid",
+        "card_hash": "0f8eba0276b6f4124654e778fbe87f3bab53a54896405bf9d2b89d3903ab74fe",
+        "policy_indices": [
+          0,
+          1
+        ]
+      }
+    }
+  ],
+  "mutations": [
+    {
+      "id": "gate.banner",
+      "fault": "banner",
+      "detected": true
+    },
+    {
+      "id": "gate.onboarding.openssl",
+      "fault": "onboard_openssl",
+      "detected": true
+    },
+    {
+      "id": "gate.onboarding.ssh-keygen",
+      "fault": "onboard_ssh-keygen",
+      "detected": true
+    },
+    {
+      "id": "gate.onboarding.python3",
+      "fault": "onboard_python3",
+      "detected": true
+    },
+    {
+      "id": "gate.onboarding.none",
+      "fault": "onboard_none",
+      "detected": true
+    },
+    {
+      "id": "gate.get",
+      "fault": "onboard_openssl",
+      "detected": true
+    },
+    {
+      "id": "gate.leeway",
+      "fault": "leeway",
+      "detected": true
+    },
+    {
+      "id": "gate.malformed",
+      "fault": "malformed_rule",
+      "detected": true
+    },
+    {
+      "id": "gate.get-write",
+      "fault": "get_write",
+      "detected": true
+    },
+    {
+      "id": "gate.plain-fallback",
+      "fault": "plain_secret",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.help",
+      "fault": "reply_help",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.who",
+      "fault": "reply_who",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.find",
+      "fault": "reply_find",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.read",
+      "fault": "reply_read",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.inbox",
+      "fault": "reply_inbox",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.fetch",
+      "fault": "reply_fetch",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.quit",
+      "fault": "reply_quit",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.post",
+      "fault": "reply_post",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.poll",
+      "fault": "reply_poll",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.vote",
+      "fault": "reply_vote",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.grant",
+      "fault": "reply_grant",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.send",
+      "fault": "reply_send",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.store",
+      "fault": "reply_store",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.claim",
+      "fault": "reply_claim",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.rotate",
+      "fault": "reply_rotate",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.revoke",
+      "fault": "reply_revoke",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.x25519.rotate",
+      "fault": "reply_x25519.rotate",
+      "detected": true
+    },
+    {
+      "id": "gate.verb.claim-upgrade",
+      "fault": "reply_claim-upgrade",
+      "detected": true
+    },
+    {
+      "id": "log.checkpoint",
+      "fault": "bad_checkpoint",
+      "detected": true
+    },
+    {
+      "id": "log.consistency",
+      "fault": "rollback",
+      "detected": true
+    },
+    {
+      "id": "log.proofs",
+      "fault": "bad_proof",
+      "detected": true
+    },
+    {
+      "id": "log.receipt",
+      "fault": "dropped_receipt",
+      "detected": true
+    },
+    {
+      "id": "log.tombstone",
+      "fault": "tombstone_delete",
+      "detected": true
+    },
+    {
+      "id": "log.metadata",
+      "fault": "plaintext_field_leak",
+      "detected": true
+    },
+    {
+      "id": "negative.bad-signature",
+      "fault": "accept_bad_signature",
+      "detected": true
+    },
+    {
+      "id": "negative.replay",
+      "fault": "accept_replay",
+      "detected": true
+    },
+    {
+      "id": "negative.stale",
+      "fault": "accept_stale",
+      "detected": true
+    },
+    {
+      "id": "negative.cleartext",
+      "fault": "cleartext",
+      "detected": true
+    },
+    {
+      "id": "negative.closed-inbox",
+      "fault": "open_inbox",
+      "detected": true
+    },
+    {
+      "id": "negative.secret",
+      "fault": "retain_secret",
+      "detected": true
+    },
+    {
+      "id": "identity.claim-pop",
+      "fault": "accept_bad_signature",
+      "detected": true
+    },
+    {
+      "id": "identity.rotate",
+      "fault": "one_signature",
+      "detected": true
+    },
+    {
+      "id": "identity.fork",
+      "fault": "key_fork",
+      "detected": true
+    },
+    {
+      "id": "identity.revoke",
+      "fault": "revocation",
+      "detected": true
+    },
+    {
+      "id": "identity.x25519",
+      "fault": "xrotate",
+      "detected": true
+    },
+    {
+      "id": "access.owner",
+      "fault": "owner",
+      "detected": true
+    },
+    {
+      "id": "access.bearer",
+      "fault": "bearer",
+      "detected": true
+    },
+    {
+      "id": "access.keygen",
+      "fault": "keygen",
+      "detected": true
+    },
+    {
+      "id": "rates.published",
+      "fault": "rate_limit",
+      "detected": true
+    },
+    {
+      "id": "grants.wildcard",
+      "fault": "wildcard_capacity",
+      "detected": true
+    },
+    {
+      "id": "grants.exact-revocation",
+      "fault": "exact_revocation",
+      "detected": true
+    },
+    {
+      "id": "http.binding",
+      "fault": "http_binding",
+      "detected": true
+    },
+    {
+      "id": "G1",
+      "fault": "authorship",
+      "detected": true
+    },
+    {
+      "id": "G2",
+      "fault": "bad_proof",
+      "detected": true
+    },
+    {
+      "id": "G3",
+      "fault": "restart_rollback",
+      "detected": true
+    },
+    {
+      "id": "G4",
+      "fault": "dropped_receipt",
+      "detected": true
+    },
+    {
+      "id": "G5",
+      "fault": "split_view",
+      "detected": true
+    },
+    {
+      "id": "G6",
+      "fault": "swapped_key",
+      "detected": true
+    },
+    {
+      "id": "G7",
+      "fault": "runtime_claim",
+      "detected": true
+    },
+    {
+      "id": "G8",
+      "fault": "bad_bundle",
+      "detected": true
+    },
+    {
+      "id": "G9",
+      "fault": "inbox_drop",
+      "detected": true
+    },
+    {
+      "id": "G10",
+      "fault": "bad_card",
+      "detected": true
+    }
+  ]
+}

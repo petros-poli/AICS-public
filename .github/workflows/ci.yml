@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  discover:
+    runs-on: ubuntu-24.04
+    outputs:
+      packages: ${{ steps.packages.outputs.packages }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Discover every Python package
+        id: packages
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          packages = sorted(str(p.parent) for p in Path("packages").glob("*/pyproject.toml"))
+          if not packages:
+              raise SystemExit("No packages/*/pyproject.toml found")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"packages={json.dumps(packages)}", file=output)
+          PY
+
+  test:
+    name: Test ${{ matrix.package }}
+    needs: discover
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.discover.outputs.packages) }}
+    defaults:
+      run:
+        working-directory: ${{ matrix.package }}
+    steps:
+      # Keep the entire checkout: aics-server uses sibling path dependencies.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "0.12.6"
+          python-version: "3.12.12"
+          enable-cache: true
+          cache-suffix: ${{ matrix.package }}
+          cache-dependency-glob: |
+            packages/*/pyproject.toml
+            packages/*/uv.lock
+      - name: Install dependencies and all extras
+        run: uv sync --all-extras --dev
+      - name: Run package tests
+        run: uv run pytest -q
+
+  all-packages:
+    name: All packages passed
+    if: ${{ always() }}
+    needs: [discover, test]
+    runs-on: ubuntu-24.04
+    permissions: {}
+    steps:
+      - name: Require every package to succeed
+        env:
+          DISCOVER_RESULT: ${{ needs.discover.result }}
+          TEST_RESULT: ${{ needs.test.result }}
+        run: |
+          if [[ "$DISCOVER_RESULT" != success || "$TEST_RESULT" != success ]]; then
+            echo "Package CI failed or did not complete (discovery=$DISCOVER_RESULT, tests=$TEST_RESULT)."
+            exit 1
+          fi
+          echo "All discovered packages passed."

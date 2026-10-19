@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui with context %}
+
+{% block title %}Assurance card · wesupport-ai.com{% endblock %}
+{% block description %}What wesupport-ai.com proves, what it only promises and what it does not offer, signed with its policy key.{% endblock %}
+
+{%- macro value(v) -%}
+{%- if v is none -%}<span class="text-muted">null</span>
+{%- elif v is mapping -%}<code>{{ v | tojson }}</code>
+{%- elif v is iterable and v is not string -%}{% for item in v %}<code>{{ item }}</code>{% if not loop.last %}, {% endif %}{% else %}<span class="text-muted">none</span>{% endfor %}
+{%- else -%}<code>{{ v }}</code>{%- endif -%}
+{%- endmacro -%}
+
+{% block content %}
+<section class="matrix-section" aria-labelledby="card-title">
+  <h1 id="card-title">Assurance card</h1>
+  <p>What this place proves, what it only promises and what it does not offer, as the operator states it and signs with the policy key (AICS-1 section 13). A proven row names something you can check yourself; a promised row is a commitment only.</p>
+  <dl class="kv-list">
+    <div><dt>This card</dt><dd>
+      {%- if served.source == "logged" -%}
+      Logged: policy leaf {{ ui.leaf(served.leaf_index) }} carries its hash, so you can check its inclusion under a checkpoint.
+      {%- elif served.source == "file" -%}
+      A reviewed card the server loaded and signed with the policy key. {% if served.leaf_index is not none %}Policy leaf {{ ui.leaf(served.leaf_index) }} carries its hash.{% else %}No policy leaf carries its hash yet.{% endif %}
+      {%- else -%}
+      The server's built-in skeleton, generated from its own configuration and signed with the policy key. {% if served.leaf_index is not none %}Policy leaf {{ ui.leaf(served.leaf_index) }} carries its hash.{% else %}No policy leaf carries its hash yet, so G10 is promised.{% endif %}
+      {%- endif -%}
+    </dd></div>
+    <div><dt>Signed JSON</dt><dd><a href="/.well-known/aics-card.json">/.well-known/aics-card.json</a> (through Cloudflare) · <a href="{{ site.api('/.well-known/aics-card.json') }}">{{ site.api('/.well-known/aics-card.json') }}</a> (not proxied)</dd></div>
+    <div><dt>SHA-256 of the card</dt><dd><code>{{ served.sha256 }}</code></dd></div>
+    <div><dt>SHA-256 of the signed body</dt><dd><code>{{ served.payload_sha256 }}</code></dd></div>
+    <div><dt>Valid</dt><dd>{{ ui.unix(card.issued_at) }} to {{ ui.unix(card.expires) }}</dd></div>
+    <div><dt>Spec</dt><dd>{{ card.spec }} {{ card.version }}</dd></div>
+  </dl>
+  <p class="section-lede">Check it with the policy key published in DNS, in the <code>aics</code> package and in the public repository, never with a key taken from this server alone: remove <code>signatures</code>, canonicalize the rest (RFC 8785) and verify the Ed25519 JWS signature over <code>protected.payload</code>.</p>
+</section>
+
+<section class="matrix-section" aria-labelledby="rows-title">
+  <h2 id="rows-title">Proven, promised, not offered</h2>
+  <div class="table-scroll">
+    <table class="matrix-table">
+      <thead><tr><th scope="col">Row</th><th scope="col">Status</th><th scope="col">Claim</th></tr></thead>
+      <tbody>
+        {%- for row in card.assurances %}
+        <tr class="assurance-row" id="{{ row.id }}">
+          <th scope="row">{{ row.id }}</th>
+          <td><span class="status-chip status-{{ row.status }}">{{ row.status }}</span></td>
+          <td>{{ row.claim }}
+            {%- if row.assumptions %}
+            <details><summary>Assumptions and limits ({{ row.assumptions | length }})</summary><ul>{% for item in row.assumptions %}<li>{{ item }}</li>{% endfor %}</ul></details>
+            {%- endif %}
+          </td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section class="matrix-section" aria-labelledby="keys-title">
+  <h2 id="keys-title">Keys, hosts and witnesses</h2>
+  <dl class="kv-list">
+    <div><dt>Origin</dt><dd>{{ value(card.origin) }}</dd></div>
+    <div><dt>Log key</dt><dd>{{ value(card.log_vkey) }}</dd></div>
+    <div><dt>Policy key</dt><dd>{{ value(card.policy_kid) }}</dd></div>
+    <div><dt>Owner key</dt><dd>{{ value(card.owner_kid) }}</dd></div>
+    <div><dt>Tile prefixes</dt><dd>{{ value(card.tile_prefixes) }}</dd></div>
+    <div><dt>API</dt><dd>{{ value(card.api_base) }}</dd></div>
+    <div><dt>Text gate</dt><dd>{{ value(card.gate) }}</dd></div>
+    <div><dt>Witness policy</dt><dd>quorum {{ card.witness_policy.quorum }}; {% for w in card.witness_policy.witnesses %}<code>{{ w.name }}</code> ({{ w.trust_domain }}, {{ "independent" if w.independent else "not independent" }}){% if not loop.last %}, {% endif %}{% else %}no witness{% endfor %}</dd></div>
+    <div><dt>Policy parent</dt><dd>{{ ui.leaf(card.policy_parent_index) }}</dd></div>
+  </dl>
+  <div class="table-scroll">
+    <table class="matrix-table">
+      <caption>Which hostnames pass through Cloudflare</caption>
+      <thead><tr><th scope="col">Host</th><th scope="col">Mode</th><th scope="col">TLS ends at</th></tr></thead>
+      <tbody>{% for p in card.proxy %}<tr><td><code>{{ p.host }}</code></td><td>{{ p.mode }}</td><td>{{ p.tls_termination }}</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+</section>
+
+<section class="matrix-section" aria-labelledby="limits-title">
+  <h2 id="limits-title">Limits, timing and retention</h2>
+  <dl class="kv-list">
+    {%- for name, v in card.limits.items() %}
+    <div><dt>{{ name }}</dt><dd>{{ value(v) }}</dd></div>
+    {%- endfor %}
+    <div><dt>max_checkpoint_age</dt><dd>{{ value(card.max_checkpoint_age) }}</dd></div>
+    <div><dt>mmd_seconds</dt><dd>{{ value(card.mmd_seconds) }}</dd></div>
+    <div><dt>policy_notice_seconds</dt><dd>{{ value(card.policy_notice_seconds) }}</dd></div>
+    {%- for name, v in card.retention.items() %}
+    <div><dt>retention.{{ name }}</dt><dd>{{ value(v) }}</dd></div>
+    {%- endfor %}
+  </dl>
+</section>
+
+<section class="matrix-section" aria-labelledby="codes-title">
+  <h2 id="codes-title">Closed lists and versions</h2>
+  <dl class="kv-list">
+    {%- for name, codes in card.reason_codes.items() %}
+    <div><dt>{{ name }} codes</dt><dd>{{ value(codes) }}</dd></div>
+    {%- endfor %}
+    <div><dt>Secret patterns</dt><dd>{% for p in card.secret_patterns %}<code>{{ p.id }}</code>{% if not loop.last %}, {% endif %}{% else %}none{% endfor %}</dd></div>
+    <div><dt>Encryption schemes</dt><dd>{{ value(card.schemes) }}</dd></div>
+    <div><dt>Tiers</dt><dd>{{ value(card.tiers) }}</dd></div>
+    {%- for name, digest in card.policies.items() %}
+    <div><dt>{{ name }}</dt><dd>{{ value(digest) }}</dd></div>
+    {%- endfor %}
+    {%- for name, version in card.spec_versions.items() %}
+    <div><dt>{{ name }}</dt><dd>{{ value(version) }}</dd></div>
+    {%- endfor %}
+  </dl>
+</section>
+{% endblock %}

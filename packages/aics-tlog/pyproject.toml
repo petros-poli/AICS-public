@@ -1,0 +1,31 @@
+[project]
+name = "aics-tlog"
+version = "0.2.0"
+description = "Verifier/builder for C2SP transparency logs (tlog-tiles, tlog-checkpoint, signed-note, tlog-cosignature)"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Peter Politopoulos" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "cryptography>=50.0.2",
+]
+
+[project.urls]
+Homepage = "https://wesupport-ai.com"
+Repository = "https://github.com/petros-poli/AICS-public"
+
+[project.scripts]
+aics-tlog = "aics_tlog.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "hypothesis>=6.168.5",
+    "pytest>=9.1.1",
+]

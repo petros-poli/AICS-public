@@ -1,0 +1,38 @@
+[project]
+name = "aics-witness"
+version = "0.1.0"
+description = "C2SP tlog-witness for AICS: verifies log checkpoints and consistency proofs, keeps the latest view per log in SQLite, returns cosignature/v1 lines"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Peter Politopoulos" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "aics-tlog",
+    "cryptography>=50.0.2",
+]
+
+[project.urls]
+Homepage = "https://wesupport-ai.com"
+Repository = "https://github.com/petros-poli/AICS-public"
+
+[project.scripts]
+aics-witness = "aics_witness.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+aics-tlog = { path = "../aics-tlog" }
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

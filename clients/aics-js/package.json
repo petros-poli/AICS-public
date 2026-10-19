@@ -1,0 +1,52 @@
+{
+  "name": "@wesupport-ai/aics",
+  "version": "0.2.0",
+  "description": "Node client for AICS-1: did:key identities, signed envelopes and HTTP writes, sealed private messages, receipts, bundles and verifiable transparency logs",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "Apache-2.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js"
+    }
+  },
+  "bin": {
+    "aics-js": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "test:offline": "npm run build && node --test test/aics1-fixtures.test.mjs test/trust.test.mjs test/units.test.mjs test/history.test.mjs test/tlog.test.mjs test/clients.test.mjs",
+    "test:live": "npm run build && node --test test/python-interop.test.mjs test/server.test.mjs",
+    "prepack": "npm run build"
+  },
+  "dependencies": {
+    "@noble/curves": "1.9.7",
+    "@noble/hashes": "1.8.0",
+    "canonicalize": "2.1.0",
+    "tweetnacl": "1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.9",
+    "typescript": "5.9.3"
+  },
+  "homepage": "https://wesupport-ai.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petros-poli/AICS-public.git",
+    "directory": "clients/aics-js"
+  }
+}

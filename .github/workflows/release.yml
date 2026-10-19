@@ -1,0 +1,189 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      publish-pypi: ${{ steps.policy.outputs.enabled }}
+    steps:
+      - name: Refuse to replace a published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+          import urllib.parse
+
+          tag = urllib.parse.quote(os.environ["RELEASE_TAG"], safe="")
+          result = subprocess.run([
+              "gh", "api", f"repos/{os.environ['GITHUB_REPOSITORY']}/releases/tags/{tag}"
+          ], text=True, capture_output=True)
+          if result.returncode:
+              try:
+                  status = str(json.loads(result.stdout).get("status"))
+              except (ValueError, AttributeError):
+                  status = "unknown"
+              if status != "404":
+                  raise SystemExit(result.stderr or "Could not check for an existing release")
+          elif not json.loads(result.stdout)["draft"]:
+              raise SystemExit("Release is already published; use a new tag, or rerun only the failed PyPI job")
+          PY
+      - name: Report the PyPI publishing policy
+        id: policy
+        env:
+          PUBLISH_PYPI: ${{ vars.PUBLISH_PYPI }}
+        run: |
+          # Shell comparison is case sensitive; Actions expression equality is not.
+          if [[ "$PUBLISH_PYPI" == true ]]; then
+            echo 'enabled=true' >> "$GITHUB_OUTPUT"
+            echo 'PyPI trusted publishing is enabled after release verification succeeds.'
+          else
+            echo 'enabled=false' >> "$GITHUB_OUTPUT"
+            echo 'PyPI publishing skipped: repository variable PUBLISH_PYPI is not exactly "true" (unset defaults to skipped).'
+          fi
+
+  tests:
+    needs: prepare
+    uses: ./.github/workflows/ci.yml
+
+  # Builds every library twice and exports only byte-identical artifacts.
+  # Local reusable workflows come from the same commit as this release workflow.
+  build:
+    needs: prepare
+    uses: ./.github/workflows/reproducible.yml
+
+  sign:
+    needs: [tests, build]
+    runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: verified-dist
+          path: dist
+      - name: Sign distributions and inventory using GitHub OIDC
+        uses: sigstore/gh-action-sigstore-python@790bc6befb9d733738f18d8f895854b453640ec9 # v3.5.0
+        with:
+          inputs: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/SHA256SUMS
+          release-signing-artifacts: false
+          upload-signing-artifacts: false
+          verify: true
+          verify-cert-identity: https://github.com/${{ github.repository }}/.github/workflows/release.yml@${{ github.ref }}
+          verify-oidc-issuer: https://token.actions.githubusercontent.com
+      - name: Export detached signatures and certificates from the signed bundles
+        run: |
+          python3 - <<'PY'
+          import base64
+          import json
+          import textwrap
+          from pathlib import Path
+
+          for bundle in sorted(Path("dist").glob("*.sigstore.json")):
+              data = json.loads(bundle.read_text())
+              target = str(bundle).removesuffix(".sigstore.json")
+              signature = data["messageSignature"]["signature"]
+              base64.b64decode(signature, validate=True)
+              Path(target + ".sig").write_text(signature + "\n")
+              material = data["verificationMaterial"]
+              certificate = material.get("certificate")
+              if certificate is None:
+                  certificate = material["x509CertificateChain"]["certificates"][0]
+              der = base64.b64decode(certificate["rawBytes"], validate=True)
+              pem = "\n".join(textwrap.wrap(base64.b64encode(der).decode(), 64))
+              Path(target + ".crt").write_text(
+                  f"-----BEGIN CERTIFICATE-----\n{pem}\n-----END CERTIFICATE-----\n"
+              )
+          PY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: signed-dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  provenance:
+    needs: [build, sign]
+    permissions:
+      actions: read
+      id-token: write
+      contents: write # The generator creates a draft release containing provenance.
+    # Required exception to SHA pinning: the verifier requires a semantic version tag.
+    # v2.1.0 resolves to f7dd8c54c2067bafc12ca7a55595d5ee9b75204a.
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: ${{ needs.build.outputs.hashes }}
+      provenance-name: aics.intoto.jsonl
+      upload-assets: true
+      draft-release: "true"
+      # Keyless signing records repository/workflow metadata in public Rekor.
+      private-repository: false
+
+  github-release:
+    needs: [sign, provenance]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: signed-dist
+          path: dist
+      - name: Attach distributions, signatures, certificates and bundles; publish the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          draft=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json isDraft --jq .isDraft)
+          [[ "$draft" == true ]] || { echo "Refusing to replace a published release."; exit 1; }
+          gh release upload "$RELEASE_TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          # Markdown backticks must remain literal in the printf format string.
+          # shellcheck disable=SC2016
+          printf 'Source commit: `%s`\n\nBuilt twice on independent runners; wheel and sdist SHA-256 hashes matched.\n\nVerify with `bash scripts/verify-release.sh %s` from a trusted checkout. See docs/RELEASING.md.\n' \
+            "$SOURCE_COMMIT" "$RELEASE_TAG" > release-notes.md
+          gh release edit "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+            --title "$RELEASE_TAG" --notes-file release-notes.md --draft=false
+
+  pypi:
+    if: ${{ needs.prepare.outputs.publish-pypi == 'true' }}
+    needs: [prepare, github-release]
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: verified-dist
+          path: verified
+      - name: Select only distributions for PyPI
+        run: |
+          mkdir dist
+          cp verified/*.whl verified/*.tar.gz dist/
+      - name: Publish with PyPI trusted publishing
+        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          packages-dir: dist/

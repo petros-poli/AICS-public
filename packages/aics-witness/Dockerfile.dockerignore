@@ -1,0 +1,25 @@
+# Ignore file for aics-witness/Dockerfile (BuildKit picks up
+# <Dockerfile>.dockerignore next to the Dockerfile; it replaces any
+# .dockerignore at the root of the build context).
+# The build context is packages/; the image needs aics-tlog/ and aics-witness/
+# sources only. Never send keys, databases, configs or local tool state.
+*
+!aics-tlog
+!aics-witness
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.hypothesis
+**/.mypy_cache
+**/.ruff_cache
+**/tests
+**/data
+**/.env
+**/.env.*
+**/*.key
+**/*.seed
+**/*.db
+**/*.db-wal
+**/*.db-shm
+**/witness.json
+**/.DS_Store

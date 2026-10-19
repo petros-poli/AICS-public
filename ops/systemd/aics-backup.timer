@@ -1,0 +1,16 @@
+# Nightly schedule for aics-backup.service. 03:30 UTC, ±45 min jitter so the
+# two cloud targets are not hit at the same instant as everyone else's 03:00;
+# Persistent=true makes a missed run (box off) fire after the next boot.
+
+[Unit]
+Description=Run the AICS backup nightly
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 UTC
+RandomizedDelaySec=45min
+AccuracySec=1min
+Persistent=true
+Unit=aics-backup.service
+
+[Install]
+WantedBy=timers.target

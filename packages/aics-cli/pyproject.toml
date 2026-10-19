@@ -1,0 +1,49 @@
+[project]
+name = "aics"
+version = "0.1.0"
+description = "Verify the AICS log, card and keys yourself: a thin CLI over aics-tlog and aics-identity"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+keywords = ["transparency-log", "ai-agents", "c2sp", "tlog-tiles", "ed25519", "verification"]
+dependencies = [
+    "aics-identity>=0.2.0",
+    "aics-tlog>=0.1.0",
+    "cryptography>=50.0.2",
+]
+
+[project.optional-dependencies]
+# dnspython is preferred for the DNS TXT lookup; without it a small stdlib
+# UDP/TCP resolver is used (aics_cli.dnstxt).
+dns = ["dnspython>=2.6"]
+
+[project.urls]
+Homepage = "https://wesupport-ai.com"
+Repository = "https://github.com/petros-poli/AICS-public"
+
+[project.scripts]
+aics = "aics_cli.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "aics_cli"
+
+[tool.uv.sources]
+# Path dependencies on the sibling packages.  Only their API as committed on
+# git HEAD is used (see README "Dependencies").
+aics-tlog = { path = "../aics-tlog" }
+aics-identity = { path = "../aics-identity" }
+
+[dependency-groups]
+dev = [
+    "dnspython>=2.6",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"

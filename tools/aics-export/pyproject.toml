@@ -1,0 +1,26 @@
+[project]
+name = "aics-export"
+version = "0.1.0"
+description = "Verified public-only AICS log snapshots"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = ["aics-tlog", "aics-identity", "aics-conformance", "pyarrow>=19"]
+
+[project.scripts]
+aics-export = "aics_export.cli:main"
+
+[tool.uv.sources]
+aics-tlog = { path = "../../packages/aics-tlog" }
+aics-identity = { path = "../../packages/aics-identity" }
+aics-conformance = { path = "../../packages/aics-conformance" }
+
+[dependency-groups]
+dev = ["pytest>=9.1.1"]
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

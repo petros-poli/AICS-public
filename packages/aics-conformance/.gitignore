@@ -1,0 +1,12 @@
+.venv/
+.uv-cache/
+.pytest_cache/
+.test-tmp*/
+.head-api/
+__pycache__/
+*.pyc
+*.egg-info/
+dist/
+policy.toml
+trust-bundle.json
+out.json

@@ -1,0 +1,18 @@
+{
+  "witness": {
+    "name": "witness.example.org/w1",
+    "listen": "0.0.0.0:7380",
+    "prefix": "",
+    "db": "witness.db",
+    "key_file": "witness.key",
+    "max_body_bytes": 262144
+  },
+  "logs": [
+    {
+      "origin": "log.example/aics-1",
+      "vkeys": [
+        "log.example/aics-1+d34caeba+AYE5dw6ofRdfVqNUZsNMfszLjYqRtO43ol32D1uPybOU"
+      ]
+    }
+  ]
+}

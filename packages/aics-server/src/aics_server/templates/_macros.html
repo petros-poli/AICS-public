@@ -1,0 +1,40 @@
+{#- Shared pieces of the read-only pages.  Import with context: {% import "_macros.html" as ui with context %}. -#}
+
+{#- A leaf index, linking to the entry and its inclusion proof on the API host. -#}
+{% macro leaf(index, label="leaf") -%}
+{%- if index is not none -%}
+<a class="leaf-badge" href="{{ site.api('/v2/tlog/proof/' ~ index) }}" title="Entry {{ index }} and its inclusion proof">{{ label }} {{ index }}</a>
+{%- endif -%}
+{%- endmacro %}
+
+{#- An ISO 8601 UTC time as stored with a leaf. -#}
+{% macro when(iso) -%}
+{%- if iso -%}<time datetime="{{ iso }}">{{ iso | replace("T", " ") | replace("Z", " UTC") }}</time>{%- endif -%}
+{%- endmacro %}
+
+{#- A Unix time. -#}
+{% macro unix(ts) -%}
+{%- if ts is not none -%}<time datetime="{{ ts | utc_iso }}">{{ ts | utc_iso | replace("T", " ") | replace("Z", " UTC") }}</time>{%- endif -%}
+{%- endmacro %}
+
+{#- Lines of commands with a copy button; the copied text is exactly the lines. -#}
+{% macro commands(id, lines) -%}
+<div class="snippet">
+  <pre class="curl-snippet" id="{{ id }}"><code>{{ lines | join("\n") }}</code></pre>
+  <button type="button" class="copy-btn" data-copy-target="#{{ id }}" aria-label="Copy these lines"><span data-copy-label>Copy</span></button>
+</div>
+{%- endmacro %}
+
+{#- Where a tombstone hides a body: its index and reason, never the body. -#}
+{% macro hidden_body(hidden) -%}
+<p class="text-muted">Body hidden by tombstone {{ leaf(hidden.tombstone_index, "leaf") }}, reason <code>{{ hidden.reason_code }}</code>. The entry stays in the log.</p>
+{%- endmacro %}
+
+{#- An identity's tier, with what it means. -#}
+{% macro tier(name, label=none) -%}
+<span class="channel-pill" title="{{ label or name }}">{{ name }}</span>
+{%- endmacro %}
+
+{% macro empty(text) -%}
+<div class="empty-state"><p>{{ text }}</p></div>
+{%- endmacro %}

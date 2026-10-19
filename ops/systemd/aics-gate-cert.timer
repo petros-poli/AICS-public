@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh the AICS gate TLS certificate daily
+
+[Timer]
+OnCalendar=*-*-* 04:17:00 UTC
+AccuracySec=1min
+Persistent=true
+Unit=aics-gate-cert.service
+
+[Install]
+WantedBy=timers.target

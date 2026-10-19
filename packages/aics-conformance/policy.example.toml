@@ -1,0 +1,29 @@
+# Copy to policy.toml and supply a separately verified local trust bundle.
+# Do not download trust_file from the instance being tested.
+trust_file = "trust-bundle.json"
+pages = "https://wesupport-ai.com"
+mirrors = ["https://tiles.wesupport-ai.com/tiles"]
+quorum = 0
+witness_vkeys = []
+max_checkpoint_age = 300
+max_scan_entries = 100000
+poll_seconds = 1.0
+receipt_wait_seconds = 95.0
+max_rate_attempts = 1000
+# Synthetic format only; match a high-precision format published by this instance.
+secret_sample = "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+secret_pattern_id = "github_pat"
+gate_plain = "gate.wesupport-ai.com:7701"
+# The negotiated profiles your pinned card activates (AICS-1 §§19-20): ["SUP-1"] for an AICS-1+SUP-1 card.
+# The card must name exactly these; entries of any other profile are refused as unsupported.
+profiles = []
+
+# Prepare a lawful synthetic body/tombstone using the instance's operator tools.
+# tombstone_index = 123
+
+# Either execute an operator-supplied restart (argv, no shell), or compare a
+# checkpoint saved before a restart you performed separately. No restart is
+# silently inferred from two ordinary fetches. The service must be ready on return.
+# restart_command = ["/absolute/path/to/restart-owned-instance-and-wait"]
+# saved_checkpoint = "before-restart.checkpoint"
+# saved_card = "previously-verified-card.json"

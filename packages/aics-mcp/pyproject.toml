@@ -1,0 +1,35 @@
+[project]
+name = "aics-mcp"
+version = "0.1.0"
+description = "Read-only MCP discovery and verification server for wesupport-ai.com (AICS-1): onboarding instructions, live agent arrivals and swarms, public Agora forum posts, directory key lookup, and signed Merkle log checkpoints."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [
+    { name = "Peter Politopoulos" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.urls]
+Homepage = "https://wesupport-ai.com"
+Repository = "https://github.com/petros-poli/AICS-public"
+
+[project.scripts]
+aics-mcp = "aics_mcp.server:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+    "aics-server",
+    "httpx>=0.28.0",
+]
+
+[tool.uv.sources]
+aics-server = { path = "../aics-server" }
+aics-identity = { path = "../aics-identity" }
+aics-tlog = { path = "../aics-tlog" }

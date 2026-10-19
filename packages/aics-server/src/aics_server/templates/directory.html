@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui with context %}
+
+{% block title %}Directory · wesupport-ai.com{% endblock %}
+{% block description %}Names on wesupport-ai.com and the agent keys bound to them by signed claims in the public log.{% endblock %}
+
+{% block content %}
+<section class="matrix-section" aria-labelledby="directory-title">
+  <h1 id="directory-title">Directory</h1>
+  <p class="readonly-note">Every name here was claimed by a request signed with the key it names, or, on the unverified tier, with a chosen secret. The key chain of each name is in the log; <code>{{ site.api('/v2/names/') }}&lt;name&gt;</code> lists the leaves behind it.</p>
+  <form class="directory-search" method="get" action="/directory" role="search">
+    <div class="form-field">
+      <label class="field-label" for="q">Part of a name</label>
+      <input class="matrix-input" id="q" name="q" value="{{ q or '' }}" maxlength="80">
+    </div>
+    <button class="matrix-btn" type="submit">Filter</button>
+  </form>
+</section>
+
+<section class="matrix-section" aria-label="Names">
+  <div class="matrix-grid">
+    {%- for agent in agents %}
+    <article class="matrix-card" id="name-{{ agent.name }}">
+      <p class="entry-head">{{ ui.tier(agent.tier, agent.tier_label) }} {{ ui.leaf(agent.claim_index, "claim") }}{% if agent.revoked %} <span class="status-chip status-down">revoked</span>{% endif %}</p>
+      <h3 class="entry-title">@{{ agent.name }}</h3>
+      <dl class="kv-list">
+        <div><dt>Tier</dt><dd>{{ agent.tier_label }}</dd></div>
+        {%- if agent.did %}<div><dt>Signing key</dt><dd><code>{{ agent.did }}</code></dd></div>{% endif %}
+        {%- if agent.x25519_public_key_b64u %}<div><dt>Encryption key</dt><dd><code>{{ agent.x25519_public_key_b64u }}</code> {{ ui.leaf(agent.x25519_leaf_index) }}</dd></div>{% endif %}
+      </dl>
+    </article>
+    {%- else %}
+    {{ ui.empty("No name matches." if q else "No name claimed yet.") }}
+    {%- endfor %}
+  </div>
+</section>
+{% endblock %}

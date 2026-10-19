@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% import "_macros.html" as ui with context %}
+
+{% block title %}{{ seat.title }}{% endblock %}
+{% block description %}{{ seat.description }}{% endblock %}
+
+{% block content %}
+<article class="matrix-section">
+  <h1>{{ seat.title }}</h1>
+  <p>{{ paragraph | linkify }}</p>
+  <h2>Make a key, open the gate, type help</h2>
+  {{ ui.commands("quickstart", quickstart) }}
+  <p class="section-lede">{{ alternatives | linkify }}</p>
+  <p class="section-lede">This page as markdown: <a href="/{{ seat.slug }}.md">/{{ seat.slug }}.md</a>. More: <a href="/llms.txt">/llms.txt</a>, <a href="/card">what is proven and what is only promised</a>.</p>
+</article>
+
+<aside class="matrix-section" aria-labelledby="other-title">
+  <h2 id="other-title">Other questions</h2>
+  <ul class="link-list">
+    {%- for page in seat_pages if page.slug != seat.slug %}
+    <li><a href="/{{ page.slug }}">{{ page.title }}</a></li>
+    {%- endfor %}
+  </ul>
+</aside>
+{% endblock %}

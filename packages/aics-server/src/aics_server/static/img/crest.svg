@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400" fill="none" role="img" aria-labelledby="sanctuary-title sanctuary-desc">
+  <title id="sanctuary-title">AICS Sanctuary crest</title>
+  <desc id="sanctuary-desc">An emerald sanctuary shield protects a branching neural identity tree. Cyan key nodes, precision orbital rings, and an amber beacon surround its luminous core.</desc>
+  <defs>
+    <linearGradient id="sanctuary-edge" x1="104" y1="70" x2="298" y2="326" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67e8d5"/><stop offset="0.45" stop-color="#00ff66"/><stop offset="1" stop-color="#00cc52"/>
+    </linearGradient>
+    <linearGradient id="sanctuary-face" x1="200" y1="75" x2="200" y2="332" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0a2617"/><stop offset="1" stop-color="#030805"/>
+    </linearGradient>
+    <radialGradient id="sanctuary-aura">
+      <stop stop-color="#00ff66" stop-opacity="0.12"/><stop offset="1" stop-color="#00ff66" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="sanctuary-glow" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="2.5"/><feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <circle cx="200" cy="200" r="192" fill="url(#sanctuary-aura)"/>
+  <g stroke="#5ca878" stroke-width="1">
+    <circle cx="200" cy="200" r="173" opacity="0.18"/>
+    <circle cx="200" cy="200" r="164" stroke-dasharray="1 9" opacity="0.55"/>
+    <path d="M200 16v18m0 332v18M16 200h18m332 0h18M70 70l12 12m236 236 12 12M70 330l12-12M318 82l12-12" opacity="0.6"/>
+    <path d="M41 144v-25l36-36h22M301 83h22l36 36v25M41 256v25l36 36h22M301 317h22l36-36v-25" opacity="0.4"/>
+    <path d="M35 181v38m330-38v38M181 35h38m-38 330h38" opacity="0.7"/>
+  </g>
+  <g stroke="#67e8d5" stroke-width="2" stroke-linecap="square">
+    <path d="M52 143a158 158 0 0 1 38-54M310 89a158 158 0 0 1 38 54" opacity="0.65"/>
+    <path d="M53 258a158 158 0 0 0 39 53M308 311a158 158 0 0 0 39-53" opacity="0.45"/>
+  </g>
+  <path d="m200 61 111 43v93c0 64-41 111-111 145-70-34-111-81-111-145v-93Z" fill="#030805" stroke="#00cc52" stroke-opacity="0.3"/>
+  <path d="m200 72 101 39v86c0 58-36 102-101 134-65-32-101-76-101-134v-86Z" fill="url(#sanctuary-face)" stroke="url(#sanctuary-edge)" stroke-width="2"/>
+  <path d="m200 86 88 34v77c0 51-31 91-88 121-57-30-88-70-88-121v-77Z" stroke="#5ca878" stroke-opacity="0.36"/>
+  <path d="m200 72 101 39v33M99 164v-53l41-16M260 290c-16 16-37 30-60 41" stroke="url(#sanctuary-edge)" stroke-width="3" filter="url(#sanctuary-glow)"/>
+  <g stroke="#5ca878" stroke-width="1" opacity="0.3">
+    <path d="M124 139h34l16-16h52l16 16h34M124 155h26l20-20M276 155h-26l-20-20M124 249h28l18 18h60l18-18h28M132 265h14l18 18h72l18-18h14"/>
+    <path d="M128 176v48m144-48v48M184 104h32M184 299h32"/>
+  </g>
+  <g stroke="url(#sanctuary-edge)" stroke-width="2" stroke-linejoin="round">
+    <path d="M200 270v-43m0-54v-31M173 200h-27l-16-16m97 16h27l16-16M181 181l-26-26m64 26 26-26M181 219l-26 26m64-26 26 26"/>
+    <path d="m200 164 31 18v36l-31 18-31-18v-36Z" fill="#07180e"/>
+    <path d="m200 177 20 11v24l-20 11-20-11v-24Z" stroke-opacity="0.55"/>
+  </g>
+  <g fill="#06110b" stroke="#67e8d5" stroke-width="1.5">
+    <circle cx="200" cy="132" r="10"/><circle cx="149" cy="149" r="7"/><circle cx="251" cy="149" r="7"/>
+    <path d="m123 170 7 7-7 7-7-7Zm154 0 7 7-7 7-7-7Z"/>
+    <circle cx="149" cy="251" r="7"/><circle cx="251" cy="251" r="7"/>
+    <path d="m200 270 8 8-8 8-8-8Z"/>
+  </g>
+  <g fill="#00ff66" filter="url(#sanctuary-glow)">
+    <circle cx="200" cy="132" r="3"/><circle cx="149" cy="149" r="2"/><circle cx="251" cy="149" r="2"/>
+    <circle cx="149" cy="251" r="2"/><circle cx="251" cy="251" r="2"/>
+    <path d="m200 188 10 6v12l-10 6-10-6v-12Z"/>
+  </g>
+  <path d="M200 212v8m-4-4h8" stroke="#00ff66" stroke-width="2"/>
+  <g fill="#ffb800">
+    <path d="m200 43 5 8-5 8-5-8Z"/><circle cx="65" cy="200" r="2"/><circle cx="335" cy="200" r="2"/>
+  </g>
+  <g stroke="#00cc52" stroke-width="1.5">
+    <path d="M55 195v10m10-14v18m10-14v10M325 195v10m10-14v18m10-14v10"/>
+    <path d="M176 350h12m6 0h12m6 0h12"/>
+  </g>
+</svg>

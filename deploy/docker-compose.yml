@@ -1,0 +1,190 @@
+services:
+  aics-server:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: aics-sanctuary
+    restart: unless-stopped
+    # No env_file: deploy/.env also holds caddy's Cloudflare DNS-edit token, and the
+    # internet-facing Python process must never see it (an app compromise could
+    # otherwise rewrite the zone, the _aics trust record included). Compose still
+    # reads deploy/.env to fill the ${...} values below, so exactly the variables
+    # listed here reach the app, and nothing else in the file does.
+    environment:
+      - AICS_BASE_URL=https://wesupport-ai.com
+      # IndexNow ownership key (public verification file at /<key>.txt). Compose
+      # does not load .env into the app wholesale, so pass it explicitly.
+      - AICS_INDEXNOW_KEY=${AICS_INDEXNOW_KEY:-}
+      - AICS_DB_PATH=/data/aics.db
+      # The production host: leaf 0 is never written without the reviewed charter and the
+      # owner key (aics_server.db.GenesisRefused), and no development waiver applies.
+      - AICS_PRODUCTION=1
+      # The charter leaf 0 names by hash (decision 17): docs/legal/charter.md as published by
+      # ops/sync-docs.sh into deploy/docs-public, mounted read-only below. Leaf 0 fixes it
+      # for the life of the origin; a later change takes a policy leaf.
+      - AICS_CHARTER_FILE=/etc/aics/charter.md
+      # The terms and the privacy/retention text the card names by hash (policies.terms_hash
+      # and policies.privacy_hash, AICS-1 section 13.1), published the same way.
+      - AICS_TERMS_FILE=/etc/aics/terms.md
+      - AICS_PRIVACY_FILE=/etc/aics/retention.md
+      # The reviewed card body (card/README.md "Placeholders": filled with --final and written
+      # to deploy/card/card-unsigned.json, mounted read-only below as /etc/aics/card). Empty at
+      # the first start (runbook step 4: the keys it names do not exist yet, and the server
+      # serves an unlogged skeleton, X-AICS-Card-Source: skeleton); set
+      # AICS_CARD_FILE=/etc/aics/card/card-unsigned.json in deploy/.env at runbook step 5,
+      # before the card is logged and its hash goes into the trust bundle. The server refuses
+      # to start on a body that does not name its own keys, limits and ciphertext budget.
+      - AICS_CARD_FILE=${AICS_CARD_FILE:-}
+      # Optional limits file (DEFAULT_LIMITS otherwise), a path under /etc/aics/card; the card
+      # must state the same windows and ciphertext_budget_bytes.
+      - AICS_LIMITS_FILE=${AICS_LIMITS_FILE:-}
+      # Signed requests that carry no envelope origin (owner login, signed reads) are bound to
+      # the API host: one signed for another authority is refused (421), so a request made for
+      # a test instance cannot be replayed here by rewriting Host.
+      - AICS_ALLOWED_HOSTS=api.wesupport-ai.com
+      # A single writer process is a protocol invariant (docs/DESIGN.md §4.1): two workers
+      # would each hold a tree and sign divergent checkpoints.
+      - AICS_WORKERS=1
+      # Tile publishing: the server writes the tlog-tiles tree into the shared
+      # aics_tiles volume; the caddy container mounts the same volume read-only
+      # at /srv/tiles and serves it at tiles.wesupport-ai.com.
+      - AICS_TILES_DIR=/data/tiles
+      # The public keys file (log + policy vkeys) written at boot. Publish the
+      # log vkey line out of band: the _aics.wesupport-ai.com DNS TXT record
+      # (ops/dns-records.md), the aics package, the public README
+      # (docs/DESIGN.md §4.2 item 6).
+      - AICS_PUBKEYS_OUT=/data/pubkeys.txt
+      # Owner's Ed25519 public key for owner-only actions (docs/DECISIONS.md #3). REQUIRED
+      # before the first start: leaf 0 pins it for the life of the log, and with
+      # AICS_PRODUCTION=1 the server refuses to create the log without it. Set it in
+      # deploy/.env on the VPS (base64 of the 32 raw bytes, did:key, or an ssh-ed25519 line).
+      - AICS_OWNER_PUBKEY=${AICS_OWNER_PUBKEY:-}
+      # Optional master secret of the service keys (empty: /data/server_master.seed is
+      # generated once and never leaves the VPS).
+      - AICS_SERVER_SEED_HEX=${AICS_SERVER_SEED_HEX:-}
+      # Voluntary contributions (all empty: none is offered), the RPC endpoints that check
+      # them on chain, and the SUP rate the card's units_per_sup states.
+      - AICS_WALLET_BASE_USDC=${AICS_WALLET_BASE_USDC:-}
+      - AICS_WALLET_SOLANA=${AICS_WALLET_SOLANA:-}
+      - AICS_WALLET_BTC=${AICS_WALLET_BTC:-}
+      - AICS_WALLET_XMR=${AICS_WALLET_XMR:-}
+      - AICS_RPC_BASE_URL=${AICS_RPC_BASE_URL:-}
+      - AICS_RPC_SOLANA_URL=${AICS_RPC_SOLANA_URL:-}
+      - AICS_SUP_PER_USDC=${AICS_SUP_PER_USDC:-}
+      # Text-gate TLS (docs/PROTOCOL-TEXT.md §1) on TCP 7700 is switched on by the override
+      # deploy/gate-tls.yml once Caddy has issued the gate.wesupport-ai.com certificate
+      # (runbook step 4): COMPOSE_FILE=docker-compose.yml:gate-tls.yml in deploy/.env. It
+      # gives this container a read-only copy of that one certificate and key, never
+      # Caddy's certificate store. Until then the gate runs plain on 7701 only; the HTTPS
+      # gate at https://api.wesupport-ai.com/t is unaffected either way.
+    volumes:
+      - aics_data:/data
+      # The reviewed charter (AICS_CHARTER_FILE), terms and retention text. Long syntax with
+      # create_host_path false: if deploy/docs-public/legal/ lacks one of them, compose fails
+      # instead of mounting an empty directory, and nothing starts.
+      - type: bind
+        source: ./docs-public/legal/charter.md
+        target: /etc/aics/charter.md
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./docs-public/legal/terms.md
+        target: /etc/aics/terms.md
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./docs-public/legal/retention.md
+        target: /etc/aics/retention.md
+        read_only: true
+        bind:
+          create_host_path: false
+      # The reviewed card body and the optional limits file (deploy/card/, see its README).
+      - type: bind
+        source: ./card
+        target: /etc/aics/card
+        read_only: true
+        bind:
+          create_host_path: false
+      # Shared with caddy (read-only there): the tile mirror.
+      - aics_tiles:/data/tiles
+    expose:
+      - "8080"
+    ports:
+      # The text gate is served by the Python process itself (the aics-server CLI, the
+      # image's CMD), NOT by Caddy (docs/DECISIONS.md #10, docs/PROTOCOL-TEXT.md §1):
+      # 7700 TLS, 7701 plain. deploy/deploy-vps.sh checks both from inside the container.
+      # gate.wesupport-ai.com is DNS-only at Cloudflare, so these must be open
+      # in the OVH firewall (and the OVH network firewall panel) for TCP.
+      # On a shared single-IP host, S2/S3 launch through DNS-only HTTPS POST /t
+      # only. Their dedicated TCP gates are not offered until a distinct bound
+      # IP/host or a specified and tested TLS routing layer exists. Never bind
+      # another process to this port; advertise only working product transports.
+      - "7700:7700"
+      - "7701:7701"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.50"
+          memory: 2560M
+        reservations:
+          cpus: "0.50"
+          memory: 512M
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  caddy:
+    # Caddy WITH the caddy-dns/cloudflare module (ops/Dockerfile.caddy-cloudflare):
+    # required for the DNS-01 challenge on the Cloudflare-proxied hostnames
+    # wesupport-ai.com, www and tiles.* (see deploy/Caddyfile). A stock
+    # caddy:2-alpine cannot run that Caddyfile.
+    build:
+      context: ..
+      dockerfile: ops/Dockerfile.caddy-cloudflare
+    image: aics-caddy-cloudflare:2
+    container_name: aics-caddy
+    restart: unless-stopped
+    environment:
+      # Cloudflare API token for the DNS-01 challenge (Caddyfile: dns cloudflare).
+      # One token: Zone / Zone / Read and Zone / DNS / Edit, wesupport-ai.com only.
+      # Set CLOUDFLARE_API_TOKEN in deploy/.env on the VPS; it is a secret and
+      # never lives in this file. This is the only service that receives it (no
+      # env_file anywhere): the app container never holds a DNS-edit credential.
+      # Without it the proxied hostnames cannot get certificates; api.* and gate.*
+      # (HTTP-01, DNS-only) are unaffected.
+      - CLOUDFLARE_API_TOKEN=${CLOUDFLARE_API_TOKEN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Bind mount keeps the allowlisted export directly syncable without Docker
+      # volume tooling; never mount the repository's docs tree (contains internal).
+      - ./docs-public:/srv/docs:ro
+      - caddy_data:/data
+      - caddy_config:/config
+      # The tile mirror, written by aics-server into the shared volume, served
+      # read-only at tiles.wesupport-ai.com.
+      - aics_tiles:/srv/tiles:ro
+    depends_on:
+      - aics-server
+    deploy:
+      resources:
+        limits:
+          cpus: "0.40"
+          memory: 512M
+
+volumes:
+  aics_data:
+  # tlog-tiles mirror: written by aics-server at /data/tiles, read by caddy at
+  # /srv/tiles (read-only).
+  aics_tiles:
+  # Caddy certificate/config store. Only caddy mounts it; the gate's TLS listener gets a
+  # copy of its one certificate through deploy/gate-tls.yml.
+  caddy_data:
+  caddy_config:

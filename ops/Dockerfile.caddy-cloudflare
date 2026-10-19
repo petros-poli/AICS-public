@@ -1,0 +1,25 @@
+# Caddy image with the caddy-dns/cloudflare module.
+#
+# Why: deploy/Caddyfile completes the ACME DNS-01 challenge for the
+# Cloudflare-proxied hostnames (wesupport-ai.com, www, tiles.*) with
+# `dns cloudflare`, and stock Caddy has no DNS providers compiled in. api.* and
+# gate.* are DNS-only and use ordinary HTTP-01, which this image also does.
+#
+# Built by deploy/docker-compose.yml (build context = repository root, dockerfile
+# = ops/Dockerfile.caddy-cloudflare). Reproducible: both images are pinned by their
+# multi-platform index digests (caddy 2.11.7), xcaddy builds the Caddy version the
+# builder image names, and the module is pinned to a release (its source is checked
+# against the Go checksum database, sum.golang.org, as Go modules are by default).
+# To move any of them, resolve the new digest or tag and change it here.
+#
+# The module reads the token from the CLOUDFLARE_API_TOKEN environment variable
+# of the container (docker-compose.yml passes it from deploy/.env on the VPS to
+# this service only). Use a scoped token: one zone (wesupport-ai.com),
+# "Zone / Zone / Read" and "Zone / DNS / Edit". It is a secret: never commit it, never bake it into
+# an image.
+FROM caddy:2.11.7-builder@sha256:d842facfd63b960922e57444ff76fd8f0793a66dfdcf481af8026e1f4e6a39b4 AS builder
+RUN xcaddy build \
+    --with github.com/caddy-dns/cloudflare@v0.2.4
+
+FROM caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy

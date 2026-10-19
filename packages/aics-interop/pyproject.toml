@@ -1,0 +1,61 @@
+[project]
+name = "aics-interop"
+version = "0.1.0"
+description = "Cross-implementation interoperability suite for AICS-1: artifacts produced by one package and verified by another"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.12"
+dependencies = [
+    "aics-identity",
+    "aics-tlog",
+    "aics-witness",
+    "aics",
+    "aics-conformance",
+    "aics-server",
+    "cryptography>=50.0.2",
+    "httpx>=0.28.0",
+    "pynacl>=1.6.2",
+]
+
+[project.scripts]
+aics-interop-fixtures = "aics_interop.generate:main"
+aics-interop-server-conformance = "aics_interop.server:main"
+
+[build-system]
+requires = ["uv_build>=0.12.6,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+# Path dependencies on the six sibling packages, used only through their
+# public APIs (the source tree as committed on git HEAD; none is modified
+# here).  Editable, so the suite always imports the sibling source tree
+# itself: uv caches a non-editable directory build under its version and
+# pyproject.toml mtime only, and a stale wheel of an older commit was
+# observed being reused for aics-witness 0.1.0.  aics-server is booted in
+# process (its create_app factory, FastAPI's TestClient over httpx) by the
+# server-versus-AICS-1 drift tests and the conformance adapter.
+aics-identity = { path = "../aics-identity", editable = true }
+aics-tlog = { path = "../aics-tlog", editable = true }
+aics-witness = { path = "../aics-witness", editable = true }
+aics = { path = "../aics-cli", editable = true }
+aics-conformance = { path = "../aics-conformance", editable = true }
+aics-server = { path = "../aics-server", editable = true }
+
+[tool.uv]
+# aics-witness declares aics-tlog as an editable path source, while aics and
+# aics-conformance declare aics-tlog and aics-identity as non-editable ones;
+# uv refuses to resolve them together ("conflicting URLs").  The overrides
+# make every requirement on these two names resolve to the sources above.
+override-dependencies = ["aics-tlog", "aics-identity"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+xfail_strict = true
+# FastAPI's TestClient (the in-process aics-server) warns that Starlette will move from httpx to httpx2
+filterwarnings = ["ignore:Using `httpx` with `starlette.testclient` is deprecated"]

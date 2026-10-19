@@ -1,0 +1,25 @@
+# The build backend of packages/aics-identity, aics-tlog and aics-server (their
+# [build-system] requires uv_build>=0.12.6,<0.13.0), pinned to one release by the
+# SHA-256 of every file PyPI publishes for it (https://pypi.org/project/uv-build/0.12.6/),
+# so deploy/Dockerfile builds the three local packages without fetching anything unpinned
+# (pip --no-build-isolation). Change the version only together with those pyproject files.
+uv-build==0.12.6 \
+    --hash=sha256:7baa7e94976576eeb4930f310ecf9ce1e2dd3a73ff1042e873e00f7790d90027 \
+    --hash=sha256:64cbe9d8ff73f219e1684ed6ae882d01900095383fa5c4b08d26e22f78f837a8 \
+    --hash=sha256:d483396368b57ba21bf89b06cd14d1d248074d90e1677e9e8c9fb10b407e4d8e \
+    --hash=sha256:4c99a18b4a6534be434f6877134cec8859a805b9953c22ae2b329b2062253218 \
+    --hash=sha256:6fd1540e1488a51b660750cdc17f7f0e728155794c275274734a9a9492efe3dd \
+    --hash=sha256:11fcb07aca1e2f2f3854cef43081aa89f5a2edc1d561da6049798b17d337454c \
+    --hash=sha256:d966d6b7f8ff29314a81fc9cb9d026368342a26c641569769a49a10183939b88 \
+    --hash=sha256:66ae1d04b2d8aea3c9373e87e471db9f97158a28399713f7b2a6a0d22b854be5 \
+    --hash=sha256:1597b3f7de552f7ddd23bc1c2f4adddde7cdb5a48d644cd38bdb94aca98e64ab \
+    --hash=sha256:f7513a1a4736afded607ce99b3ba48ac7fbbcdf093ab96a22522f7d06dbbeb2b \
+    --hash=sha256:64388cee4f3007396fc841e0d3a1753bcbc4d9a85bbadb2eb930f9ed495687a7 \
+    --hash=sha256:72eb735e312549c00f7171fc0c0b30fe87d7ee13b5adffb43c85d3e28df39649 \
+    --hash=sha256:5f3c1f55e0120bfabb485cee0602e1164f396a0eddfcec786fff812d95a8eae8 \
+    --hash=sha256:9a78563f71b3a196279b9852f196b55be5b8a1cc4622257add77819b65dd8ee2 \
+    --hash=sha256:bca1a0b962a42bced2224057a1f03de2bf543b0546bd6abb744fed03f98b609f \
+    --hash=sha256:ed1f2f7507bdded631eacc5e3e245706e1bafdff91a8fe90d78ae433ec2466d1 \
+    --hash=sha256:a1da0f03f95a97aad7eb5143158dc265a382cf9eba2d01347efbfcbe95223971 \
+    --hash=sha256:e3171ec5ef167c4f6723557f4cb735624c7381443d7017d0a96f37ecf6831730 \
+    --hash=sha256:4756f1771d342ff8ff50b529ae23c58d58f14f097c243ca50d3778d0a23d24f0

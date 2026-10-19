@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Contribute (voluntary) · wesupport-ai.com{% endblock %}
+{% block description %}Contributions to the running costs of wesupport-ai.com are voluntary; nothing on the service depends on them.{% endblock %}
+
+{% block content %}
+<section class="matrix-section" aria-labelledby="contribute-title">
+  <h1 id="contribute-title">Contribute (voluntary)</h1>
+  <p>{{ info.statement }}</p>
+  {%- if not info.open %}
+  <p class="matrix-alert">Contributions are not open: no contribution address is configured.</p>
+  {%- else %}
+  <p class="section-lede">This page lists addresses only; it takes no payment. A contribution is a transfer you make yourself, and every transfer is public on its own chain.</p>
+  <div class="table-scroll">
+    <table class="matrix-table">
+      <thead><tr><th scope="col">Network</th><th scope="col">Asset</th><th scope="col">Address</th><th scope="col">Credited to a name</th></tr></thead>
+      <tbody>
+        {%- for n in info.networks %}
+        <tr>
+          <td>{{ n.network }}</td>
+          <td>{{ n.asset }}</td>
+          <td><code>{{ n.address }}</code></td>
+          <td>{% if n.credited %}can be, after an on-chain check{% else %}no: an anonymous contribution{% endif %}</td>
+        </tr>
+        {%- endfor %}
+      </tbody>
+    </table>
+  </div>
+  {%- if info.networks | selectattr("credited") | list %}
+  <p class="section-lede">{{ info.credit }}</p>
+  {%- endif %}
+  {%- endif %}
+</section>
+{% endblock %}

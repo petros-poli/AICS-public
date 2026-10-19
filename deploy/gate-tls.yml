@@ -1,0 +1,64 @@
+# The text gate's TLS listener on TCP 7700 (docs/PROTOCOL-TEXT.md section 1), switched on
+# once Caddy has issued the gate.wesupport-ai.com certificate (ops/RUNBOOK-first-deploy.md
+# step 4). Enable it with this line in deploy/.env on the VPS, then run deploy/deploy-vps.sh,
+# which copies the certificate and checks that the app can read it before restarting:
+#
+#     COMPOSE_FILE=docker-compose.yml:gate-tls.yml
+#
+# (COMPOSE_FILE lists every override in use, separated by ':', for instance with the pilot
+# override: docker-compose.yml:docker-compose.pilot.yml:gate-tls.yml.)
+#
+# aics-server never mounts Caddy's certificate store, which holds every site's private key
+# and the ACME account key. The one-shot gate-cert service copies only the gate's
+# certificate and key, from the Let's Encrypt directory the Caddyfile pins for the gate site
+# (no ZeroSSL fallback, so the path is fixed), into the gate_tls volume, owned by the app's
+# user (uid 10001, deploy/Dockerfile) with the key at mode 0400. aics-server mounts that
+# volume read-only. The copy runs at every `docker compose up`, and the gate reloads its
+# certificate by itself when the copied files change (aics_server.gate, the certificate
+# watcher). Caddy renews the certificate in its own store, so carry renewals over with a
+# daily copy on the VPS (ops/RUNBOOK-first-deploy.md step 7.4):
+#
+#     systemctl enable --now aics-gate-cert.timer
+#
+# Install ops/systemd/aics-gate-cert.{service,timer} first. A manual copy remains:
+#     cd /opt/wesupport-ai/deploy && docker compose run --rm gate-cert
+services:
+  gate-cert:
+    # The image the caddy service builds; only its busybox shell is used here.
+    image: aics-caddy-cloudflare:2
+    pull_policy: never
+    network_mode: none
+    restart: "no"
+    user: "0:0"
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        src=/caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/gate.wesupport-ai.com
+        test -r "$$src/gate.wesupport-ai.com.crt" && test -r "$$src/gate.wesupport-ai.com.key" || {
+          echo "gate-cert: Caddy has not issued $$src/gate.wesupport-ai.com.crt yet" >&2; exit 1; }
+        umask 077
+        cp "$$src/gate.wesupport-ai.com.crt" /gate-tls/gate.wesupport-ai.com.crt.new
+        cp "$$src/gate.wesupport-ai.com.key" /gate-tls/gate.wesupport-ai.com.key.new
+        chown 10001:10001 /gate-tls/gate.wesupport-ai.com.crt.new /gate-tls/gate.wesupport-ai.com.key.new
+        chmod 0444 /gate-tls/gate.wesupport-ai.com.crt.new
+        chmod 0400 /gate-tls/gate.wesupport-ai.com.key.new
+        mv -f /gate-tls/gate.wesupport-ai.com.crt.new /gate-tls/gate.wesupport-ai.com.crt
+        mv -f /gate-tls/gate.wesupport-ai.com.key.new /gate-tls/gate.wesupport-ai.com.key
+        echo "gate-cert: copied the gate certificate and key for uid 10001"
+    volumes:
+      - caddy_data:/caddy-data:ro
+      - gate_tls:/gate-tls
+
+  aics-server:
+    depends_on:
+      gate-cert:
+        condition: service_completed_successfully
+    environment:
+      - AICS_GATE_TLS_CERT=/etc/aics/gate-tls/gate.wesupport-ai.com.crt
+      - AICS_GATE_TLS_KEY=/etc/aics/gate-tls/gate.wesupport-ai.com.key
+    volumes:
+      - gate_tls:/etc/aics/gate-tls:ro
+
+volumes:
+  gate_tls:

@@ -1,0 +1,2303 @@
+{
+  "altered": {
+    "card": {
+      "api_base": "https://api.interop.test",
+      "assurances": [
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G1 interop fixture",
+          "evidence": [],
+          "id": "G1",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G2 interop fixture",
+          "evidence": [],
+          "id": "G2",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G3 interop fixture",
+          "evidence": [],
+          "id": "G3",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G4 interop fixture",
+          "evidence": [],
+          "id": "G4",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described",
+            "founder-run witness in the log's trust domain; honest quorum intersection not argued",
+            "Ed25519 cosignature/v1 only: no ML-DSA-44 cosignatures (a SHOULD of tlog-cosignature v1.1.0) and no sign-subtree API"
+          ],
+          "claim": "G5 interop fixture",
+          "evidence": [],
+          "id": "G5",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G6 interop fixture",
+          "evidence": [],
+          "id": "G6",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G7 interop fixture",
+          "evidence": [],
+          "id": "G7",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G8 interop fixture",
+          "evidence": [],
+          "id": "G8",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G9 interop fixture",
+          "evidence": [],
+          "id": "G9",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G10 interop fixture",
+          "evidence": [],
+          "id": "G10",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N1 interop fixture",
+          "evidence": [],
+          "id": "N1",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N2 interop fixture",
+          "evidence": [],
+          "id": "N2",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N3 interop fixture",
+          "evidence": [],
+          "id": "N3",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N4 interop fixture",
+          "evidence": [],
+          "id": "N4",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N5 interop fixture",
+          "evidence": [],
+          "id": "N5",
+          "status": "not-offered"
+        }
+      ],
+      "expires": 1794873600,
+      "gate": {
+        "https_url": "https://api.interop.test/t",
+        "plaintext_port": 7701,
+        "tls_host": "api.interop.test",
+        "tls_port": 7700
+      },
+      "issued_at": 1792281600,
+      "limits": {
+        "ciphertext_bytes": 65536,
+        "envelope_window_seconds": 300,
+        "flood_suspension_seconds": 3600,
+        "future_skew_seconds": 30,
+        "preidentity": {
+          "count": 1000,
+          "interval_seconds": 60
+        },
+        "public_body_bytes": 32768,
+        "registrations": {
+          "count": 20,
+          "interval_seconds": 60
+        },
+        "session_idle_seconds": 900,
+        "writes": {
+          "count": 20,
+          "interval_seconds": 60
+        }
+      },
+      "log_vkey": "api.interop.test/tiles+799876cf+AYhLiFf06qFhPGFQTbNNS+rzRlF6DjHePN3U2bQgHZ0L",
+      "max_checkpoint_age": 600,
+      "mmd_seconds": 60,
+      "origin": "api.interop.test/tiles",
+      "owner_kid": "did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72",
+      "policies": {
+        "charter_hash": "ce01e67bcb591341ef3ff4952d85e192472a8c23e83163200fa4254072bbd0ae",
+        "privacy_hash": "faac0d743a05d8788eceab5f84d6cff743626317d299b8956a9df3e987cd941b",
+        "terms_hash": "a6759a8576fc1fe01374dd28aab2295b52c42f6d2420b986529b45eb5c036163"
+      },
+      "policy_kid": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+      "policy_notice_seconds": 0,
+      "policy_parent_index": 0,
+      "proxy": [
+        {
+          "host": "api.interop.test",
+          "mode": "dns-only",
+          "tls_termination": "origin"
+        }
+      ],
+      "reason_codes": {
+        "freeze": [
+          "maintenance",
+          "incident",
+          "order",
+          "resource_exhaustion",
+          "resume"
+        ],
+        "outcome": [
+          "acted",
+          "declined",
+          "private_unassessable",
+          "invalid_notice",
+          "duplicate",
+          "published",
+          "resolved"
+        ],
+        "refusal": [
+          "malformed",
+          "bad_signature",
+          "expired",
+          "future",
+          "replay",
+          "unknown_key",
+          "revoked",
+          "tls_required",
+          "unsupported_scheme",
+          "unsupported_version",
+          "sequence",
+          "predecessor",
+          "name_taken",
+          "key_reuse",
+          "key_fork",
+          "stale_key",
+          "stale_grant",
+          "stale_capsule",
+          "already_voted",
+          "poll_closed",
+          "poll_constraint",
+          "too_large",
+          "digest_mismatch",
+          "rate_limit",
+          "quota",
+          "no_consent",
+          "grant_exhausted",
+          "suspended",
+          "frozen",
+          "tier_required",
+          "secret_format:github_pat",
+          "secret_format",
+          "rate",
+          "seq",
+          "fork",
+          "sig",
+          "no_grant",
+          "size",
+          "format",
+          "name",
+          "key_state",
+          "poll_rule"
+        ],
+        "revocation": [
+          "retired",
+          "compromised"
+        ],
+        "suspension": [
+          "order",
+          "flood"
+        ],
+        "tombstone": [
+          "order",
+          "erasure",
+          "secret_format",
+          "illegal_on_notice"
+        ]
+      },
+      "retention": {
+        "capsule_max_seconds": 7776000,
+        "ciphertext_budget_bytes": 1073741824,
+        "dm_seconds": 7776000,
+        "eviction": "oldest-ts-index"
+      },
+      "schemes": [
+        "x25519-xsalsa20-poly1305"
+      ],
+      "secret_patterns": [
+        {
+          "id": "github_pat",
+          "pattern_hash": "7e2f729532ce947b3794161e41db449c83226b98e2fe87ad77b7d242cfda5f90"
+        }
+      ],
+      "signatures": [
+        {
+          "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3FHQzNuV1poWWllRVZUVkRLVzV2NTg4Q2lHZnNEU21SVkc5Wnd3V1R2TFNLIiwidHlwIjoiSk9TRSJ9",
+          "signature": "f6xOqZssC3PCDid4TrcEg5-qZ8IPZMg6Lk_Kmd3m3H8g4FYFrgi2HZ8yWUuRfFBnmkJYiSbmkjH2RLvHdF27Bg"
+        }
+      ],
+      "spec": "AICS-1",
+      "spec_versions": {
+        "a2a-card": "1.0.0",
+        "signed-note": "1.1.0",
+        "tlog-checkpoint": "1.1.0",
+        "tlog-cosignature": "1.1.0",
+        "tlog-tiles": "1.0.0",
+        "tlog-witness": "1.1.0"
+      },
+      "tiers": [
+        "verified",
+        "third-party-generated",
+        "unverified"
+      ],
+      "tile_prefixes": [
+        "https://api.interop.test/tiles",
+        "https://mirror.interop.test/tiles"
+      ],
+      "version": "0.2-draft",
+      "witness_policy": {
+        "quorum": 2,
+        "witnesses": [
+          {
+            "independent": false,
+            "name": "witness-a.interop.test/w1",
+            "trust_domain": "founder",
+            "vkey": "witness-a.interop.test/w1+603ddbca+BFiTZgSr2hEryUkzVpyC+NDMDd+So/gyny9Ej39ISllM"
+          },
+          {
+            "independent": false,
+            "name": "witness-b.interop.test/w1",
+            "trust_domain": "founder",
+            "vkey": "witness-b.interop.test/w1+d29f59eb+BL7X0qtmjaPvrWE5mPBver94dfOmt2d6nzzpR9d9d2Cm"
+          }
+        ]
+      }
+    },
+    "expect": "invalid",
+    "reason": "signed bytes changed after signing"
+  },
+  "card": {
+    "card": {
+      "api_base": "https://api.interop.test",
+      "assurances": [
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G1 interop fixture",
+          "evidence": [],
+          "id": "G1",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G2 interop fixture",
+          "evidence": [],
+          "id": "G2",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G3 interop fixture",
+          "evidence": [],
+          "id": "G3",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G4 interop fixture",
+          "evidence": [],
+          "id": "G4",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described",
+            "founder-run witness in the log's trust domain; honest quorum intersection not argued",
+            "Ed25519 cosignature/v1 only: no ML-DSA-44 cosignatures (a SHOULD of tlog-cosignature v1.1.0) and no sign-subtree API"
+          ],
+          "claim": "G5 interop fixture",
+          "evidence": [],
+          "id": "G5",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G6 interop fixture",
+          "evidence": [],
+          "id": "G6",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G7 interop fixture",
+          "evidence": [],
+          "id": "G7",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G8 interop fixture",
+          "evidence": [],
+          "id": "G8",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G9 interop fixture",
+          "evidence": [],
+          "id": "G9",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G10 interop fixture",
+          "evidence": [],
+          "id": "G10",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N1 interop fixture",
+          "evidence": [],
+          "id": "N1",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N2 interop fixture",
+          "evidence": [],
+          "id": "N2",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N3 interop fixture",
+          "evidence": [],
+          "id": "N3",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N4 interop fixture",
+          "evidence": [],
+          "id": "N4",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N5 interop fixture",
+          "evidence": [],
+          "id": "N5",
+          "status": "not-offered"
+        }
+      ],
+      "expires": 1794873600,
+      "gate": {
+        "https_url": "https://api.interop.test/t",
+        "plaintext_port": 7701,
+        "tls_host": "api.interop.test",
+        "tls_port": 7700
+      },
+      "issued_at": 1792281600,
+      "limits": {
+        "ciphertext_bytes": 65536,
+        "envelope_window_seconds": 300,
+        "flood_suspension_seconds": 3600,
+        "future_skew_seconds": 30,
+        "preidentity": {
+          "count": 1000,
+          "interval_seconds": 60
+        },
+        "public_body_bytes": 32768,
+        "registrations": {
+          "count": 20,
+          "interval_seconds": 60
+        },
+        "session_idle_seconds": 900,
+        "writes": {
+          "count": 20,
+          "interval_seconds": 60
+        }
+      },
+      "log_vkey": "api.interop.test/tiles+799876cf+AYhLiFf06qFhPGFQTbNNS+rzRlF6DjHePN3U2bQgHZ0L",
+      "max_checkpoint_age": 300,
+      "mmd_seconds": 60,
+      "origin": "api.interop.test/tiles",
+      "owner_kid": "did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72",
+      "policies": {
+        "charter_hash": "ce01e67bcb591341ef3ff4952d85e192472a8c23e83163200fa4254072bbd0ae",
+        "privacy_hash": "faac0d743a05d8788eceab5f84d6cff743626317d299b8956a9df3e987cd941b",
+        "terms_hash": "a6759a8576fc1fe01374dd28aab2295b52c42f6d2420b986529b45eb5c036163"
+      },
+      "policy_kid": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+      "policy_notice_seconds": 0,
+      "policy_parent_index": 0,
+      "proxy": [
+        {
+          "host": "api.interop.test",
+          "mode": "dns-only",
+          "tls_termination": "origin"
+        }
+      ],
+      "reason_codes": {
+        "freeze": [
+          "maintenance",
+          "incident",
+          "order",
+          "resource_exhaustion",
+          "resume"
+        ],
+        "outcome": [
+          "acted",
+          "declined",
+          "private_unassessable",
+          "invalid_notice",
+          "duplicate",
+          "published",
+          "resolved"
+        ],
+        "refusal": [
+          "malformed",
+          "bad_signature",
+          "expired",
+          "future",
+          "replay",
+          "unknown_key",
+          "revoked",
+          "tls_required",
+          "unsupported_scheme",
+          "unsupported_version",
+          "sequence",
+          "predecessor",
+          "name_taken",
+          "key_reuse",
+          "key_fork",
+          "stale_key",
+          "stale_grant",
+          "stale_capsule",
+          "already_voted",
+          "poll_closed",
+          "poll_constraint",
+          "too_large",
+          "digest_mismatch",
+          "rate_limit",
+          "quota",
+          "no_consent",
+          "grant_exhausted",
+          "suspended",
+          "frozen",
+          "tier_required",
+          "secret_format:github_pat",
+          "secret_format",
+          "rate",
+          "seq",
+          "fork",
+          "sig",
+          "no_grant",
+          "size",
+          "format",
+          "name",
+          "key_state",
+          "poll_rule"
+        ],
+        "revocation": [
+          "retired",
+          "compromised"
+        ],
+        "suspension": [
+          "order",
+          "flood"
+        ],
+        "tombstone": [
+          "order",
+          "erasure",
+          "secret_format",
+          "illegal_on_notice"
+        ]
+      },
+      "retention": {
+        "capsule_max_seconds": 7776000,
+        "ciphertext_budget_bytes": 1073741824,
+        "dm_seconds": 7776000,
+        "eviction": "oldest-ts-index"
+      },
+      "schemes": [
+        "x25519-xsalsa20-poly1305"
+      ],
+      "secret_patterns": [
+        {
+          "id": "github_pat",
+          "pattern_hash": "7e2f729532ce947b3794161e41db449c83226b98e2fe87ad77b7d242cfda5f90"
+        }
+      ],
+      "signatures": [
+        {
+          "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3FHQzNuV1poWWllRVZUVkRLVzV2NTg4Q2lHZnNEU21SVkc5Wnd3V1R2TFNLIiwidHlwIjoiSk9TRSJ9",
+          "signature": "f6xOqZssC3PCDid4TrcEg5-qZ8IPZMg6Lk_Kmd3m3H8g4FYFrgi2HZ8yWUuRfFBnmkJYiSbmkjH2RLvHdF27Bg"
+        }
+      ],
+      "spec": "AICS-1",
+      "spec_versions": {
+        "a2a-card": "1.0.0",
+        "signed-note": "1.1.0",
+        "tlog-checkpoint": "1.1.0",
+        "tlog-cosignature": "1.1.0",
+        "tlog-tiles": "1.0.0",
+        "tlog-witness": "1.1.0"
+      },
+      "tiers": [
+        "verified",
+        "third-party-generated",
+        "unverified"
+      ],
+      "tile_prefixes": [
+        "https://api.interop.test/tiles",
+        "https://mirror.interop.test/tiles"
+      ],
+      "version": "0.2-draft",
+      "witness_policy": {
+        "quorum": 2,
+        "witnesses": [
+          {
+            "independent": false,
+            "name": "witness-a.interop.test/w1",
+            "trust_domain": "founder",
+            "vkey": "witness-a.interop.test/w1+603ddbca+BFiTZgSr2hEryUkzVpyC+NDMDd+So/gyny9Ej39ISllM"
+          },
+          {
+            "independent": false,
+            "name": "witness-b.interop.test/w1",
+            "trust_domain": "founder",
+            "vkey": "witness-b.interop.test/w1+d29f59eb+BL7X0qtmjaPvrWE5mPBver94dfOmt2d6nzzpR9d9d2Cm"
+          }
+        ]
+      }
+    },
+    "card_hash": "0b69ace367ae7327567a7cd4f6f3395f6a6b388e5a9df93d9474a0a2d10a2edb",
+    "expect": "valid",
+    "unsigned_jcs": "{\"api_base\":\"https://api.interop.test\",\"assurances\":[{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"G1 interop fixture\",\"evidence\":[],\"id\":\"G1\",\"status\":\"promised\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"G2 interop fixture\",\"evidence\":[],\"id\":\"G2\",\"status\":\"promised\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"G3 interop fixture\",\"evidence\":[],\"id\":\"G3\",\"status\":\"promised\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"G4 interop fixture\",\"evidence\":[],\"id\":\"G4\",\"status\":\"promised\"},{\"assumptions\":[\"interop test fixture; no deployment is described\",\"founder-run witness in the log's trust domain; honest quorum intersection not argued\",\"Ed25519 cosignature/v1 only: no ML-DSA-44 cosignatures (a SHOULD of tlog-cosignature v1.1.0) and no sign-subtree API\"],\"claim\":\"G5 interop fixture\",\"evidence\":[],\"id\":\"G5\",\"status\":\"promised\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"G6 interop fixture\",\"evidence\":[],\"id\":\"G6\",\"status\":\"promised\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"G7 interop fixture\",\"evidence\":[],\"id\":\"G7\",\"status\":\"promised\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"G8 interop fixture\",\"evidence\":[],\"id\":\"G8\",\"status\":\"promised\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"G9 interop fixture\",\"evidence\":[],\"id\":\"G9\",\"status\":\"promised\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"G10 interop fixture\",\"evidence\":[],\"id\":\"G10\",\"status\":\"promised\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"N1 interop fixture\",\"evidence\":[],\"id\":\"N1\",\"status\":\"not-offered\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"N2 interop fixture\",\"evidence\":[],\"id\":\"N2\",\"status\":\"not-offered\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"N3 interop fixture\",\"evidence\":[],\"id\":\"N3\",\"status\":\"not-offered\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"N4 interop fixture\",\"evidence\":[],\"id\":\"N4\",\"status\":\"not-offered\"},{\"assumptions\":[\"interop test fixture; no deployment is described\"],\"claim\":\"N5 interop fixture\",\"evidence\":[],\"id\":\"N5\",\"status\":\"not-offered\"}],\"expires\":1794873600,\"gate\":{\"https_url\":\"https://api.interop.test/t\",\"plaintext_port\":7701,\"tls_host\":\"api.interop.test\",\"tls_port\":7700},\"issued_at\":1792281600,\"limits\":{\"ciphertext_bytes\":65536,\"envelope_window_seconds\":300,\"flood_suspension_seconds\":3600,\"future_skew_seconds\":30,\"preidentity\":{\"count\":1000,\"interval_seconds\":60},\"public_body_bytes\":32768,\"registrations\":{\"count\":20,\"interval_seconds\":60},\"session_idle_seconds\":900,\"writes\":{\"count\":20,\"interval_seconds\":60}},\"log_vkey\":\"api.interop.test/tiles+799876cf+AYhLiFf06qFhPGFQTbNNS+rzRlF6DjHePN3U2bQgHZ0L\",\"max_checkpoint_age\":300,\"mmd_seconds\":60,\"origin\":\"api.interop.test/tiles\",\"owner_kid\":\"did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72\",\"policies\":{\"charter_hash\":\"ce01e67bcb591341ef3ff4952d85e192472a8c23e83163200fa4254072bbd0ae\",\"privacy_hash\":\"faac0d743a05d8788eceab5f84d6cff743626317d299b8956a9df3e987cd941b\",\"terms_hash\":\"a6759a8576fc1fe01374dd28aab2295b52c42f6d2420b986529b45eb5c036163\"},\"policy_kid\":\"did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK\",\"policy_notice_seconds\":0,\"policy_parent_index\":0,\"proxy\":[{\"host\":\"api.interop.test\",\"mode\":\"dns-only\",\"tls_termination\":\"origin\"}],\"reason_codes\":{\"freeze\":[\"maintenance\",\"incident\",\"order\",\"resource_exhaustion\",\"resume\"],\"outcome\":[\"acted\",\"declined\",\"private_unassessable\",\"invalid_notice\",\"duplicate\",\"published\",\"resolved\"],\"refusal\":[\"malformed\",\"bad_signature\",\"expired\",\"future\",\"replay\",\"unknown_key\",\"revoked\",\"tls_required\",\"unsupported_scheme\",\"unsupported_version\",\"sequence\",\"predecessor\",\"name_taken\",\"key_reuse\",\"key_fork\",\"stale_key\",\"stale_grant\",\"stale_capsule\",\"already_voted\",\"poll_closed\",\"poll_constraint\",\"too_large\",\"digest_mismatch\",\"rate_limit\",\"quota\",\"no_consent\",\"grant_exhausted\",\"suspended\",\"frozen\",\"tier_required\",\"secret_format:github_pat\",\"secret_format\",\"rate\",\"seq\",\"fork\",\"sig\",\"no_grant\",\"size\",\"format\",\"name\",\"key_state\",\"poll_rule\"],\"revocation\":[\"retired\",\"compromised\"],\"suspension\":[\"order\",\"flood\"],\"tombstone\":[\"order\",\"erasure\",\"secret_format\",\"illegal_on_notice\"]},\"retention\":{\"capsule_max_seconds\":7776000,\"ciphertext_budget_bytes\":1073741824,\"dm_seconds\":7776000,\"eviction\":\"oldest-ts-index\"},\"schemes\":[\"x25519-xsalsa20-poly1305\"],\"secret_patterns\":[{\"id\":\"github_pat\",\"pattern_hash\":\"7e2f729532ce947b3794161e41db449c83226b98e2fe87ad77b7d242cfda5f90\"}],\"spec\":\"AICS-1\",\"spec_versions\":{\"a2a-card\":\"1.0.0\",\"signed-note\":\"1.1.0\",\"tlog-checkpoint\":\"1.1.0\",\"tlog-cosignature\":\"1.1.0\",\"tlog-tiles\":\"1.0.0\",\"tlog-witness\":\"1.1.0\"},\"tiers\":[\"verified\",\"third-party-generated\",\"unverified\"],\"tile_prefixes\":[\"https://api.interop.test/tiles\",\"https://mirror.interop.test/tiles\"],\"version\":\"0.2-draft\",\"witness_policy\":{\"quorum\":2,\"witnesses\":[{\"independent\":false,\"name\":\"witness-a.interop.test/w1\",\"trust_domain\":\"founder\",\"vkey\":\"witness-a.interop.test/w1+603ddbca+BFiTZgSr2hEryUkzVpyC+NDMDd+So/gyny9Ej39ISllM\"},{\"independent\":false,\"name\":\"witness-b.interop.test/w1\",\"trust_domain\":\"founder\",\"vkey\":\"witness-b.interop.test/w1+d29f59eb+BL7X0qtmjaPvrWE5mPBver94dfOmt2d6nzzpR9d9d2Cm\"}]}}"
+  },
+  "card_0_1_draft": {
+    "card": {
+      "api_base": "https://api.interop.test",
+      "assurances": [
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G1 interop fixture",
+          "evidence": [],
+          "id": "G1",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G2 interop fixture",
+          "evidence": [],
+          "id": "G2",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G3 interop fixture",
+          "evidence": [],
+          "id": "G3",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G4 interop fixture",
+          "evidence": [],
+          "id": "G4",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described",
+            "founder-run witness in the log's trust domain; honest quorum intersection not argued",
+            "Ed25519 cosignature/v1 only: no ML-DSA-44 cosignatures (a SHOULD of tlog-cosignature v1.1.0) and no sign-subtree API"
+          ],
+          "claim": "G5 interop fixture",
+          "evidence": [],
+          "id": "G5",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G6 interop fixture",
+          "evidence": [],
+          "id": "G6",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G7 interop fixture",
+          "evidence": [],
+          "id": "G7",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G8 interop fixture",
+          "evidence": [],
+          "id": "G8",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G9 interop fixture",
+          "evidence": [],
+          "id": "G9",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "G10 interop fixture",
+          "evidence": [],
+          "id": "G10",
+          "status": "promised"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N1 interop fixture",
+          "evidence": [],
+          "id": "N1",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N2 interop fixture",
+          "evidence": [],
+          "id": "N2",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N3 interop fixture",
+          "evidence": [],
+          "id": "N3",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N4 interop fixture",
+          "evidence": [],
+          "id": "N4",
+          "status": "not-offered"
+        },
+        {
+          "assumptions": [
+            "interop test fixture; no deployment is described"
+          ],
+          "claim": "N5 interop fixture",
+          "evidence": [],
+          "id": "N5",
+          "status": "not-offered"
+        }
+      ],
+      "expires": 1794873600,
+      "gate": {
+        "https_url": "https://api.interop.test/t",
+        "plaintext_port": 7701,
+        "tls_host": "api.interop.test",
+        "tls_port": 7700
+      },
+      "issued_at": 1792281600,
+      "limits": {
+        "ciphertext_bytes": 65536,
+        "envelope_window_seconds": 300,
+        "flood_suspension_seconds": 3600,
+        "future_skew_seconds": 30,
+        "preidentity": {
+          "count": 1000,
+          "interval_seconds": 60
+        },
+        "public_body_bytes": 32768,
+        "registrations": {
+          "count": 20,
+          "interval_seconds": 60
+        },
+        "session_idle_seconds": 900,
+        "writes": {
+          "count": 20,
+          "interval_seconds": 60
+        }
+      },
+      "log_vkey": "api.interop.test/tiles+799876cf+AYhLiFf06qFhPGFQTbNNS+rzRlF6DjHePN3U2bQgHZ0L",
+      "max_checkpoint_age": 300,
+      "mmd_seconds": 60,
+      "origin": "api.interop.test/tiles",
+      "owner_kid": "did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72",
+      "policies": {
+        "charter_hash": "ce01e67bcb591341ef3ff4952d85e192472a8c23e83163200fa4254072bbd0ae",
+        "privacy_hash": "faac0d743a05d8788eceab5f84d6cff743626317d299b8956a9df3e987cd941b",
+        "terms_hash": "a6759a8576fc1fe01374dd28aab2295b52c42f6d2420b986529b45eb5c036163"
+      },
+      "policy_kid": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+      "policy_notice_seconds": 0,
+      "policy_parent_index": 0,
+      "proxy": [
+        {
+          "host": "api.interop.test",
+          "mode": "dns-only",
+          "tls_termination": "origin"
+        }
+      ],
+      "reason_codes": {
+        "freeze": [
+          "maintenance",
+          "incident",
+          "order",
+          "resource_exhaustion",
+          "resume"
+        ],
+        "outcome": [
+          "acted",
+          "declined",
+          "private_unassessable",
+          "invalid_notice",
+          "duplicate",
+          "published",
+          "resolved"
+        ],
+        "refusal": [
+          "malformed",
+          "bad_signature",
+          "expired",
+          "future",
+          "replay",
+          "unknown_key",
+          "revoked",
+          "tls_required",
+          "unsupported_scheme",
+          "unsupported_version",
+          "sequence",
+          "predecessor",
+          "name_taken",
+          "key_reuse",
+          "key_fork",
+          "stale_key",
+          "stale_grant",
+          "stale_capsule",
+          "already_voted",
+          "poll_closed",
+          "poll_constraint",
+          "too_large",
+          "digest_mismatch",
+          "rate_limit",
+          "quota",
+          "no_consent",
+          "grant_exhausted",
+          "suspended",
+          "frozen",
+          "tier_required",
+          "secret_format:github_pat"
+        ],
+        "revocation": [
+          "retired",
+          "compromised"
+        ],
+        "suspension": [
+          "order",
+          "flood"
+        ],
+        "tombstone": [
+          "order",
+          "erasure",
+          "secret_format",
+          "illegal_on_notice"
+        ]
+      },
+      "retention": {
+        "capsule_max_seconds": 7776000,
+        "ciphertext_budget_bytes": 1073741824,
+        "dm_seconds": 7776000,
+        "eviction": "oldest-ts-index"
+      },
+      "schemes": [
+        "x25519-xsalsa20-poly1305"
+      ],
+      "secret_patterns": [
+        {
+          "id": "github_pat",
+          "pattern_hash": "7e2f729532ce947b3794161e41db449c83226b98e2fe87ad77b7d242cfda5f90"
+        }
+      ],
+      "signatures": [
+        {
+          "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3FHQzNuV1poWWllRVZUVkRLVzV2NTg4Q2lHZnNEU21SVkc5Wnd3V1R2TFNLIiwidHlwIjoiSk9TRSJ9",
+          "signature": "LF46fDh0CaLHpvFXtfuaFBrRWRtO1gRxypv_yOr7wfK2B9hVwadTsXuGXdHtNV3KKnD41HRkQCAxf0KhCYrPAA"
+        }
+      ],
+      "spec": "AICS-1",
+      "spec_versions": {
+        "a2a-card": "1.0.0",
+        "signed-note": "1.0.0",
+        "tlog-checkpoint": "1.0.0",
+        "tlog-cosignature": "1.0.0",
+        "tlog-tiles": "1.0.0",
+        "tlog-witness": "1.0.0"
+      },
+      "tiers": [
+        "verified",
+        "third-party-generated",
+        "unverified"
+      ],
+      "tile_prefixes": [
+        "https://api.interop.test/tiles",
+        "https://mirror.interop.test/tiles"
+      ],
+      "version": "0.1-draft",
+      "witness_policy": {
+        "quorum": 2,
+        "witnesses": [
+          {
+            "independent": false,
+            "name": "witness-a.interop.test/w1",
+            "trust_domain": "founder",
+            "vkey": "witness-a.interop.test/w1+603ddbca+BFiTZgSr2hEryUkzVpyC+NDMDd+So/gyny9Ej39ISllM"
+          },
+          {
+            "independent": false,
+            "name": "witness-b.interop.test/w1",
+            "trust_domain": "founder",
+            "vkey": "witness-b.interop.test/w1+d29f59eb+BL7X0qtmjaPvrWE5mPBver94dfOmt2d6nzzpR9d9d2Cm"
+          }
+        ]
+      }
+    },
+    "card_hash": "9cd6efb4c44782bebdf01d596fd08746f39b392eada11ac8f170e8f5f60e91c4",
+    "expect": "invalid",
+    "reason": "the historical 0.1-draft card: version, spec_versions and the refusal registry are not 0.2-draft"
+  },
+  "policy_kid": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+  "registry": [
+    {
+      "card": {
+        "api_base": "https://api.interop.test",
+        "assurances": [
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G1 interop fixture",
+            "evidence": [],
+            "id": "G1",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G2 interop fixture",
+            "evidence": [],
+            "id": "G2",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G3 interop fixture",
+            "evidence": [],
+            "id": "G3",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G4 interop fixture",
+            "evidence": [],
+            "id": "G4",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described",
+              "founder-run witness in the log's trust domain; honest quorum intersection not argued",
+              "Ed25519 cosignature/v1 only: no ML-DSA-44 cosignatures (a SHOULD of tlog-cosignature v1.1.0) and no sign-subtree API"
+            ],
+            "claim": "G5 interop fixture",
+            "evidence": [],
+            "id": "G5",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G6 interop fixture",
+            "evidence": [],
+            "id": "G6",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G7 interop fixture",
+            "evidence": [],
+            "id": "G7",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G8 interop fixture",
+            "evidence": [],
+            "id": "G8",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G9 interop fixture",
+            "evidence": [],
+            "id": "G9",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G10 interop fixture",
+            "evidence": [],
+            "id": "G10",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N1 interop fixture",
+            "evidence": [],
+            "id": "N1",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N2 interop fixture",
+            "evidence": [],
+            "id": "N2",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N3 interop fixture",
+            "evidence": [],
+            "id": "N3",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N4 interop fixture",
+            "evidence": [],
+            "id": "N4",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N5 interop fixture",
+            "evidence": [],
+            "id": "N5",
+            "status": "not-offered"
+          }
+        ],
+        "expires": 1794873600,
+        "gate": {
+          "https_url": "https://api.interop.test/t",
+          "plaintext_port": 7701,
+          "tls_host": "api.interop.test",
+          "tls_port": 7700
+        },
+        "issued_at": 1792281600,
+        "limits": {
+          "ciphertext_bytes": 65536,
+          "envelope_window_seconds": 300,
+          "flood_suspension_seconds": 3600,
+          "future_skew_seconds": 30,
+          "preidentity": {
+            "count": 1000,
+            "interval_seconds": 60
+          },
+          "public_body_bytes": 32768,
+          "registrations": {
+            "count": 20,
+            "interval_seconds": 60
+          },
+          "session_idle_seconds": 900,
+          "writes": {
+            "count": 20,
+            "interval_seconds": 60
+          }
+        },
+        "log_vkey": "api.interop.test/tiles+799876cf+AYhLiFf06qFhPGFQTbNNS+rzRlF6DjHePN3U2bQgHZ0L",
+        "max_checkpoint_age": 300,
+        "mmd_seconds": 60,
+        "origin": "api.interop.test/tiles",
+        "owner_kid": "did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72",
+        "policies": {
+          "charter_hash": "ce01e67bcb591341ef3ff4952d85e192472a8c23e83163200fa4254072bbd0ae",
+          "privacy_hash": "faac0d743a05d8788eceab5f84d6cff743626317d299b8956a9df3e987cd941b",
+          "terms_hash": "a6759a8576fc1fe01374dd28aab2295b52c42f6d2420b986529b45eb5c036163"
+        },
+        "policy_kid": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+        "policy_notice_seconds": 0,
+        "policy_parent_index": 0,
+        "proxy": [
+          {
+            "host": "api.interop.test",
+            "mode": "dns-only",
+            "tls_termination": "origin"
+          }
+        ],
+        "reason_codes": {
+          "freeze": [
+            "maintenance",
+            "incident",
+            "order",
+            "resource_exhaustion",
+            "resume"
+          ],
+          "outcome": [
+            "acted",
+            "declined",
+            "private_unassessable",
+            "invalid_notice",
+            "duplicate",
+            "published",
+            "resolved"
+          ],
+          "refusal": [
+            "malformed",
+            "bad_signature",
+            "expired",
+            "future",
+            "replay",
+            "unknown_key",
+            "revoked",
+            "tls_required",
+            "unsupported_scheme",
+            "unsupported_version",
+            "sequence",
+            "predecessor",
+            "name_taken",
+            "key_reuse",
+            "key_fork",
+            "stale_key",
+            "stale_grant",
+            "stale_capsule",
+            "already_voted",
+            "poll_closed",
+            "poll_constraint",
+            "too_large",
+            "digest_mismatch",
+            "rate_limit",
+            "quota",
+            "no_consent",
+            "grant_exhausted",
+            "suspended",
+            "frozen",
+            "tier_required",
+            "secret_format:github_pat",
+            "secret_format",
+            "rate",
+            "seq",
+            "fork",
+            "sig",
+            "no_grant",
+            "size",
+            "format",
+            "name",
+            "key_state",
+            "poll_rule",
+            "invalid_signature"
+          ],
+          "revocation": [
+            "retired",
+            "compromised"
+          ],
+          "suspension": [
+            "order",
+            "flood"
+          ],
+          "tombstone": [
+            "order",
+            "erasure",
+            "secret_format",
+            "illegal_on_notice"
+          ]
+        },
+        "retention": {
+          "capsule_max_seconds": 7776000,
+          "ciphertext_budget_bytes": 1073741824,
+          "dm_seconds": 7776000,
+          "eviction": "oldest-ts-index"
+        },
+        "schemes": [
+          "x25519-xsalsa20-poly1305"
+        ],
+        "secret_patterns": [
+          {
+            "id": "github_pat",
+            "pattern_hash": "7e2f729532ce947b3794161e41db449c83226b98e2fe87ad77b7d242cfda5f90"
+          }
+        ],
+        "signatures": [
+          {
+            "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3FHQzNuV1poWWllRVZUVkRLVzV2NTg4Q2lHZnNEU21SVkc5Wnd3V1R2TFNLIiwidHlwIjoiSk9TRSJ9",
+            "signature": "xbJqTJ5bJ9miHvIzBDBp0coyonolq-w3TJ8BAeJYkDji9slDDv1Hy652sF0sTTmfV_PNFZKjHtDLto_dXUOeDg"
+          }
+        ],
+        "spec": "AICS-1",
+        "spec_versions": {
+          "a2a-card": "1.0.0",
+          "signed-note": "1.1.0",
+          "tlog-checkpoint": "1.1.0",
+          "tlog-cosignature": "1.1.0",
+          "tlog-tiles": "1.0.0",
+          "tlog-witness": "1.1.0"
+        },
+        "tiers": [
+          "verified",
+          "third-party-generated",
+          "unverified"
+        ],
+        "tile_prefixes": [
+          "https://api.interop.test/tiles",
+          "https://mirror.interop.test/tiles"
+        ],
+        "version": "0.2-draft",
+        "witness_policy": {
+          "quorum": 2,
+          "witnesses": [
+            {
+              "independent": false,
+              "name": "witness-a.interop.test/w1",
+              "trust_domain": "founder",
+              "vkey": "witness-a.interop.test/w1+603ddbca+BFiTZgSr2hEryUkzVpyC+NDMDd+So/gyny9Ej39ISllM"
+            },
+            {
+              "independent": false,
+              "name": "witness-b.interop.test/w1",
+              "trust_domain": "founder",
+              "vkey": "witness-b.interop.test/w1+d29f59eb+BL7X0qtmjaPvrWE5mPBver94dfOmt2d6nzzpR9d9d2Cm"
+            }
+          ]
+        }
+      },
+      "card_hash": "43748a5647ba355f7b0f90f8bde55c39b1194a0a9d80e5965c631d84511590e9",
+      "expect": "invalid",
+      "name": "refusal:adds-invalid_signature",
+      "reason": "§17.2: invalid_signature and other unregistered synonyms MUST NOT become codes; otherwise the 0.2-draft card"
+    },
+    {
+      "card": {
+        "api_base": "https://api.interop.test",
+        "assurances": [
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G1 interop fixture",
+            "evidence": [],
+            "id": "G1",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G2 interop fixture",
+            "evidence": [],
+            "id": "G2",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G3 interop fixture",
+            "evidence": [],
+            "id": "G3",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G4 interop fixture",
+            "evidence": [],
+            "id": "G4",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described",
+              "founder-run witness in the log's trust domain; honest quorum intersection not argued",
+              "Ed25519 cosignature/v1 only: no ML-DSA-44 cosignatures (a SHOULD of tlog-cosignature v1.1.0) and no sign-subtree API"
+            ],
+            "claim": "G5 interop fixture",
+            "evidence": [],
+            "id": "G5",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G6 interop fixture",
+            "evidence": [],
+            "id": "G6",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G7 interop fixture",
+            "evidence": [],
+            "id": "G7",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G8 interop fixture",
+            "evidence": [],
+            "id": "G8",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G9 interop fixture",
+            "evidence": [],
+            "id": "G9",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G10 interop fixture",
+            "evidence": [],
+            "id": "G10",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N1 interop fixture",
+            "evidence": [],
+            "id": "N1",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N2 interop fixture",
+            "evidence": [],
+            "id": "N2",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N3 interop fixture",
+            "evidence": [],
+            "id": "N3",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N4 interop fixture",
+            "evidence": [],
+            "id": "N4",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N5 interop fixture",
+            "evidence": [],
+            "id": "N5",
+            "status": "not-offered"
+          }
+        ],
+        "expires": 1794873600,
+        "gate": {
+          "https_url": "https://api.interop.test/t",
+          "plaintext_port": 7701,
+          "tls_host": "api.interop.test",
+          "tls_port": 7700
+        },
+        "issued_at": 1792281600,
+        "limits": {
+          "ciphertext_bytes": 65536,
+          "envelope_window_seconds": 300,
+          "flood_suspension_seconds": 3600,
+          "future_skew_seconds": 30,
+          "preidentity": {
+            "count": 1000,
+            "interval_seconds": 60
+          },
+          "public_body_bytes": 32768,
+          "registrations": {
+            "count": 20,
+            "interval_seconds": 60
+          },
+          "session_idle_seconds": 900,
+          "writes": {
+            "count": 20,
+            "interval_seconds": 60
+          }
+        },
+        "log_vkey": "api.interop.test/tiles+799876cf+AYhLiFf06qFhPGFQTbNNS+rzRlF6DjHePN3U2bQgHZ0L",
+        "max_checkpoint_age": 300,
+        "mmd_seconds": 60,
+        "origin": "api.interop.test/tiles",
+        "owner_kid": "did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72",
+        "policies": {
+          "charter_hash": "ce01e67bcb591341ef3ff4952d85e192472a8c23e83163200fa4254072bbd0ae",
+          "privacy_hash": "faac0d743a05d8788eceab5f84d6cff743626317d299b8956a9df3e987cd941b",
+          "terms_hash": "a6759a8576fc1fe01374dd28aab2295b52c42f6d2420b986529b45eb5c036163"
+        },
+        "policy_kid": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+        "policy_notice_seconds": 0,
+        "policy_parent_index": 0,
+        "proxy": [
+          {
+            "host": "api.interop.test",
+            "mode": "dns-only",
+            "tls_termination": "origin"
+          }
+        ],
+        "reason_codes": {
+          "freeze": [
+            "maintenance",
+            "incident",
+            "order",
+            "resource_exhaustion",
+            "resume"
+          ],
+          "outcome": [
+            "acted",
+            "declined",
+            "private_unassessable",
+            "invalid_notice",
+            "duplicate",
+            "published",
+            "resolved"
+          ],
+          "refusal": [
+            "malformed",
+            "bad_signature",
+            "expired",
+            "future",
+            "replay",
+            "unknown_key",
+            "revoked",
+            "tls_required",
+            "unsupported_scheme",
+            "unsupported_version",
+            "sequence",
+            "predecessor",
+            "name_taken",
+            "key_reuse",
+            "key_fork",
+            "stale_key",
+            "stale_grant",
+            "stale_capsule",
+            "already_voted",
+            "poll_closed",
+            "poll_constraint",
+            "too_large",
+            "digest_mismatch",
+            "rate_limit",
+            "quota",
+            "no_consent",
+            "grant_exhausted",
+            "suspended",
+            "frozen",
+            "tier_required",
+            "secret_format:github_pat",
+            "secret_format",
+            "rate",
+            "seq",
+            "fork",
+            "sig",
+            "no_grant",
+            "size",
+            "format",
+            "name",
+            "key_state",
+            "poll_rule",
+            "whatever"
+          ],
+          "revocation": [
+            "retired",
+            "compromised"
+          ],
+          "suspension": [
+            "order",
+            "flood"
+          ],
+          "tombstone": [
+            "order",
+            "erasure",
+            "secret_format",
+            "illegal_on_notice"
+          ]
+        },
+        "retention": {
+          "capsule_max_seconds": 7776000,
+          "ciphertext_budget_bytes": 1073741824,
+          "dm_seconds": 7776000,
+          "eviction": "oldest-ts-index"
+        },
+        "schemes": [
+          "x25519-xsalsa20-poly1305"
+        ],
+        "secret_patterns": [
+          {
+            "id": "github_pat",
+            "pattern_hash": "7e2f729532ce947b3794161e41db449c83226b98e2fe87ad77b7d242cfda5f90"
+          }
+        ],
+        "signatures": [
+          {
+            "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3FHQzNuV1poWWllRVZUVkRLVzV2NTg4Q2lHZnNEU21SVkc5Wnd3V1R2TFNLIiwidHlwIjoiSk9TRSJ9",
+            "signature": "vhH3vwJb32OLtQ3E8_KJMPplTUg4OhFDglbF4Ux1JNVbljFIk4j5PH6PpWZnf2vsCwBgSle62Lnbc1f15_nXDA"
+          }
+        ],
+        "spec": "AICS-1",
+        "spec_versions": {
+          "a2a-card": "1.0.0",
+          "signed-note": "1.1.0",
+          "tlog-checkpoint": "1.1.0",
+          "tlog-cosignature": "1.1.0",
+          "tlog-tiles": "1.0.0",
+          "tlog-witness": "1.1.0"
+        },
+        "tiers": [
+          "verified",
+          "third-party-generated",
+          "unverified"
+        ],
+        "tile_prefixes": [
+          "https://api.interop.test/tiles",
+          "https://mirror.interop.test/tiles"
+        ],
+        "version": "0.2-draft",
+        "witness_policy": {
+          "quorum": 2,
+          "witnesses": [
+            {
+              "independent": false,
+              "name": "witness-a.interop.test/w1",
+              "trust_domain": "founder",
+              "vkey": "witness-a.interop.test/w1+603ddbca+BFiTZgSr2hEryUkzVpyC+NDMDd+So/gyny9Ej39ISllM"
+            },
+            {
+              "independent": false,
+              "name": "witness-b.interop.test/w1",
+              "trust_domain": "founder",
+              "vkey": "witness-b.interop.test/w1+d29f59eb+BL7X0qtmjaPvrWE5mPBver94dfOmt2d6nzzpR9d9d2Cm"
+            }
+          ]
+        }
+      },
+      "card_hash": "4875290607770ca5055cb18dd2c38795c9d2c0cabf6d4cbd8da9b8c0f5745f9b",
+      "expect": "invalid",
+      "name": "refusal:adds-whatever",
+      "reason": "§13.1: reasons MUST equal §17's registries; otherwise the 0.2-draft card"
+    },
+    {
+      "card": {
+        "api_base": "https://api.interop.test",
+        "assurances": [
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G1 interop fixture",
+            "evidence": [],
+            "id": "G1",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G2 interop fixture",
+            "evidence": [],
+            "id": "G2",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G3 interop fixture",
+            "evidence": [],
+            "id": "G3",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G4 interop fixture",
+            "evidence": [],
+            "id": "G4",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described",
+              "founder-run witness in the log's trust domain; honest quorum intersection not argued",
+              "Ed25519 cosignature/v1 only: no ML-DSA-44 cosignatures (a SHOULD of tlog-cosignature v1.1.0) and no sign-subtree API"
+            ],
+            "claim": "G5 interop fixture",
+            "evidence": [],
+            "id": "G5",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G6 interop fixture",
+            "evidence": [],
+            "id": "G6",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G7 interop fixture",
+            "evidence": [],
+            "id": "G7",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G8 interop fixture",
+            "evidence": [],
+            "id": "G8",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G9 interop fixture",
+            "evidence": [],
+            "id": "G9",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G10 interop fixture",
+            "evidence": [],
+            "id": "G10",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N1 interop fixture",
+            "evidence": [],
+            "id": "N1",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N2 interop fixture",
+            "evidence": [],
+            "id": "N2",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N3 interop fixture",
+            "evidence": [],
+            "id": "N3",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N4 interop fixture",
+            "evidence": [],
+            "id": "N4",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N5 interop fixture",
+            "evidence": [],
+            "id": "N5",
+            "status": "not-offered"
+          }
+        ],
+        "expires": 1794873600,
+        "gate": {
+          "https_url": "https://api.interop.test/t",
+          "plaintext_port": 7701,
+          "tls_host": "api.interop.test",
+          "tls_port": 7700
+        },
+        "issued_at": 1792281600,
+        "limits": {
+          "ciphertext_bytes": 65536,
+          "envelope_window_seconds": 300,
+          "flood_suspension_seconds": 3600,
+          "future_skew_seconds": 30,
+          "preidentity": {
+            "count": 1000,
+            "interval_seconds": 60
+          },
+          "public_body_bytes": 32768,
+          "registrations": {
+            "count": 20,
+            "interval_seconds": 60
+          },
+          "session_idle_seconds": 900,
+          "writes": {
+            "count": 20,
+            "interval_seconds": 60
+          }
+        },
+        "log_vkey": "api.interop.test/tiles+799876cf+AYhLiFf06qFhPGFQTbNNS+rzRlF6DjHePN3U2bQgHZ0L",
+        "max_checkpoint_age": 300,
+        "mmd_seconds": 60,
+        "origin": "api.interop.test/tiles",
+        "owner_kid": "did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72",
+        "policies": {
+          "charter_hash": "ce01e67bcb591341ef3ff4952d85e192472a8c23e83163200fa4254072bbd0ae",
+          "privacy_hash": "faac0d743a05d8788eceab5f84d6cff743626317d299b8956a9df3e987cd941b",
+          "terms_hash": "a6759a8576fc1fe01374dd28aab2295b52c42f6d2420b986529b45eb5c036163"
+        },
+        "policy_kid": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+        "policy_notice_seconds": 0,
+        "policy_parent_index": 0,
+        "proxy": [
+          {
+            "host": "api.interop.test",
+            "mode": "dns-only",
+            "tls_termination": "origin"
+          }
+        ],
+        "reason_codes": {
+          "freeze": [
+            "maintenance",
+            "incident",
+            "order",
+            "resource_exhaustion",
+            "resume"
+          ],
+          "outcome": [
+            "acted",
+            "declined",
+            "private_unassessable",
+            "invalid_notice",
+            "duplicate",
+            "published",
+            "resolved"
+          ],
+          "refusal": [
+            "bad_signature",
+            "expired",
+            "future",
+            "replay",
+            "unknown_key",
+            "revoked",
+            "tls_required",
+            "unsupported_scheme",
+            "unsupported_version",
+            "sequence",
+            "predecessor",
+            "name_taken",
+            "key_reuse",
+            "key_fork",
+            "stale_key",
+            "stale_grant",
+            "stale_capsule",
+            "already_voted",
+            "poll_closed",
+            "poll_constraint",
+            "too_large",
+            "digest_mismatch",
+            "rate_limit",
+            "quota",
+            "no_consent",
+            "grant_exhausted",
+            "suspended",
+            "frozen",
+            "tier_required",
+            "secret_format:github_pat",
+            "secret_format",
+            "rate",
+            "seq",
+            "fork",
+            "sig",
+            "no_grant",
+            "size",
+            "format",
+            "name",
+            "key_state",
+            "poll_rule"
+          ],
+          "revocation": [
+            "retired",
+            "compromised"
+          ],
+          "suspension": [
+            "order",
+            "flood"
+          ],
+          "tombstone": [
+            "order",
+            "erasure",
+            "secret_format",
+            "illegal_on_notice"
+          ]
+        },
+        "retention": {
+          "capsule_max_seconds": 7776000,
+          "ciphertext_budget_bytes": 1073741824,
+          "dm_seconds": 7776000,
+          "eviction": "oldest-ts-index"
+        },
+        "schemes": [
+          "x25519-xsalsa20-poly1305"
+        ],
+        "secret_patterns": [
+          {
+            "id": "github_pat",
+            "pattern_hash": "7e2f729532ce947b3794161e41db449c83226b98e2fe87ad77b7d242cfda5f90"
+          }
+        ],
+        "signatures": [
+          {
+            "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3FHQzNuV1poWWllRVZUVkRLVzV2NTg4Q2lHZnNEU21SVkc5Wnd3V1R2TFNLIiwidHlwIjoiSk9TRSJ9",
+            "signature": "t0wkJ2AonPYipV-EBYMjFLC8n0Wp1w4fuIhNL4Mxj08oAY4gSVZdMdvdzeFRjpgr4phCzVetMWcCBEsODNGECw"
+          }
+        ],
+        "spec": "AICS-1",
+        "spec_versions": {
+          "a2a-card": "1.0.0",
+          "signed-note": "1.1.0",
+          "tlog-checkpoint": "1.1.0",
+          "tlog-cosignature": "1.1.0",
+          "tlog-tiles": "1.0.0",
+          "tlog-witness": "1.1.0"
+        },
+        "tiers": [
+          "verified",
+          "third-party-generated",
+          "unverified"
+        ],
+        "tile_prefixes": [
+          "https://api.interop.test/tiles",
+          "https://mirror.interop.test/tiles"
+        ],
+        "version": "0.2-draft",
+        "witness_policy": {
+          "quorum": 2,
+          "witnesses": [
+            {
+              "independent": false,
+              "name": "witness-a.interop.test/w1",
+              "trust_domain": "founder",
+              "vkey": "witness-a.interop.test/w1+603ddbca+BFiTZgSr2hEryUkzVpyC+NDMDd+So/gyny9Ej39ISllM"
+            },
+            {
+              "independent": false,
+              "name": "witness-b.interop.test/w1",
+              "trust_domain": "founder",
+              "vkey": "witness-b.interop.test/w1+d29f59eb+BL7X0qtmjaPvrWE5mPBver94dfOmt2d6nzzpR9d9d2Cm"
+            }
+          ]
+        }
+      },
+      "card_hash": "e35cb4b0c70d43c2d5c24500b020e1dd67b8068923af60e2ac08b40d149a9a21",
+      "expect": "invalid",
+      "name": "refusal:drops-malformed",
+      "reason": "§13.1: reasons MUST equal §17's registries; otherwise the 0.2-draft card"
+    },
+    {
+      "card": {
+        "api_base": "https://api.interop.test",
+        "assurances": [
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G1 interop fixture",
+            "evidence": [],
+            "id": "G1",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G2 interop fixture",
+            "evidence": [],
+            "id": "G2",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G3 interop fixture",
+            "evidence": [],
+            "id": "G3",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G4 interop fixture",
+            "evidence": [],
+            "id": "G4",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described",
+              "founder-run witness in the log's trust domain; honest quorum intersection not argued",
+              "Ed25519 cosignature/v1 only: no ML-DSA-44 cosignatures (a SHOULD of tlog-cosignature v1.1.0) and no sign-subtree API"
+            ],
+            "claim": "G5 interop fixture",
+            "evidence": [],
+            "id": "G5",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G6 interop fixture",
+            "evidence": [],
+            "id": "G6",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G7 interop fixture",
+            "evidence": [],
+            "id": "G7",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G8 interop fixture",
+            "evidence": [],
+            "id": "G8",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G9 interop fixture",
+            "evidence": [],
+            "id": "G9",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "G10 interop fixture",
+            "evidence": [],
+            "id": "G10",
+            "status": "promised"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N1 interop fixture",
+            "evidence": [],
+            "id": "N1",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N2 interop fixture",
+            "evidence": [],
+            "id": "N2",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N3 interop fixture",
+            "evidence": [],
+            "id": "N3",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N4 interop fixture",
+            "evidence": [],
+            "id": "N4",
+            "status": "not-offered"
+          },
+          {
+            "assumptions": [
+              "interop test fixture; no deployment is described"
+            ],
+            "claim": "N5 interop fixture",
+            "evidence": [],
+            "id": "N5",
+            "status": "not-offered"
+          }
+        ],
+        "expires": 1794873600,
+        "gate": {
+          "https_url": "https://api.interop.test/t",
+          "plaintext_port": 7701,
+          "tls_host": "api.interop.test",
+          "tls_port": 7700
+        },
+        "issued_at": 1792281600,
+        "limits": {
+          "ciphertext_bytes": 65536,
+          "envelope_window_seconds": 300,
+          "flood_suspension_seconds": 3600,
+          "future_skew_seconds": 30,
+          "preidentity": {
+            "count": 1000,
+            "interval_seconds": 60
+          },
+          "public_body_bytes": 32768,
+          "registrations": {
+            "count": 20,
+            "interval_seconds": 60
+          },
+          "session_idle_seconds": 900,
+          "writes": {
+            "count": 20,
+            "interval_seconds": 60
+          }
+        },
+        "log_vkey": "api.interop.test/tiles+799876cf+AYhLiFf06qFhPGFQTbNNS+rzRlF6DjHePN3U2bQgHZ0L",
+        "max_checkpoint_age": 300,
+        "mmd_seconds": 60,
+        "origin": "api.interop.test/tiles",
+        "owner_kid": "did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72",
+        "policies": {
+          "charter_hash": "ce01e67bcb591341ef3ff4952d85e192472a8c23e83163200fa4254072bbd0ae",
+          "privacy_hash": "faac0d743a05d8788eceab5f84d6cff743626317d299b8956a9df3e987cd941b",
+          "terms_hash": "a6759a8576fc1fe01374dd28aab2295b52c42f6d2420b986529b45eb5c036163"
+        },
+        "policy_kid": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+        "policy_notice_seconds": 0,
+        "policy_parent_index": 0,
+        "proxy": [
+          {
+            "host": "api.interop.test",
+            "mode": "dns-only",
+            "tls_termination": "origin"
+          }
+        ],
+        "reason_codes": {
+          "freeze": [
+            "maintenance",
+            "incident",
+            "order",
+            "resource_exhaustion",
+            "resume"
+          ],
+          "outcome": [
+            "acted",
+            "declined",
+            "private_unassessable",
+            "invalid_notice",
+            "duplicate",
+            "published",
+            "resolved"
+          ],
+          "refusal": [
+            "malformed",
+            "bad_signature",
+            "expired",
+            "future",
+            "replay",
+            "unknown_key",
+            "revoked",
+            "tls_required",
+            "unsupported_scheme",
+            "unsupported_version",
+            "sequence",
+            "predecessor",
+            "name_taken",
+            "key_reuse",
+            "key_fork",
+            "stale_key",
+            "stale_grant",
+            "stale_capsule",
+            "already_voted",
+            "poll_closed",
+            "poll_constraint",
+            "too_large",
+            "digest_mismatch",
+            "rate_limit",
+            "quota",
+            "no_consent",
+            "grant_exhausted",
+            "suspended",
+            "frozen",
+            "tier_required",
+            "secret_format:github_pat",
+            "secret_format",
+            "rate",
+            "seq",
+            "fork",
+            "sig",
+            "no_grant",
+            "size",
+            "format",
+            "name",
+            "key_state",
+            "poll_rule",
+            "secret_format:no_such_pattern"
+          ],
+          "revocation": [
+            "retired",
+            "compromised"
+          ],
+          "suspension": [
+            "order",
+            "flood"
+          ],
+          "tombstone": [
+            "order",
+            "erasure",
+            "secret_format",
+            "illegal_on_notice"
+          ]
+        },
+        "retention": {
+          "capsule_max_seconds": 7776000,
+          "ciphertext_budget_bytes": 1073741824,
+          "dm_seconds": 7776000,
+          "eviction": "oldest-ts-index"
+        },
+        "schemes": [
+          "x25519-xsalsa20-poly1305"
+        ],
+        "secret_patterns": [
+          {
+            "id": "github_pat",
+            "pattern_hash": "7e2f729532ce947b3794161e41db449c83226b98e2fe87ad77b7d242cfda5f90"
+          }
+        ],
+        "signatures": [
+          {
+            "protected": "eyJhbGciOiJFZERTQSIsImtpZCI6ImRpZDprZXk6ejZNa3FHQzNuV1poWWllRVZUVkRLVzV2NTg4Q2lHZnNEU21SVkc5Wnd3V1R2TFNLIiwidHlwIjoiSk9TRSJ9",
+            "signature": "g_ASGVUcbhlIGrdqXR9O2I4FI3xABooKConE1Gw6yw0QbGWQU_U3R28hVVDd0ZwYktfq_rvaJvjgBYs3kIvKBQ"
+          }
+        ],
+        "spec": "AICS-1",
+        "spec_versions": {
+          "a2a-card": "1.0.0",
+          "signed-note": "1.1.0",
+          "tlog-checkpoint": "1.1.0",
+          "tlog-cosignature": "1.1.0",
+          "tlog-tiles": "1.0.0",
+          "tlog-witness": "1.1.0"
+        },
+        "tiers": [
+          "verified",
+          "third-party-generated",
+          "unverified"
+        ],
+        "tile_prefixes": [
+          "https://api.interop.test/tiles",
+          "https://mirror.interop.test/tiles"
+        ],
+        "version": "0.2-draft",
+        "witness_policy": {
+          "quorum": 2,
+          "witnesses": [
+            {
+              "independent": false,
+              "name": "witness-a.interop.test/w1",
+              "trust_domain": "founder",
+              "vkey": "witness-a.interop.test/w1+603ddbca+BFiTZgSr2hEryUkzVpyC+NDMDd+So/gyny9Ej39ISllM"
+            },
+            {
+              "independent": false,
+              "name": "witness-b.interop.test/w1",
+              "trust_domain": "founder",
+              "vkey": "witness-b.interop.test/w1+d29f59eb+BL7X0qtmjaPvrWE5mPBver94dfOmt2d6nzzpR9d9d2Cm"
+            }
+          ]
+        }
+      },
+      "card_hash": "0190d514a8b10034235eb6189b48d1a8f88caddf776ee13fd99d508de48640b2",
+      "expect": "invalid",
+      "name": "refusal:unknown-secret-pattern",
+      "reason": "§13.1, §17.2: secret_format:<id> only for the card's own secret_patterns; otherwise the 0.2-draft card"
+    }
+  ],
+  "trust_bundle": {
+    "bootstrap_card_hash": "0b69ace367ae7327567a7cd4f6f3395f6a6b388e5a9df93d9474a0a2d10a2edb",
+    "log_vkey": "api.interop.test/tiles+799876cf+AYhLiFf06qFhPGFQTbNNS+rzRlF6DjHePN3U2bQgHZ0L",
+    "origin": "api.interop.test/tiles",
+    "owner_kid": "did:key:z6MknKrzUBQ488kw5dAksw6Xknx4V3KJY6JmQr1wVNzF7p72",
+    "policy_kid": "did:key:z6MkqGC3nWZhYieEVTVDKW5v588CiGfsDSmRVG9ZwwWTvLSK",
+    "v": 1
+  }
+}

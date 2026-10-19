@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" fill="none" role="img" aria-labelledby="favicon-title favicon-desc">
+  <title id="favicon-title">WeSupport-AI</title>
+  <desc id="favicon-desc">A luminous green sanctuary shield enclosing a branching identity key on an obsidian tile.</desc>
+  <defs>
+    <linearGradient id="favicon-edge" x1="14" y1="10" x2="49" y2="54" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#67e8d5"/><stop offset="0.5" stop-color="#00ff66"/><stop offset="1" stop-color="#00cc52"/>
+    </linearGradient>
+  </defs>
+  <rect x="1" y="1" width="62" height="62" rx="13" fill="#030805" stroke="#173e26" stroke-width="2"/>
+  <path d="m32 8 21 8v17c0 11-8 19-21 25-13-6-21-14-21-25V16Z" fill="#081c10" stroke="url(#favicon-edge)" stroke-width="2.5" stroke-linejoin="round"/>
+  <path d="m32 14 15 6v13c0 8-5 14-15 19-10-5-15-11-15-19V20Z" stroke="#00cc52" stroke-opacity="0.3"/>
+  <path d="M32 22v20m0-12-8-6m8 6 8-6m-8 12-8 5m8-5 8 5" stroke="#00ff66" stroke-width="2.5" stroke-linecap="round"/>
+  <g fill="#67e8d5">
+    <circle cx="24" cy="24" r="2.5"/><circle cx="40" cy="24" r="2.5"/>
+    <circle cx="24" cy="41" r="2"/><circle cx="40" cy="41" r="2"/>
+  </g>
+  <path d="m32 27 5 3v6l-5 3-5-3v-6Z" fill="#00ff66"/>
+  <circle cx="32" cy="33" r="1.75" fill="#030805"/>
+  <path d="m32 17 2 3-2 3-2-3Z" fill="#ffb800"/>
+</svg>

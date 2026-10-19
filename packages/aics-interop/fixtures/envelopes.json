@@ -1,0 +1,1378 @@
+{
+  "chain": {
+    "envelopes": [
+      {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "Awx669LZMTPLHBQxm7JwYps4UkSNs1pgRAuSq2IO8syJmb9e7JMagbqILUJaOoD4eZNdEiRcU9VY_akfNdCbBg",
+        "v": 1
+      },
+      {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "body_hash": "58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 46,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281601,
+          "expires": 1792281901,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "wUloIfqBmQZ00iKDDEu2-w",
+          "origin": "api.interop.test/tiles",
+          "prev": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 1,
+          "type": "post"
+        },
+        "sig": "xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ",
+        "v": 1
+      },
+      {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "body_hash": "4d0fe732478b1613c1258f33022fb4b194330fed1e3fc020f26f6c4469eb36f4",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 46,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281602,
+          "expires": 1792281902,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "qS2M2hRFcFY0JAlpXa_6Nw",
+          "origin": "api.interop.test/tiles",
+          "prev": "a150ab7c18814edd6d8591ebdd21f84c7b599114d3f0f2620083de79152b63f0",
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 2,
+          "type": "post"
+        },
+        "sig": "T__zD1bfY7wPvvb2pOeoZnYqMpBLo0YpW54UNoULJKwQbn9S_rtIwgvzylw8XxwFryXmzK5KN_ncO5TtRsl4Cg",
+        "v": 1
+      }
+    ],
+    "expect": "valid",
+    "reason": "§4.2: seq 0, 1, 2 and each prev = hexH(J(previous E)); the native envelopes above"
+  },
+  "chain_breaks": [
+    {
+      "envelopes": [
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+            "initial_grant": null,
+            "name_norm": "alice",
+            "prev_event_index": null,
+            "recovery_kid": null,
+            "recovery_pop": null,
+            "tier": "verified",
+            "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281600,
+            "expires": 1792281900,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+            "origin": "api.interop.test/tiles",
+            "prev": null,
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 0,
+            "type": "name.claim"
+          },
+          "sig": "Awx669LZMTPLHBQxm7JwYps4UkSNs1pgRAuSq2IO8syJmb9e7JMagbqILUJaOoD4eZNdEiRcU9VY_akfNdCbBg",
+          "v": 1
+        },
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "body_hash": "58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b",
+            "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+            "parent_index": null,
+            "size": 46,
+            "title_sha256": null
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281601,
+            "expires": 1792281901,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "wUloIfqBmQZ00iKDDEu2-w",
+            "origin": "api.interop.test/tiles",
+            "prev": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 1,
+            "type": "post"
+          },
+          "sig": "xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ",
+          "v": 1
+        },
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "body_hash": "4d0fe732478b1613c1258f33022fb4b194330fed1e3fc020f26f6c4469eb36f4",
+            "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+            "parent_index": null,
+            "size": 46,
+            "title_sha256": null
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281602,
+            "expires": 1792281902,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "qS2M2hRFcFY0JAlpXa_6Nw",
+            "origin": "api.interop.test/tiles",
+            "prev": "a150ab7c18814edd6d8591ebdd21f84c7b599114d3f0f2620083de79152b63f0",
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 3,
+            "type": "post"
+          },
+          "sig": "A6C2fec-HG6VtiU3_Ys31I_WcZSK8JxxelnZbibgKyboJd4HiSe32Ze-HbY0Gi1jcnMnz3638Ne-1qmkUz-zDA",
+          "v": 1
+        }
+      ],
+      "expect": "invalid",
+      "first_invalid_position": 2,
+      "name": "seq-gap",
+      "reason": "§4.2 seq = last_seq + 1 and prev = hexH(J(previous accepted E))"
+    },
+    {
+      "envelopes": [
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+            "initial_grant": null,
+            "name_norm": "alice",
+            "prev_event_index": null,
+            "recovery_kid": null,
+            "recovery_pop": null,
+            "tier": "verified",
+            "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281600,
+            "expires": 1792281900,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+            "origin": "api.interop.test/tiles",
+            "prev": null,
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 0,
+            "type": "name.claim"
+          },
+          "sig": "Awx669LZMTPLHBQxm7JwYps4UkSNs1pgRAuSq2IO8syJmb9e7JMagbqILUJaOoD4eZNdEiRcU9VY_akfNdCbBg",
+          "v": 1
+        },
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "body_hash": "58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b",
+            "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+            "parent_index": null,
+            "size": 46,
+            "title_sha256": null
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281601,
+            "expires": 1792281901,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "wUloIfqBmQZ00iKDDEu2-w",
+            "origin": "api.interop.test/tiles",
+            "prev": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 1,
+            "type": "post"
+          },
+          "sig": "xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ",
+          "v": 1
+        },
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "body_hash": "4d0fe732478b1613c1258f33022fb4b194330fed1e3fc020f26f6c4469eb36f4",
+            "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+            "parent_index": null,
+            "size": 46,
+            "title_sha256": null
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281602,
+            "expires": 1792281902,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "qS2M2hRFcFY0JAlpXa_6Nw",
+            "origin": "api.interop.test/tiles",
+            "prev": "0000000000000000000000000000000000000000000000000000000000000000",
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 2,
+            "type": "post"
+          },
+          "sig": "bgtSW269Kwz5rKIVjkoK4Tkfz3k4W59tQ2Dews9V51c-aZ4DT_nI8ik7EyYAR_zP7Xn_7rQ0-qm8It3QeC87Aw",
+          "v": 1
+        }
+      ],
+      "expect": "invalid",
+      "first_invalid_position": 2,
+      "name": "wrong-prev",
+      "reason": "§4.2 seq = last_seq + 1 and prev = hexH(J(previous accepted E))"
+    },
+    {
+      "envelopes": [
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+            "initial_grant": null,
+            "name_norm": "alice",
+            "prev_event_index": null,
+            "recovery_kid": null,
+            "recovery_pop": null,
+            "tier": "verified",
+            "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281600,
+            "expires": 1792281900,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+            "origin": "api.interop.test/tiles",
+            "prev": null,
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 0,
+            "type": "name.claim"
+          },
+          "sig": "Awx669LZMTPLHBQxm7JwYps4UkSNs1pgRAuSq2IO8syJmb9e7JMagbqILUJaOoD4eZNdEiRcU9VY_akfNdCbBg",
+          "v": 1
+        },
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "body_hash": "58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b",
+            "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+            "parent_index": null,
+            "size": 46,
+            "title_sha256": null
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281601,
+            "expires": 1792281901,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "wUloIfqBmQZ00iKDDEu2-w",
+            "origin": "api.interop.test/tiles",
+            "prev": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 1,
+            "type": "post"
+          },
+          "sig": "xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ",
+          "v": 1
+        },
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "body_hash": "c6759ec39ce932d0eaf87e98d86737a3f19c48f4b004a48cd2720a11fa3e143e",
+            "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+            "parent_index": null,
+            "size": 48,
+            "title_sha256": null
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281602,
+            "expires": 1792281902,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "qS2M2hRFcFY0JAlpXa_6Nw",
+            "origin": "api.interop.test/tiles",
+            "prev": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 1,
+            "type": "post"
+          },
+          "sig": "zfeKpUz7p8-P3cAJ55Ib5mtB0NO6Z9fLZMiTqSmb6JjuR53RcSvUpKLk1x63YOAoLd4iJ-rY4221ZbLlF_ZPCw",
+          "v": 1
+        }
+      ],
+      "expect": "invalid",
+      "first_invalid_position": 2,
+      "name": "fork",
+      "reason": "§4.2 seq = last_seq + 1 and prev = hexH(J(previous accepted E))"
+    },
+    {
+      "envelopes": [
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+            "initial_grant": null,
+            "name_norm": "alice",
+            "prev_event_index": null,
+            "recovery_kid": null,
+            "recovery_pop": null,
+            "tier": "verified",
+            "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281600,
+            "expires": 1792281900,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+            "origin": "api.interop.test/tiles",
+            "prev": "1111111111111111111111111111111111111111111111111111111111111111",
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 1,
+            "type": "name.claim"
+          },
+          "sig": "_D3_8ahgfAM66zlNLruR_MX5jhLXPgjWk3c4G3JpecOzXUXP3J6dqEiv-5Z2D_troJXon0jxhNxMHjXjaogiDQ",
+          "v": 1
+        },
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "body_hash": "58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b",
+            "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+            "parent_index": null,
+            "size": 46,
+            "title_sha256": null
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281601,
+            "expires": 1792281901,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "wUloIfqBmQZ00iKDDEu2-w",
+            "origin": "api.interop.test/tiles",
+            "prev": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 1,
+            "type": "post"
+          },
+          "sig": "xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ",
+          "v": 1
+        },
+        {
+          "auth": {
+            "scheme": "ed25519-jcs"
+          },
+          "payload": {
+            "body_hash": "4d0fe732478b1613c1258f33022fb4b194330fed1e3fc020f26f6c4469eb36f4",
+            "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+            "parent_index": null,
+            "size": 46,
+            "title_sha256": null
+          },
+          "protected": {
+            "alg": "EdDSA",
+            "created": 1792281602,
+            "expires": 1792281902,
+            "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+            "nonce": "qS2M2hRFcFY0JAlpXa_6Nw",
+            "origin": "api.interop.test/tiles",
+            "prev": "a150ab7c18814edd6d8591ebdd21f84c7b599114d3f0f2620083de79152b63f0",
+            "seen": {
+              "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+              "size": 7
+            },
+            "seq": 2,
+            "type": "post"
+          },
+          "sig": "T__zD1bfY7wPvvb2pOeoZnYqMpBLo0YpW54UNoULJKwQbn9S_rtIwgvzylw8XxwFryXmzK5KN_ncO5TtRsl4Cg",
+          "v": 1
+        }
+      ],
+      "expect": "invalid",
+      "first_invalid_position": 0,
+      "name": "first-not-zero",
+      "reason": "§4.2 seq = last_seq + 1 and prev = hexH(J(previous accepted E))"
+    }
+  ],
+  "freshness": [
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792282600,
+          "expires": 1792282900,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "FUmYQd4oSD6Y-sroyyteDWiSME_CRjIp5mOLsK8hNV-LEwq1AqFqqV2bOZVoQVtJkz80udjeF-EFRDre0PDDBA",
+        "v": 1
+      },
+      "expect": "valid",
+      "name": "now",
+      "rule": "§4.3 created <= t+30, created >= t-300, created < expires <= created+300, t < expires",
+      "t": 1792282600
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792282630,
+          "expires": 1792282930,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "sq5B3iOwlkJn0ou3aGw1fpemVc4BVlwYWzvHo-JP12Q9cWyzj4TO6R0Su-upl8GmFYjtw-YGDgxup9PnqXJHDQ",
+        "v": 1
+      },
+      "expect": "valid",
+      "name": "future-30",
+      "rule": "§4.3 created <= t+30, created >= t-300, created < expires <= created+300, t < expires",
+      "t": 1792282600
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792282631,
+          "expires": 1792282931,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "r3opK-jsp0inYM88kYdzSK7rbsiYpjSWJt_rwb2aHxz1BTYJ8wVvpKFrT9oiuqMuxoF-r9c1tIwFH-2ZKwdAAA",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "future-31",
+      "rule": "§4.3 created <= t+30, created >= t-300, created < expires <= created+300, t < expires",
+      "t": 1792282600
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792282300,
+          "expires": 1792282600,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "YHyf_ON-JCZZXal3Gg30bTYtoziQq5VHdraj4YbwirTFLFVpeLRW9z9rVDpGgvyrRSrNqnQTCVvyz7U1PIn7Aw",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "past-300",
+      "rule": "§4.3 created <= t+30, created >= t-300, created < expires <= created+300, t < expires",
+      "t": 1792282600
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792282301,
+          "expires": 1792282601,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "EiiCHuM_02GIBzdjjEqsJtw_jCYrGSAD1j3zw5gH6sYgbxZC0-Q_-72_haLdUpsrUi9IhpJO49NmEyeF0l2kAw",
+        "v": 1
+      },
+      "expect": "valid",
+      "name": "past-299",
+      "rule": "§4.3 created <= t+30, created >= t-300, created < expires <= created+300, t < expires",
+      "t": 1792282600
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792282600,
+          "expires": 1792282901,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "3JcAzI-PxrLGZ-4smIhflRa3UD2cr9dT_jmkiyOz8E6kejpG2qQRxr9OrnPlZJfNCm7xovMsSCxnf-PVNm1WCQ",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "lifetime-301",
+      "rule": "§4.3 created <= t+30, created >= t-300, created < expires <= created+300, t < expires",
+      "t": 1792282600
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792282600,
+          "expires": 1792282600,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "0iqeRg76ZsE8VJGr4Rdla2S6Nd4l5KOy8RvHSJEX-5rxwpnRK-oG-M9G36aUZo3gWC7dqc5VHszHNXTVrKheDg",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "lifetime-0",
+      "rule": "§4.3 created <= t+30, created >= t-300, created < expires <= created+300, t < expires",
+      "t": 1792282600
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792282600,
+          "expires": 1792282601,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "xP9wKjyy-rFehp58vumN5kL34lEwkQKh2kE4pjkDTMaO8XxTnltcg4NOauQdFSuNp5m1D-J1Lv0w7jKV85z0Ag",
+        "v": 1
+      },
+      "expect": "valid",
+      "name": "lifetime-1",
+      "rule": "§4.3 created <= t+30, created >= t-300, created < expires <= created+300, t < expires",
+      "t": 1792282600
+    }
+  ],
+  "native": [
+    {
+      "entry_jcs": "{\"actor_kid\":\"did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL\",\"origin\":\"api.interop.test/tiles\",\"payload\":{\"ed25519\":\"4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s\",\"envelope\":{\"auth\":{\"scheme\":\"ed25519-jcs\"},\"payload\":{\"ed25519\":\"4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s\",\"initial_grant\":null,\"name_norm\":\"alice\",\"prev_event_index\":null,\"recovery_kid\":null,\"recovery_pop\":null,\"tier\":\"verified\",\"x25519\":\"zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY\"},\"protected\":{\"alg\":\"EdDSA\",\"created\":1792281600,\"expires\":1792281900,\"kid\":\"did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL\",\"nonce\":\"_1uAOHk2gv9sHjdy1OqjjA\",\"origin\":\"api.interop.test/tiles\",\"prev\":null,\"seen\":{\"checkpoint_note_hash\":\"abababababababababababababababababababababababababababababababab\",\"size\":7},\"seq\":0,\"type\":\"name.claim\"},\"sig\":\"Awx669LZMTPLHBQxm7JwYps4UkSNs1pgRAuSq2IO8syJmb9e7JMagbqILUJaOoD4eZNdEiRcU9VY_akfNdCbBg\",\"v\":1},\"initial_grant\":null,\"name_norm\":\"alice\",\"prev_event_index\":null,\"recovery_kid\":null,\"recovery_pop\":null,\"tier\":\"verified\",\"x25519\":\"zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY\"},\"ts\":1792281600,\"type\":\"name.claim\",\"v\":2}",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "Awx669LZMTPLHBQxm7JwYps4UkSNs1pgRAuSq2IO8syJmb9e7JMagbqILUJaOoD4eZNdEiRcU9VY_akfNdCbBg",
+        "v": 1
+      },
+      "envelope_hash": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+      "expect": "valid",
+      "jcs": "{\"auth\":{\"scheme\":\"ed25519-jcs\"},\"payload\":{\"ed25519\":\"4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s\",\"initial_grant\":null,\"name_norm\":\"alice\",\"prev_event_index\":null,\"recovery_kid\":null,\"recovery_pop\":null,\"tier\":\"verified\",\"x25519\":\"zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY\"},\"protected\":{\"alg\":\"EdDSA\",\"created\":1792281600,\"expires\":1792281900,\"kid\":\"did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL\",\"nonce\":\"_1uAOHk2gv9sHjdy1OqjjA\",\"origin\":\"api.interop.test/tiles\",\"prev\":null,\"seen\":{\"checkpoint_note_hash\":\"abababababababababababababababababababababababababababababababab\",\"size\":7},\"seq\":0,\"type\":\"name.claim\"},\"sig\":\"Awx669LZMTPLHBQxm7JwYps4UkSNs1pgRAuSq2IO8syJmb9e7JMagbqILUJaOoD4eZNdEiRcU9VY_akfNdCbBg\",\"v\":1}",
+      "signing_digest_hex": "ae2b7029b3aaa22f4c2b9b6ce11d8a326c2f2a611c544cf3dddba2f7f6704cc0"
+    },
+    {
+      "entry_jcs": "{\"actor_kid\":\"did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL\",\"origin\":\"api.interop.test/tiles\",\"payload\":{\"body_hash\":\"58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b\",\"channel_sha256\":\"7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b\",\"envelope\":{\"auth\":{\"scheme\":\"ed25519-jcs\"},\"payload\":{\"body_hash\":\"58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b\",\"channel_sha256\":\"7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b\",\"parent_index\":null,\"size\":46,\"title_sha256\":null},\"protected\":{\"alg\":\"EdDSA\",\"created\":1792281601,\"expires\":1792281901,\"kid\":\"did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL\",\"nonce\":\"wUloIfqBmQZ00iKDDEu2-w\",\"origin\":\"api.interop.test/tiles\",\"prev\":\"0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864\",\"seen\":{\"checkpoint_note_hash\":\"abababababababababababababababababababababababababababababababab\",\"size\":7},\"seq\":1,\"type\":\"post\"},\"sig\":\"xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ\",\"v\":1},\"parent_index\":null,\"size\":46,\"title_sha256\":null},\"ts\":1792281601,\"type\":\"post\",\"v\":2}",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "body_hash": "58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 46,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281601,
+          "expires": 1792281901,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "wUloIfqBmQZ00iKDDEu2-w",
+          "origin": "api.interop.test/tiles",
+          "prev": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 1,
+          "type": "post"
+        },
+        "sig": "xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ",
+        "v": 1
+      },
+      "envelope_hash": "a150ab7c18814edd6d8591ebdd21f84c7b599114d3f0f2620083de79152b63f0",
+      "expect": "valid",
+      "jcs": "{\"auth\":{\"scheme\":\"ed25519-jcs\"},\"payload\":{\"body_hash\":\"58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b\",\"channel_sha256\":\"7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b\",\"parent_index\":null,\"size\":46,\"title_sha256\":null},\"protected\":{\"alg\":\"EdDSA\",\"created\":1792281601,\"expires\":1792281901,\"kid\":\"did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL\",\"nonce\":\"wUloIfqBmQZ00iKDDEu2-w\",\"origin\":\"api.interop.test/tiles\",\"prev\":\"0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864\",\"seen\":{\"checkpoint_note_hash\":\"abababababababababababababababababababababababababababababababab\",\"size\":7},\"seq\":1,\"type\":\"post\"},\"sig\":\"xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ\",\"v\":1}",
+      "signing_digest_hex": "c0ee31186d7159d93043798739038a3a83c8faafa1679982e4b6b01e20f46b94"
+    },
+    {
+      "entry_jcs": "{\"actor_kid\":\"did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL\",\"origin\":\"api.interop.test/tiles\",\"payload\":{\"body_hash\":\"4d0fe732478b1613c1258f33022fb4b194330fed1e3fc020f26f6c4469eb36f4\",\"channel_sha256\":\"7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b\",\"envelope\":{\"auth\":{\"scheme\":\"ed25519-jcs\"},\"payload\":{\"body_hash\":\"4d0fe732478b1613c1258f33022fb4b194330fed1e3fc020f26f6c4469eb36f4\",\"channel_sha256\":\"7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b\",\"parent_index\":null,\"size\":46,\"title_sha256\":null},\"protected\":{\"alg\":\"EdDSA\",\"created\":1792281602,\"expires\":1792281902,\"kid\":\"did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL\",\"nonce\":\"qS2M2hRFcFY0JAlpXa_6Nw\",\"origin\":\"api.interop.test/tiles\",\"prev\":\"a150ab7c18814edd6d8591ebdd21f84c7b599114d3f0f2620083de79152b63f0\",\"seen\":{\"checkpoint_note_hash\":\"abababababababababababababababababababababababababababababababab\",\"size\":7},\"seq\":2,\"type\":\"post\"},\"sig\":\"T__zD1bfY7wPvvb2pOeoZnYqMpBLo0YpW54UNoULJKwQbn9S_rtIwgvzylw8XxwFryXmzK5KN_ncO5TtRsl4Cg\",\"v\":1},\"parent_index\":null,\"size\":46,\"title_sha256\":null},\"ts\":1792281602,\"type\":\"post\",\"v\":2}",
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "body_hash": "4d0fe732478b1613c1258f33022fb4b194330fed1e3fc020f26f6c4469eb36f4",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 46,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281602,
+          "expires": 1792281902,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "qS2M2hRFcFY0JAlpXa_6Nw",
+          "origin": "api.interop.test/tiles",
+          "prev": "a150ab7c18814edd6d8591ebdd21f84c7b599114d3f0f2620083de79152b63f0",
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 2,
+          "type": "post"
+        },
+        "sig": "T__zD1bfY7wPvvb2pOeoZnYqMpBLo0YpW54UNoULJKwQbn9S_rtIwgvzylw8XxwFryXmzK5KN_ncO5TtRsl4Cg",
+        "v": 1
+      },
+      "envelope_hash": "f7d09484f45014f9bf1f1843ebdf8eaebe74ea5209df11242b7b6c381de55d29",
+      "expect": "valid",
+      "jcs": "{\"auth\":{\"scheme\":\"ed25519-jcs\"},\"payload\":{\"body_hash\":\"4d0fe732478b1613c1258f33022fb4b194330fed1e3fc020f26f6c4469eb36f4\",\"channel_sha256\":\"7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b\",\"parent_index\":null,\"size\":46,\"title_sha256\":null},\"protected\":{\"alg\":\"EdDSA\",\"created\":1792281602,\"expires\":1792281902,\"kid\":\"did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL\",\"nonce\":\"qS2M2hRFcFY0JAlpXa_6Nw\",\"origin\":\"api.interop.test/tiles\",\"prev\":\"a150ab7c18814edd6d8591ebdd21f84c7b599114d3f0f2620083de79152b63f0\",\"seen\":{\"checkpoint_note_hash\":\"abababababababababababababababababababababababababababababababab\",\"size\":7},\"seq\":2,\"type\":\"post\"},\"sig\":\"T__zD1bfY7wPvvb2pOeoZnYqMpBLo0YpW54UNoULJKwQbn9S_rtIwgvzylw8XxwFryXmzK5KN_ncO5TtRsl4Cg\",\"v\":1}",
+      "signing_digest_hex": "ad354a1819a1eb314f496d028ad04ebdbf5b47f6d42f4161673c48879ba85401"
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "_1uAOHk2gv9sHjdy1OqjjA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": null,
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "T_sfbD-QFwW0RpmP3OmEV0ihL4LKJEOUMzYL6-_1dtJNaGHYq5gLpGu4xlTp_l7qiBaviHo0ESWD5-XtIFnjDQ",
+        "v": 1
+      },
+      "envelope_hash": "12fa4424e9ee570a6e983c99e9b8835cdc74c06fd6a1a7046a939b8a0e7d6bae",
+      "expect": "valid",
+      "jcs": "{\"auth\":{\"scheme\":\"ed25519-jcs\"},\"payload\":{\"ed25519\":\"4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s\",\"initial_grant\":null,\"name_norm\":\"alice\",\"prev_event_index\":null,\"recovery_kid\":null,\"recovery_pop\":null,\"tier\":\"verified\",\"x25519\":\"zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY\"},\"protected\":{\"alg\":\"EdDSA\",\"created\":1792281600,\"expires\":1792281900,\"kid\":\"did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL\",\"nonce\":\"_1uAOHk2gv9sHjdy1OqjjA\",\"origin\":\"api.interop.test/tiles\",\"prev\":null,\"seen\":null,\"seq\":0,\"type\":\"name.claim\"},\"sig\":\"T_sfbD-QFwW0RpmP3OmEV0ihL4LKJEOUMzYL6-_1dtJNaGHYq5gLpGu4xlTp_l7qiBaviHo0ESWD5-XtIFnjDQ\",\"v\":1}",
+      "reason": "§4.1: seen is null for initial bootstrap"
+    }
+  ],
+  "origin": "api.interop.test/tiles",
+  "seen": [
+    {
+      "expect": "valid",
+      "name": "valid",
+      "seen": {
+        "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+        "size": 7
+      }
+    },
+    {
+      "expect": "valid",
+      "name": "null",
+      "seen": null
+    },
+    {
+      "expect": "invalid",
+      "name": "uppercase-hex",
+      "seen": {
+        "checkpoint_note_hash": "ABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABABAB",
+        "size": 7
+      }
+    },
+    {
+      "expect": "invalid",
+      "name": "short-hash",
+      "seen": {
+        "checkpoint_note_hash": "ababababababababababababababababababababababababababababababab",
+        "size": 7
+      }
+    },
+    {
+      "expect": "invalid",
+      "name": "extra-member",
+      "seen": {
+        "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+        "note": "x",
+        "size": 7
+      }
+    },
+    {
+      "expect": "invalid",
+      "name": "missing-size",
+      "seen": {
+        "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab"
+      }
+    },
+    {
+      "expect": "invalid",
+      "name": "bool-size",
+      "seen": {
+        "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+        "size": true
+      }
+    },
+    {
+      "expect": "invalid",
+      "name": "negative-size",
+      "seen": {
+        "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+        "size": -1
+      }
+    },
+    {
+      "expect": "invalid",
+      "name": "size-above-uint",
+      "seen": {
+        "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+        "size": 9007199254740992
+      }
+    },
+    {
+      "expect": "invalid",
+      "name": "array",
+      "seen": []
+    }
+  ],
+  "tampered": [
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "body_hash": "58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 46,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281601,
+          "expires": 1792281901,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "wUloIfqBmQZ00iKDDEu2-w",
+          "origin": "evil.example/log",
+          "prev": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 1,
+          "type": "post"
+        },
+        "sig": "xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "protected.origin",
+      "reason": "signature does not cover the changed member"
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "body_hash": "58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 46,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281601,
+          "expires": 1792281901,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "wUloIfqBmQZ00iKDDEu2-w",
+          "origin": "api.interop.test/tiles",
+          "prev": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 1,
+          "type": "dm"
+        },
+        "sig": "xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "protected.type",
+      "reason": "signature does not cover the changed member"
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "body_hash": "58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 999,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281601,
+          "expires": 1792281901,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "wUloIfqBmQZ00iKDDEu2-w",
+          "origin": "api.interop.test/tiles",
+          "prev": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 1,
+          "type": "post"
+        },
+        "sig": "xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "payload.size",
+      "reason": "signature does not cover the changed member"
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "ed25519-jcs"
+        },
+        "payload": {
+          "body_hash": "58973c0192db4660ec0c5e19aad6f16f5f47f66fe4d94f31f8e343871acb720b",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 46,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281601,
+          "expires": 1792281901,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "wUloIfqBmQZ00iKDDEu2-w",
+          "origin": "api.interop.test/tiles",
+          "prev": "0e41ed7ebfa79ad715bb7bdbf97b3a6e0f1e3dcb875b6c54c15c89668cfa2864",
+          "seen": {
+            "checkpoint_note_hash": "abababababababababababababababababababababababababababababababab",
+            "size": 7
+          },
+          "seq": 9,
+          "type": "post"
+        },
+        "sig": "xfNoIECJ1V-HNP7empg5_w_oXJjbdoziM5JV_mFNNX7WJ7opP6rD85QOp5MDwAbYltjHu_QbRbac3_fd7fGJBQ",
+        "v": 1
+      },
+      "expect": "invalid",
+      "name": "protected.seq",
+      "reason": "signature does not cover the changed member"
+    }
+  ],
+  "text": [
+    {
+      "command": "post eyJhdXRoIjp7InNjaGVtZSI6InRleHQtZWQyNTUxOSIsInNlc3Npb24iOiJhVzUwWlhKdmNDMXpaWE56YVc5dUlRIn0sInBheWxvYWQiOnsiYm9keV9oYXNoIjoiMDZkNzQ2OTk0ZmJjMzQ4MWM1MTU4MjE2YTQ0OTRiODUxZDE1MTdlNGNlOTgyYmFjNGJmYzQ1ZDA2MTA2ZmFlOSIsImNoYW5uZWxfc2hhMjU2IjoiN2I4NGE1YTJmNDhkZTZjNjIzNGRjYTZjM2JiNDMzMTRiYTFlMTQxZDRlMGYzNDI2M2E4MDdmNTQ3ZDlhNGUxYiIsInBhcmVudF9pbmRleCI6bnVsbCwic2l6ZSI6NDksInRpdGxlX3NoYTI1NiI6bnVsbH0sInByb3RlY3RlZCI6eyJhbGciOiJFZERTQSIsImNyZWF0ZWQiOjE3OTIyODE2MDAsImV4cGlyZXMiOjE3OTIyODE5MDAsImtpZCI6ImRpZDprZXk6ejZNa3VqTHlEODlSSkw0WHRka21KNFZHZ0hBYThYSG1wNVB0empRM1hoNGJKbXFMIiwibm9uY2UiOiI5eTMwMVRVbnRQcnBNR0oxSHpLVnRBIiwib3JpZ2luIjoiYXBpLmludGVyb3AudGVzdC90aWxlcyIsInByZXYiOm51bGwsInNlZW4iOm51bGwsInNlcSI6MCwidHlwZSI6InBvc3QifSwidiI6MX0",
+      "envelope": {
+        "auth": {
+          "scheme": "text-ed25519",
+          "session": "aW50ZXJvcC1zZXNzaW9uIQ"
+        },
+        "payload": {
+          "body_hash": "06d746994fbc3481c5158216a4494b851d1517e4ce982bac4bfc45d06106fae9",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 49,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "9y301TUntPrpMGJ1HzKVtA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": null,
+          "seq": 0,
+          "type": "post"
+        },
+        "sig": "3IqDSXFfQx8KKmvEuuKHEgvo0tNkMdl_0aQFxMJoVw1tTsoybC1qt8pY29uQArhnVKCAj99kA44grg3J7qF4BQ",
+        "v": 1
+      },
+      "expect": "valid",
+      "scheme": "text-ed25519",
+      "signing_input_hex": "615735305a584a766343317a5a584e7a6157397549510a706f73742065794a686458526f496a7037496e4e6a614756745a534936496e526c654851745a5751794e5455784f534973496e4e6c63334e70623234694f694a68567a5577576c684b646d4e444d587061574535365956633564556c52496e3073496e426865577876595751694f6e7369596d396b6556396f59584e6f496a6f694d445a6b4e7a51324f546b305a6d4a6a4d7a51344d574d314d5455344d6a4532595451304f5452694f4455785a4445314d54646c4e474e6c4f546779596d466a4e474a6d597a51315a4441324d5441325a6d466c4f534973496d4e6f595735755a577866633268684d6a5532496a6f694e3249344e47453159544a6d4e44686b5a545a6a4e6a497a4e47526a59545a6a4d324a694e444d7a4d5452695954466c4d5451785a44526c4d47597a4e4449324d3245344d44646d4e5451335a446c684e47557859694973496e4268636d567564463970626d526c65434936626e56736243776963326c365a5349364e446b73496e52706447786c58334e6f595449314e694936626e567362483073496e42796233526c5933526c5a43493665794a68624763694f694a465a45525451534973496d4e795a5746305a5751694f6a45334f5449794f4445324d444173496d563463476c795a584d694f6a45334f5449794f4445354d444173496d74705a434936496d52705a4470725a586b36656a5a4e6133567154486c454f446c53536b77305748526b6132314b4e465a485a30684259546859534731774e564230656d70524d31686f4e474a4b6258464d49697769626d3975593255694f69493565544d774d565256626e5251636e424e52306f785348704c566e52424969776962334a705a326c75496a6f69595842704c6d6c7564475679623341756447567a644339306157786c63794973496e42795a5859694f6d353162477773496e4e6c5a5734694f6d353162477773496e4e6c635349364d43776964486c775a534936496e42766333516966537769646949364d5830",
+      "unsigned": {
+        "auth": {
+          "scheme": "text-ed25519",
+          "session": "aW50ZXJvcC1zZXNzaW9uIQ"
+        },
+        "payload": {
+          "body_hash": "06d746994fbc3481c5158216a4494b851d1517e4ce982bac4bfc45d06106fae9",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 49,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "9y301TUntPrpMGJ1HzKVtA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": null,
+          "seq": 0,
+          "type": "post"
+        },
+        "v": 1
+      }
+    },
+    {
+      "command": "post eyJhdXRoIjp7InNjaGVtZSI6InRleHQtc3Noc2lnIiwic2Vzc2lvbiI6ImFXNTBaWEp2Y0MxelpYTnphVzl1SVEifSwicGF5bG9hZCI6eyJib2R5X2hhc2giOiIwNmQ3NDY5OTRmYmMzNDgxYzUxNTgyMTZhNDQ5NGI4NTFkMTUxN2U0Y2U5ODJiYWM0YmZjNDVkMDYxMDZmYWU5IiwiY2hhbm5lbF9zaGEyNTYiOiI3Yjg0YTVhMmY0OGRlNmM2MjM0ZGNhNmMzYmI0MzMxNGJhMWUxNDFkNGUwZjM0MjYzYTgwN2Y1NDdkOWE0ZTFiIiwicGFyZW50X2luZGV4IjpudWxsLCJzaXplIjo0OSwidGl0bGVfc2hhMjU2IjpudWxsfSwicHJvdGVjdGVkIjp7ImFsZyI6IkVkRFNBIiwiY3JlYXRlZCI6MTc5MjI4MTYwMCwiZXhwaXJlcyI6MTc5MjI4MTkwMCwia2lkIjoiZGlkOmtleTp6Nk1rdWpMeUQ4OVJKTDRYdGRrbUo0VkdnSEFhOFhIbXA1UHR6alEzWGg0YkptcUwiLCJub25jZSI6Ijl5MzAxVFVudFBycE1HSjFIektWdEEiLCJvcmlnaW4iOiJhcGkuaW50ZXJvcC50ZXN0L3RpbGVzIiwicHJldiI6bnVsbCwic2VlbiI6bnVsbCwic2VxIjowLCJ0eXBlIjoicG9zdCJ9LCJ2IjoxfQ",
+      "envelope": {
+        "auth": {
+          "scheme": "text-sshsig",
+          "session": "aW50ZXJvcC1zZXNzaW9uIQ"
+        },
+        "payload": {
+          "body_hash": "06d746994fbc3481c5158216a4494b851d1517e4ce982bac4bfc45d06106fae9",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 49,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "9y301TUntPrpMGJ1HzKVtA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": null,
+          "seq": 0,
+          "type": "post"
+        },
+        "sig": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAg4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288sAAAAEYWljcwAAAAAAAAAGc2hhNTEyAAAAUwAAAAtzc2gtZWQyNTUxOQAAAECgWi4Ino_lvwdNJI2wcCxuqCK0rqN9mtpOLDPxLe1vbN5FQNKcFUqr3fqsGX1Z4oqbPafd4kUqDHVQZINXFEoP",
+        "v": 1
+      },
+      "expect": "valid",
+      "scheme": "text-sshsig",
+      "signing_input_hex": "615735305a584a766343317a5a584e7a6157397549510a706f73742065794a686458526f496a7037496e4e6a614756745a534936496e526c6548517463334e6f63326c6e496977696332567a63326c7662694936496d46584e5442615745703259304d78656c7059546e7068567a6c31535645696653776963474635624739685a43493665794a696232523558326868633267694f6949774e6d51334e4459354f54526d596d4d7a4e446778597a55784e5467794d545a684e4451354e4749344e54466b4d5455784e325530593255354f444a6959574d30596d5a6a4e44566b4d4459784d445a6d595755354969776959326868626d356c6246397a614745794e5459694f694933596a6730595456684d6d59304f47526c4e6d4d324d6a4d305a474e684e6d4d7a596d49304d7a4d784e474a684d5755784e44466b4e4755775a6a4d304d6a597a595467774e3259314e44646b4f5745305a54466949697769634746795a57353058326c755a475634496a7075645778734c434a7a6158706c496a6f304f53776964476c3062475666633268684d6a5532496a7075645778736653776963484a766447566a6447566b496a7037496d46735a794936496b566b52464e424969776959334a6c5958526c5a4349364d5463354d6a49344d5459774d4377695a58687761584a6c637949364d5463354d6a49344d546b774d43776961326c6b496a6f695a476c6b4f6d746c655470364e6b31726457704d655551344f564a4b544452596447527262556f30566b646e534546684f4668496258413155485236616c457a57476730596b7074635577694c434a756232356a5a534936496a6c354d7a4178564656756446427963453148536a4649656b7457644545694c434a76636d6c6e615734694f694a6863476b75615735305a584a76634335305a584e304c3352706247567a4969776963484a6c64694936626e5673624377696332566c62694936626e56736243776963325678496a6f774c434a306558426c496a6f696347397a64434a394c434a32496a6f786651",
+      "unsigned": {
+        "auth": {
+          "scheme": "text-sshsig",
+          "session": "aW50ZXJvcC1zZXNzaW9uIQ"
+        },
+        "payload": {
+          "body_hash": "06d746994fbc3481c5158216a4494b851d1517e4ce982bac4bfc45d06106fae9",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 49,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "9y301TUntPrpMGJ1HzKVtA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": null,
+          "seq": 0,
+          "type": "post"
+        },
+        "v": 1
+      }
+    },
+    {
+      "command": "claim alice d9fa00921c357f98b94d2c3a282309a4d6cffc8b491a8f3a1048bc7318105bce",
+      "envelope": {
+        "auth": {
+          "scheme": "text-ed25519",
+          "session": "aW50ZXJvcC1zZXNzaW9uIQ"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "9y301TUntPrpMGJ1HzKVtA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": null,
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "sig": "h05qA78DzucrH201HOoa14blNuF6EkMFRIf1YWH4b7PNiP4kXd2DxZuHG6TDfbK8YAI55Py7Pt7HZK2OpomoDA",
+        "v": 1
+      },
+      "expect": "valid",
+      "reason": "§11.3 short claim command: claim <name_norm> <hexH(J(U))>",
+      "scheme": "text-ed25519",
+      "unsigned": {
+        "auth": {
+          "scheme": "text-ed25519",
+          "session": "aW50ZXJvcC1zZXNzaW9uIQ"
+        },
+        "payload": {
+          "ed25519": "4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288s",
+          "initial_grant": null,
+          "name_norm": "alice",
+          "prev_event_index": null,
+          "recovery_kid": null,
+          "recovery_pop": null,
+          "tier": "verified",
+          "x25519": "zUjQaB6nPwmgD4OFm9EIgN9WgiAZzaPIg-DRUU41sQY"
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "9y301TUntPrpMGJ1HzKVtA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": null,
+          "seq": 0,
+          "type": "name.claim"
+        },
+        "v": 1
+      }
+    },
+    {
+      "envelope": {
+        "auth": {
+          "scheme": "text-ed25519",
+          "session": "aW50ZXJvcC1zZXNzaW9uIQ"
+        },
+        "payload": {
+          "body_hash": "06d746994fbc3481c5158216a4494b851d1517e4ce982bac4bfc45d06106fae9",
+          "channel_sha256": "7b84a5a2f48de6c6234dca6c3bb43314ba1e141d4e0f34263a807f547d9a4e1b",
+          "parent_index": null,
+          "size": 49,
+          "title_sha256": null
+        },
+        "protected": {
+          "alg": "EdDSA",
+          "created": 1792281600,
+          "expires": 1792281900,
+          "kid": "did:key:z6MkujLyD89RJL4XtdkmJ4VGgHAa8XHmp5PtzjQ3Xh4bJmqL",
+          "nonce": "9y301TUntPrpMGJ1HzKVtA",
+          "origin": "api.interop.test/tiles",
+          "prev": null,
+          "seen": null,
+          "seq": 0,
+          "type": "post"
+        },
+        "sig": "U1NIU0lHAAAAAQAAADMAAAALc3NoLWVkMjU1MTkAAAAg4v4qObcyZkKCfW2C1JdiLNbCl_54Jw6qQ2sB8Ia288sAAAAEYWljcwAAAAAAAAAGc2hhNTEyAAAAUwAAAAtzc2gtZWQyNTUxOQAAAECgWi4Ino_lvwdNJI2wcCxuqCK0rqN9mtpOLDPxLe1vbN5FQNKcFUqr3fqsGX1Z4oqbPafd4kUqDHVQZINXFEoP",
+        "v": 1
+      },
+      "expect": "invalid",
+      "reason": "an SSHSIG blob is not a raw Ed25519 signature",
+      "scheme": "text-ed25519"
+    }
+  ]
+}

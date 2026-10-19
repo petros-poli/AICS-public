@@ -1,0 +1,39 @@
+{
+  "entry_ts": 1792281604,
+  "entry_u64": "eyJhY3Rvcl9raWQiOiJkaWQ6a2V5Ono2TWtrbmhod0FHc1JyY1RUdGhQU3NCYlF0ck5YNkNNcXQ0cG9ybzVqZFA2dUN1ZSIsIm9yaWdpbiI6ImFwaS5pbnRlcm9wLnRlc3QvdGlsZXMiLCJwYXlsb2FkIjp7ImJvZHlfaGFzaCI6IjY2MmNhMzZhZDg5MzQ4MmQ5ZGRkOWMwNGRmN2VmY2JjZDRlOGU3MzYzNmQ3YWQ5NDlmNDEzNWY4MTBiOGYwMzUiLCJjaGFubmVsX3NoYTI1NiI6IjdiODRhNWEyZjQ4ZGU2YzYyMzRkY2E2YzNiYjQzMzE0YmExZTE0MWQ0ZTBmMzQyNjNhODA3ZjU0N2Q5YTRlMWIiLCJlbnZlbG9wZSI6eyJhdXRoIjp7InNjaGVtZSI6ImVkMjU1MTktamNzIn0sInBheWxvYWQiOnsiYm9keV9oYXNoIjoiNjYyY2EzNmFkODkzNDgyZDlkZGQ5YzA0ZGY3ZWZjYmNkNGU4ZTczNjM2ZDdhZDk0OWY0MTM1ZjgxMGI4ZjAzNSIsImNoYW5uZWxfc2hhMjU2IjoiN2I4NGE1YTJmNDhkZTZjNjIzNGRjYTZjM2JiNDMzMTRiYTFlMTQxZDRlMGYzNDI2M2E4MDdmNTQ3ZDlhNGUxYiIsInBhcmVudF9pbmRleCI6bnVsbCwic2l6ZSI6NTUsInRpdGxlX3NoYTI1NiI6bnVsbH0sInByb3RlY3RlZCI6eyJhbGciOiJFZERTQSIsImNyZWF0ZWQiOjE3OTIyODE2MDQsImV4cGlyZXMiOjE3OTIyODE5MDQsImtpZCI6ImRpZDprZXk6ejZNa2tuaGh3QUdzUnJjVFR0aFBTc0JiUXRyTlg2Q01xdDRwb3JvNWpkUDZ1Q3VlIiwibm9uY2UiOiJFMklvampseWd2ZEdzSXE3MzZQZkJRIiwib3JpZ2luIjoiYXBpLmludGVyb3AudGVzdC90aWxlcyIsInByZXYiOiI5ODE0NTNiYzU5Mjg5NjFlMjIyZTE0ZTFhMzk5NzM1MTMwODA1NmJjZGJhMDI0ZTA3M2U3Mzg4MzU5MWI4ZmJlIiwic2VlbiI6bnVsbCwic2VxIjoxLCJ0eXBlIjoicG9zdCJ9LCJzaWciOiJRa2xxZkpiR01EQ2g5Vzdwc3Y3VHJ5cXljemZoZ1FNdzFrVV9YT1J5YUxrekhxOE1RNmI1U3IzZFZkWHpOY2xDYUdTMlBDeVRpQnJHbGduTG5LejNCZyIsInYiOjF9LCJwYXJlbnRfaW5kZXgiOm51bGwsInNpemUiOjU1LCJ0aXRsZV9zaGEyNTYiOm51bGx9LCJ0cyI6MTc5MjI4MTYwNCwidHlwZSI6InBvc3QiLCJ2IjoyfQ",
+  "expect": "valid",
+  "invalid": [
+    {
+      "expect": "invalid",
+      "name": "mmd-61",
+      "reason": "§14.4 step 1: mmd_seconds=60",
+      "receipt_text": "{\"entry_hash\":\"c0ccdd7cd0149c3a0e4f620fc95012a1d5ddcc37df3b508aa9f41157aee117ff\",\"mmd_seconds\":61,\"origin\":\"api.interop.test/tiles\",\"submitted_at\":1792281604}\n\n— api.interop.test/tiles eZh2z7dDmuLJ2LYC3EM+9NpCEBhONnN55EnaGR1Wo4awQhA8JXnnI5OdX7TUuFLrnEfB3kXoIf6VzXrtIjtGCWwA/wI=\n"
+    },
+    {
+      "expect": "invalid",
+      "name": "submitted-at-not-ts",
+      "reason": "§14.4 step 2: submitted_at = ts",
+      "receipt_text": "{\"entry_hash\":\"c0ccdd7cd0149c3a0e4f620fc95012a1d5ddcc37df3b508aa9f41157aee117ff\",\"mmd_seconds\":60,\"origin\":\"api.interop.test/tiles\",\"submitted_at\":1792281605}\n\n— api.interop.test/tiles eZh2z0aI3yB51SqYugzHwXV4G4S1RLO2ylGAIfp8+bsL34ttML8azlQnuUnw6EXqztemgoX+qlBMfTz4fnAS/x+/kQM=\n"
+    },
+    {
+      "expect": "invalid",
+      "name": "plain-json-digest",
+      "reason": "§10.1: entry_hash is the leaf hash hexH(0x00 || entry_bytes)",
+      "receipt_text": "{\"entry_hash\":\"36e990ffea85ae2d950d4648fc26924ca863e154cba7d30798911292d7a76389\",\"mmd_seconds\":60,\"origin\":\"api.interop.test/tiles\",\"submitted_at\":1792281604}\n\n— api.interop.test/tiles eZh2z9+JZ1XBanZRMkkFXgVVVZO2/Wv5UCArGjdbakmNolIyb+qbUB6OWv0zVdmHeWc5WOSsMjPGZ8B+LGDG7vq0UQA=\n"
+    },
+    {
+      "expect": "invalid",
+      "name": "not-canonical",
+      "reason": "§14.4 step 1: exact canonical receipt schema",
+      "receipt_text": "{\"entry_hash\":\"c0ccdd7cd0149c3a0e4f620fc95012a1d5ddcc37df3b508aa9f41157aee117ff\", \"mmd_seconds\":60, \"origin\":\"api.interop.test/tiles\", \"submitted_at\":1792281604}\n\n— api.interop.test/tiles eZh2z5thid/q/QRXsVZ63PUxewIW4eNHkweAcxdQjakCHH9FhWShciQ+Jr5b8itG3EaH4xX54Qf2olJaHDRR8bQE1ws=\n"
+    },
+    {
+      "expect": "invalid",
+      "name": "other-origin",
+      "reason": "§14.4 step 1: check origin",
+      "receipt_text": "{\"entry_hash\":\"c0ccdd7cd0149c3a0e4f620fc95012a1d5ddcc37df3b508aa9f41157aee117ff\",\"mmd_seconds\":60,\"origin\":\"evil.example/tiles\",\"submitted_at\":1792281604}\n\n— api.interop.test/tiles eZh2z0JyCmQeKtJ0tJHgNmZrctW6iGDURhsWMVaTLtZBEaJ3XReHzetEX/KyChLoWcLPwMZSTv1cXmCoOalVuY87BQI=\n"
+    }
+  ],
+  "log_vkey": "api.interop.test/tiles+799876cf+AYhLiFf06qFhPGFQTbNNS+rzRlF6DjHePN3U2bQgHZ0L",
+  "receipt_text": "{\"entry_hash\":\"c0ccdd7cd0149c3a0e4f620fc95012a1d5ddcc37df3b508aa9f41157aee117ff\",\"mmd_seconds\":60,\"origin\":\"api.interop.test/tiles\",\"submitted_at\":1792281604}\n\n— api.interop.test/tiles eZh2z7r3djpf539iKy03mEedrB+G4WF6vFyaER/ubVwzNOSC1QWlU8R4cSx3sC77NMyIONwnk62r7ISm53O6z7D94gY=\n"
+}
