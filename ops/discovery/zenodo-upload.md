@@ -1,99 +1,78 @@
-# Zenodo deposit of the AICS-1 spec — exact steps
+# Zenodo specification revisions
 
-`zenodo.json` next to this file is the deposit-request metadata for
-`docs/spec/AICS-1.md` (title, version 0.2-draft, organizational creator
-"wesupport-ai.com", abstract verbatim, keywords, CC-BY-4.0 licence,
-related identifier pointing at the repository). This file is the procedure.
-No token is ever written into a file: it comes from the environment and is
-revoked when done.
+`zenodo.json` is the deposit metadata. It preserves the AICS-1 abstract, organizational
+creator `wesupport-ai.com`, English language, CC-BY-4.0 license and public source link.
+The archive revision label distinguishes dated document changes without changing
+the protocol's own `0.2-draft` version or any normative file bytes.
 
-## Published version — 19 October 2026
+## Published records and current revision
 
-Version `0.2-draft` is published at [Zenodo record 23476344](https://zenodo.org/records/23476344),
-with version DOI [10.5281/zenodo.23476344](https://doi.org/10.5281/zenodo.23476344)
-and concept DOI [10.5281/zenodo.23476343](https://doi.org/10.5281/zenodo.23476343).
-All five public downloads match the prepared bytes and checksum manifest. The
-protocol documents were archived unchanged; add the assigned DOI only to a
-future specification version. The procedure below is for future deposits, not
-an instruction to duplicate this published record.
+The original `0.2-draft` deposit is [record 23476344](https://zenodo.org/records/23476344),
+version DOI [10.5281/zenodo.23476344](https://doi.org/10.5281/zenodo.23476344).
+It preserves the specification revision dated 2026-10-18. The concept DOI
+[10.5281/zenodo.23476343](https://doi.org/10.5281/zenodo.23476343) groups all versions.
+Never replace or rewrite the original record's files.
 
-## 0. Preconditions (all must hold before touching the API)
+The dated revision `0.2-draft-revision-2026-10-19` is published at
+[record 23480785](https://zenodo.org/records/23480785), version DOI
+[10.5281/zenodo.23480785](https://doi.org/10.5281/zenodo.23480785), under the same
+concept DOI. All five public files and their metadata were verified on
+2026-10-19 at 17:45 UTC; all five original-record files were also confirmed unchanged.
+Its AICS-1, SWARMS and PROTOCOL-TEXT files match
+[public source snapshot 92429b9](https://github.com/petros-poli/AICS-public/tree/92429b908d8ae4913397359b491dad62f32e1d43)
+byte for byte. AICS-1 and SWARMS changed; PROTOCOL-TEXT is unchanged. The revision
+covers permanent nonce uniqueness, resource-exhaustion freeze/report requirements,
+and the normative locally prepared SWARMS delivery flow. The concept resolves to
+this new version; the earlier deposit remains separately citable.
 
-- [ ] `docs/spec/AICS-1.md` says `0.2-draft` in its publication-metadata table;
-      the deposited bytes are archived unchanged, so deposit exactly what the repo
-      carries at that tag.
-- [ ] Licence is `cc-by-4.0` in `zenodo.json` and CC-BY-4.0 in the spec.
-      This is the approved documentation licence; code is Apache-2.0.
-- [ ] The repository (`https://github.com/petros-poli/AICS-public`, the
-      `isSupplementTo` related identifier) is publicly readable, or replace
-      that identifier with an appropriate publicly readable spec/release URL.
-      A release/tag URL in a private repository does not solve this requirement.
-      Never reference a private URL in a public deposit.
-- [ ] Run `bash ops/discovery/build-zenodo-bundle.sh --build` and verify
-      `(cd ops/discovery/.zenodo-staging && shasum -a 256 -c SHA256SUMS)`.
-- [ ] After publishing: write the DOI Zenodo assigns into the spec's
-      publication-metadata table (row "DOI") in the next spec version.
+## Prepare a later revision without duplicates
 
-## 1. Token — environment only, never in a file
+1. Check the concept DOI's latest record, its Versions list and the authenticated
+   dashboard. Reuse an existing draft for the intended revision. If the exact
+   revision and file hashes are already published, do not publish again.
+2. Open the latest record and choose **New version**. Keep the same concept DOI;
+   do not create an unrelated new upload or edit an older published record.
+3. Choose a distinct dated archive version label. Keep the documents' own version,
+   date, DOI text and normative bytes unchanged. An assigned deposit DOI belongs
+   in this publication record or other non-normative documentation; a future
+   specification revision may adopt it deliberately.
+4. Validate sources with `bash ops/discovery/build-zenodo-bundle.sh --check`.
+   The legacy `--build` mode replaces `.zenodo-staging`; preserve any existing
+   publication bundle and use a separate version-specific staging directory.
+5. Copy exactly AICS-1, SWARMS, PROTOCOL-TEXT and `zenodo.json` into the new staging
+   directory. Use dated filenames for the changed specifications and create a
+   `SHA256SUMS` file covering those four files. Compare the specification bytes
+   with the reviewed public source revision and inspect metadata for private URLs
+   or personal details before upload.
 
-Create a personal access token at zenodo.org → Settings → Applications →
-Personal access tokens, scopes `deposit:write` and `deposit:actions`. Then in
-the shell you run the calls from:
+The 2026-10-19 bundle contains exactly:
 
-    export ZENODO_TOKEN='…'      # paste; this line must not be saved anywhere
+- `AICS-1-v0.2-draft-revision-2026-10-19.md`
+- `SWARMS-v0.2-draft-revision-2026-10-19.md`
+- `PROTOCOL-TEXT.md`
+- `zenodo.json`
+- `SHA256SUMS`
 
-Rules: the token never goes into files, commit messages, issue text, or shared
-command histories (`history -d` / run from a clean shell); anyone who sees it
-can write and publish under the account — revoke it at the same settings page
-the moment the work is done (`unset ZENODO_TOKEN` only clears the shell).
+## Review and publish through the authenticated dashboard
 
-Rehearse first on the sandbox, which has its own tokens and its own API base:
-everything below works unchanged against
-`https://sandbox.zenodo.org/api/deposit/depositions` with a sandbox token.
+Use the existing signed-in Zenodo session. This workflow needs no new API token
+or permission grant. Importing the previous files is unnecessary when uploading
+a fully prepared replacement bundle into the new-version draft.
 
-## 2. Create the draft deposit
+1. Set the distinct archive version and publication date. Preserve the title,
+   creator, report resource type, license, keywords, English language, public
+   visibility and public repository relation. Describe the revision and its
+   exact source snapshot without claiming deployment conformance.
+2. Upload all five files, save the draft and check every filename, byte count and
+   server-displayed checksum against the staging inventory. Confirm that only
+   the new-version draft is being changed.
+3. Preview the draft. Publish only after the intended public metadata and exact
+   file inventory are verified and publication has been authorized.
+4. Record the assigned version DOI and unchanged concept DOI. Download every
+   public file and verify its SHA-256 against the prepared inventory; verify the
+   archived checksum manifest as well. Check that the concept resolves to the
+   new version and that the older record retains its previous hashes.
 
-    curl --fail-with-body -sS -X POST \
-      -H "Authorization: Bearer $ZENODO_TOKEN" \
-      -H "Content-Type: application/json" \
-      --data-binary @ops/discovery/.zenodo-staging/zenodo.json \
-      https://zenodo.org/api/deposit/depositions
-
-The response JSON contains the deposition `id` and, under `links`, the
-`bucket` URL used next. Stop on a non-success response; retain the draft ID
-and reuse it rather than creating duplicate deposits.
-
-## 3. Upload the file bytes
-
-    for f in AICS-1-v0.2-draft.md SWARMS-v0.2-draft.md PROTOCOL-TEXT.md zenodo.json SHA256SUMS; do
-      curl --fail-with-body -sS -X PUT \
-        -H "Authorization: Bearer $ZENODO_TOKEN" \
-        --data-binary @ops/discovery/.zenodo-staging/"$f" \
-        "$BUCKET/$f"
-    done
-
-where `$BUCKET` is the `links.bucket` value from step 2. The filename becomes
-public; keep the version in it. Upload all five files so every checksum has a
-corresponding archived file, including the metadata snapshot.
-
-## 4. Review, then publish
-
-Open the draft at `https://zenodo.org/deposits/<id>` and check: metadata rows,
-all five files, their checksums, the licence, the related identifier.
-Publishing mints the DOI and freezes the record — corrections afterwards are new versions, so this is the
-last cheap checkpoint. Then:
-
-    curl --fail-with-body -sS -X POST \
-      -H "Authorization: Bearer $ZENODO_TOKEN" \
-      https://zenodo.org/api/deposit/depositions/<id>/actions/publish
-
-A mistaken draft can be deleted instead: `DELETE
-https://zenodo.org/api/deposit/depositions/<id>` (drafts only; published
-records cannot be deleted, only new-versioned).
-
-## 5. Aftermath
-
-- [ ] DOI recorded in the spec's metadata table (precondition 4).
-- [ ] Deposit URL added to `ops/discovery/directories.md` under the
-      durable-mentions note if useful.
-- [ ] Token revoked, `unset ZENODO_TOKEN`.
+Keep upload inventories, API verification and screenshots as local evidence,
+without credentials. Do not add runtime data, signing seeds or private operational
+notes to a specification deposit.

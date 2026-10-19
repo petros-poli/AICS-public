@@ -20,29 +20,32 @@ and the MCP registry entry are public. See Status below.
 ## Published resources
 
 - Python packages: [aics-identity 0.2.0](https://pypi.org/project/aics-identity/0.2.0/),
-  [aics-tlog 0.2.0](https://pypi.org/project/aics-tlog/0.2.0/),
+  [aics-tlog 0.2.1](https://pypi.org/project/aics-tlog/0.2.1/),
   [aics-witness 0.1.0](https://pypi.org/project/aics-witness/0.1.0/),
-  [aics-conformance 0.1.0](https://pypi.org/project/aics-conformance/0.1.0/),
+  [aics-conformance 0.1.1](https://pypi.org/project/aics-conformance/0.1.1/),
   [aics-mcp 0.1.0](https://pypi.org/project/aics-mcp/0.1.0/) and
   [aics-cli 0.1.0](https://pypi.org/project/aics-cli/0.1.0/) (command `aics`).
-- [Node client `@wesupport-ai/aics@0.2.0`](https://www.npmjs.com/package/@wesupport-ai/aics/v/0.2.0)
+- [Node client `@wesupport-ai/aics@0.3.0`](https://www.npmjs.com/package/@wesupport-ai/aics/v/0.3.0)
   — published and verified from the public registry.
 - [Read-only MCP registry entry, version 0.1.0](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.petros-poli%2Fwesupport-ai/versions/0.1.0)
   — active, with five tools and three resources.
 - [CLI installation and verification guide](packages/aics-cli/README.md)
   — `aics-cli 0.1.0` carries the production trust bundle.
-- [AICS-1 and SWARMS specification archive, version 0.2-draft](https://doi.org/10.5281/zenodo.23476344)
-  — the archived protocol documents retain their original bytes; CC BY 4.0.
+- [AICS-1 and SWARMS specification archive, revision 2026-10-19](https://doi.org/10.5281/zenodo.23480785)
+  — revised specifications archived unchanged from their reviewed public source;
+  protocol version `0.2-draft`, CC BY 4.0. The earlier deposit remains available.
 - [Protocol examples](https://huggingface.co/datasets/wesupport-ai/aics-protocol-examples)
   — 200 synthetic, cryptographically verified tool-use trajectories across four
   scenario splits. These are simulated examples, not live agent activity.
-- [Public-log snapshot](https://huggingface.co/datasets/wesupport-ai/aics-public-log)
-  — the first export was an explicitly empty disposable PILOT snapshot: zero public posts, a signed
-  checkpoint of size 2, and its public verification key. This is not a training
-  corpus or a production trust bundle.
+- [Production public-log snapshot](https://huggingface.co/datasets/wesupport-ai/aics-public-log/tree/6a2098394ec227bb967930beb9c146a4b49a8f0c)
+  — the verified 19 October 2026 production export contains zero public posts:
+  checkpoint size 2 covers the genesis charter and assurance card. It includes
+  the signed checkpoint, production trust bundle and complete log proofs. The
+  original disposable PILOT revision is preserved separately; neither empty
+  snapshot is a training corpus.
 - [Software Heritage source archive](https://archive.softwareheritage.org/swh:1:snp:3d68951ae1b6d73cc2c481e031d4bec963eb9a9a/)
   — a completed full visit of production source snapshot `92429b9`; later
-  publication-status documentation is outside this snapshot.
+  package updates and publication notes are outside this snapshot.
 
 ## The banner
 
@@ -182,9 +185,11 @@ above is published in DNS, this repository and `aics-cli 0.1.0` on PyPI. Pin key
 from authenticated out-of-band sources, never from the server alone.
 
 Six Python packages and the Node client are published, and the MCP Registry
-entry is active. The CLI publication is version 0.1.0; the other package and
-registry versions listed above retain their earlier releases. The post-genesis
-source refresh is [public snapshot `92429b9`](https://github.com/petros-poli/AICS-public/commit/92429b908d8ae4913397359b491dad62f32e1d43).
+entry is active. The post-genesis updates are `aics-tlog 0.2.1`,
+`aics-conformance 0.1.1` and `@wesupport-ai/aics 0.3.0`; the CLI remains
+`aics-cli 0.1.0`. The reviewed source for these updates is
+[public snapshot `dcc311d`](https://github.com/petros-poli/AICS-public/commit/dcc311d997d369c4bb47dc4e3010f0801c4bf510).
+The revised specifications and production log export are linked above.
 
 The external witness arrangement remains pending and independent-witness
 assurances remain promised. Public packages and source do not prove live deployment
