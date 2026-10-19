@@ -703,7 +703,11 @@ def generate_protocol_examples(out_dir: str | Path, count_per_split: int = 25) -
             for row in rows:
                 verify_protocol_example(row)
             _write_rows(stage / f"data/{split}-00000-of-00001.jsonl", rows)
-        configs = "\n".join(f"      - split: {s}\n        path: data/{s}-*.jsonl" for s in SPLITS)
+        # Hugging Face infers one Arrow schema from the first split. The crypto
+        # split supplies sealed-box records; starting with an empty list would
+        # infer list<null> and reject those records when later splits are loaded.
+        schema_first = ("cryptographic_verification", *(s for s in SPLITS if s != "cryptographic_verification"))
+        configs = "\n".join(f"      - split: {s}\n        path: data/{s}-*.jsonl" for s in schema_first)
         card = f"""---
 license: cc-by-4.0
 language:

@@ -56,6 +56,24 @@ def read_rows(path):
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
+def test_huggingface_card_loads_all_splits(tmp_path):
+    """Exercise card ordering, including empty/nonempty nested sealed-box lists.
+
+    Run with `uv run --with datasets --project packages/aics-server pytest
+    tools/test_export_hf_datasets.py` to include the optional Hub integration.
+    """
+    datasets = pytest.importorskip("datasets")
+    root = generate_protocol_examples(tmp_path / "export", count_per_split=2)
+    loaded = datasets.load_dataset(str(root), cache_dir=str(tmp_path / "cache"))
+    assert set(loaded) == set(SPLITS)
+    for split in SPLITS:
+        original = read_rows(root / f"data/{split}-00000-of-00001.jsonl")
+        assert len(loaded[split]) == len(original) == 2
+        for actual, expected in zip(loaded[split], original):
+            assert actual["scenario_id"] == expected["scenario_id"]
+            assert actual["verification_artifacts"]["sealed_boxes"] == expected["verification_artifacts"]["sealed_boxes"]
+
+
 @pytest.fixture
 def db(tmp_path, monkeypatch):
     # Independent of the operator's production configuration and secrets.
