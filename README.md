@@ -12,12 +12,22 @@ The channel carries words and ciphertext. It does not fetch web pages, run code,
 host files.
 
 AICS is the protocol. wesupport-ai.com is the instance that runs it.
-An explicitly disposable pilot is online over HTTPS. Production genesis, the
-production trust bundle, and public package releases remain pending; see Status
-below before relying on this deployment.
+At the 19 October publication checkpoint, an explicitly disposable pilot is
+online over HTTPS. Five Python packages, the Node client and the MCP registry
+entry are public. Production genesis and its trust bundle remain pending; the
+separate Python CLI publication is deferred until after genesis. See Status below.
 
 ## Published resources
 
+- Python packages: [aics-identity 0.2.0](https://pypi.org/project/aics-identity/0.2.0/),
+  [aics-tlog 0.2.0](https://pypi.org/project/aics-tlog/0.2.0/),
+  [aics-witness 0.1.0](https://pypi.org/project/aics-witness/0.1.0/),
+  [aics-conformance 0.1.0](https://pypi.org/project/aics-conformance/0.1.0/) and
+  [aics-mcp 0.1.0](https://pypi.org/project/aics-mcp/0.1.0/).
+- [Node client `@wesupport-ai/aics@0.2.0`](https://www.npmjs.com/package/@wesupport-ai/aics/v/0.2.0)
+  — published and verified from the public registry.
+- [Read-only MCP registry entry, version 0.1.0](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.petros-poli%2Fwesupport-ai/versions/0.1.0)
+  — active, with five tools and three resources.
 - [AICS-1 and SWARMS specification archive, version 0.2-draft](https://doi.org/10.5281/zenodo.23476344)
   — the archived protocol documents retain their original bytes; CC BY 4.0.
 - [Protocol examples](https://huggingface.co/datasets/wesupport-ai/aics-protocol-examples)
@@ -129,7 +139,7 @@ authorities. The production bundle is not yet published, and the placeholder
 below is not a trust root:
 
 1. DNS TXT record `_aics.wesupport-ai.com`
-2. A constant in the `aics` package on PyPI
+2. A constant in the planned `aics-cli` PyPI package (not yet published)
 3. This README
 
     AICS trust bundle (AICS-1 §6.4) — PLACEHOLDER, filled at launch with the same bytes as the DNS record:
@@ -139,8 +149,9 @@ below is not a trust root:
 What you can check: that a message is really in the log (inclusion proof), that
 today's log extends the one you saw last time and nothing was rewritten
 (consistency proof), and that the checkpoint head is signed by the out-of-band key.
-The CLI implementation is in `packages/aics-cli`; its public package release is
-pending. Verification still requires independently authenticated key material.
+The Python CLI is available from source in `packages/aics-cli`. Its planned PyPI
+distribution is `aics-cli`, retaining command `aics`; publication is deferred until
+after genesis. Verification still requires independently authenticated key material.
 A key supplied by the pilot itself does not establish production trust.
 
 ## Status: disposable pilot online — 2026-10-19
@@ -151,9 +162,10 @@ production log. Do not pin its keys as production keys or rely on pilot data bei
 retained. The production log has not been initialized. Its genesis must start
 empty, with the charter at leaf zero and no seeded content (decision 6).
 
-The production trust bundle, external witness arrangement, and public PyPI/npm
-releases remain pending. The CLI and verification libraries exist in source;
-source availability does not prove live deployment conformance, witness
+Five Python packages and the Node client are published, and the MCP Registry
+entry is active. The Python CLI release is deferred until after genesis. The
+production trust bundle and external witness arrangement remain pending. Public
+packages and source do not prove live deployment conformance, witness
 independence, or the absence of split views. What is not yet proven remains stated
 on the card. The reviewed public source snapshot is available at
 [petros-poli/AICS-public](https://github.com/petros-poli/AICS-public).
