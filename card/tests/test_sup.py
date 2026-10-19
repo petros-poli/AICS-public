@@ -8,7 +8,18 @@ import hashlib
 import pytest
 
 import validate_card as vc
-from helpers import BASE_ADDRESS, SOLANA_ADDRESS, base_profile, errors, replace_statement, statement
+from helpers import (
+    BASE_ADDRESS,
+    PATTERN_DOCUMENT,
+    REPO,
+    SOLANA_ADDRESS,
+    base_profile,
+    errors,
+    fill_values,
+    replace_statement,
+    statement,
+    with_networks,
+)
 
 
 def test_the_template_activates_the_profile(card):
@@ -26,6 +37,26 @@ def test_a_base_profile_card_still_passes(card):
 
 
 def test_the_filled_card_passes_final(filled):
+    assert errors(filled, final=True) == []
+    # Decision 25: no contribution address was given, so the launch card credits no network.
+    assert filled["sup"]["contributions"] == []
+
+
+def test_the_card_says_no_network_is_credited(card):
+    assert card["sup"]["contributions"] == []
+    n2 = " ".join(next(a for a in card["assurances"] if a["id"] == "N2")["assumptions"])
+    assert "No contribution network is currently credited" in n2
+
+
+def networks_filled() -> dict:
+    """A filled card that lists both networks, as a successor card with the owner's addresses would."""
+    values = dict(fill_values(), **{"SUP_ADDRESS:base-usdc": BASE_ADDRESS, "SUP_ADDRESS:solana-usdc": SOLANA_ADDRESS})
+    return vc.fill(with_networks(vc.load_json((REPO / "card/card-content.json").read_bytes())), values, REPO,
+                   PATTERN_DOCUMENT)
+
+
+def test_a_card_with_both_networks_passes_final():
+    filled = networks_filled()
     assert errors(filled, final=True) == []
     assert [c["address"] for c in filled["sup"]["contributions"]] == [BASE_ADDRESS, SOLANA_ADDRESS]
 
@@ -98,17 +129,18 @@ def test_a_base_card_needs_no_correlation_statement(card):
     (lambda c: c.pop("units_per_sup"), "missing members: units_per_sup"),
 ])
 def test_contribution_entry_rules(card, change, message):
-    change(card["sup"]["contributions"][0])
+    change(with_networks(card)["sup"]["contributions"][0])
     assert any(message in e for e in errors(card)), errors(card)
 
 
-def test_a_solana_address_is_canonical_base58_of_32_bytes(filled):
+def test_a_solana_address_is_canonical_base58_of_32_bytes():
+    filled = networks_filled()
     filled["sup"]["contributions"][1]["address"] = vc.b58encode(bytes(range(1, 31)))
     assert any("canonical solana-usdc address" in e for e in errors(filled, final=True))
 
 
 def test_each_network_is_listed_once(card):
-    card["sup"]["contributions"].append(dict(card["sup"]["contributions"][0]))
+    with_networks(card)["sup"]["contributions"].append(dict(card["sup"]["contributions"][0]))
     assert any("lists each credited network once" in e for e in errors(card))
 
 
@@ -149,10 +181,10 @@ def test_address_placeholder_is_a_slot(card):
     card["sup"]["intent_seconds"] = "<FILL:SUP_ADDRESS:base-usdc>"
     assert any("placeholder <FILL:SUP_ADDRESS:base-usdc> is not allowed here" in e for e in errors(card))
     card["sup"]["intent_seconds"] = 86400
-    card["sup"]["contributions"][0]["address"] = "<FILL:SUP_ADDRESS>"
+    with_networks(card)["sup"]["contributions"][0]["address"] = "<FILL:SUP_ADDRESS>"
     assert any("needs an argument" in e for e in errors(card))
 
 
 def test_fill_writes_the_addresses(card):
-    out = vc.fill(card, {"SUP_ADDRESS:base-usdc": BASE_ADDRESS, "SUP_ADDRESS:solana-usdc": SOLANA_ADDRESS}, None)
+    out = vc.fill(with_networks(card), {"SUP_ADDRESS:base-usdc": BASE_ADDRESS, "SUP_ADDRESS:solana-usdc": SOLANA_ADDRESS}, None)
     assert [c["address"] for c in out["sup"]["contributions"]] == [BASE_ADDRESS, SOLANA_ADDRESS]

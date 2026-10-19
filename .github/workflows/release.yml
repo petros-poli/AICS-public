@@ -20,6 +20,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       publish-pypi: ${{ steps.policy.outputs.enabled }}
+      pypi-only-project: ${{ steps.policy.outputs.project }}
     steps:
       - name: Refuse to replace a published release
         env:
@@ -50,15 +51,31 @@ jobs:
         id: policy
         env:
           PUBLISH_PYPI: ${{ vars.PUBLISH_PYPI }}
+          PYPI_ONLY_PROJECT: ${{ vars.PYPI_ONLY_PROJECT }}
         run: |
-          # Shell comparison is case sensitive; Actions expression equality is not.
-          if [[ "$PUBLISH_PYPI" == true ]]; then
-            echo 'enabled=true' >> "$GITHUB_OUTPUT"
-            echo 'PyPI trusted publishing is enabled after release verification succeeds.'
-          else
-            echo 'enabled=false' >> "$GITHUB_OUTPUT"
-            echo 'PyPI publishing skipped: repository variable PUBLISH_PYPI is not exactly "true" (unset defaults to skipped).'
-          fi
+          python3 - <<'PY'
+          import os
+          import re
+
+          allowed = {"aics-identity", "aics-tlog", "aics-witness",
+                     "aics-conformance", "aics-cli", "aics-mcp"}
+          requested = os.environ.get("PYPI_ONLY_PROJECT", "")
+          if requested and not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?", requested):
+              raise SystemExit("PYPI_ONLY_PROJECT must be empty or a valid PyPI project name")
+          project = re.sub(r"[-_.]+", "-", requested).lower()
+          if project and project not in allowed:
+              raise SystemExit("PYPI_ONLY_PROJECT is not one of the six release projects")
+          # Freeze validated policy once; later steps never reread repository variables.
+          # Python comparison is case sensitive; Actions expression equality is not.
+          enabled = os.environ.get("PUBLISH_PYPI") == "true"
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"enabled={str(enabled).lower()}", file=output)
+              print(f"project={project}", file=output)
+          if enabled:
+              print(f"PyPI publishing enabled for {project or 'all six projects'} after release verification succeeds.")
+          else:
+              print('PyPI publishing skipped: PUBLISH_PYPI is not exactly "true" (unset defaults to skipped).')
+          PY
 
   tests:
     needs: prepare
@@ -185,7 +202,7 @@ jobs:
             environment: pypi-aics-witness
           - project: aics-conformance
             environment: pypi-aics-conformance
-          - project: aics
+          - project: aics-cli
             environment: pypi-aics
           - project: aics-mcp
             environment: pypi-aics-mcp
@@ -195,10 +212,12 @@ jobs:
       id-token: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: ${{ needs.prepare.outputs.pypi-only-project == '' || needs.prepare.outputs.pypi-only-project == matrix.project }}
         with:
           name: verified-dist
           path: verified
       - name: Select this project's verified wheel and sdist
+        if: ${{ needs.prepare.outputs.pypi-only-project == '' || needs.prepare.outputs.pypi-only-project == matrix.project }}
         env:
           PYPI_PROJECT: ${{ matrix.project }}
         run: |
@@ -215,8 +234,8 @@ jobs:
           project = os.environ["PYPI_PROJECT"]
           if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", project):
               raise SystemExit("Invalid PyPI project name")
-          # Distribution filenames normalize hyphens to underscores. The final
-          # dash is essential: the CLI's 'aics' must not select every aics_* file.
+          # Distribution filenames normalize hyphens to underscores.
+          # The final dash keeps similarly prefixed project names separate.
           prefix = project.replace("-", "_") + "-"
           verified = Path("verified")
           selected = []
@@ -274,6 +293,7 @@ jobs:
               print(f"Selected {project}: {path.name}")
           PY
       - name: Publish with PyPI trusted publishing
+        if: ${{ needs.prepare.outputs.pypi-only-project == '' || needs.prepare.outputs.pypi-only-project == matrix.project }}
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: dist/

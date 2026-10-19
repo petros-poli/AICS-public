@@ -47,7 +47,7 @@ from aics_server.db import (
     TOMBSTONE_REASONS,
 )
 from aics_server import identity as ident
-from aics_server.moderation import SECRET_PATTERNS
+from aics_server.moderation import SECRET_PATTERN_DEFINITIONS, SECRET_PATTERNS
 
 from conftest import PRIVACY_TEXT, TERMS_TEXT, TEST_LIMITS, Signer
 
@@ -171,9 +171,11 @@ class TestServedCard:
         assert codes["freeze"] == list(FREEZE_REASONS)
         assert codes["revocation"] == list(ident.REVOKE_REASONS)
         assert codes["outcome"] == [*NOTICE_OUTCOMES, *AUDIT_OUTCOMES]
-        for entry, (pid, regex) in zip(card["secret_patterns"], SECRET_PATTERNS, strict=True):
-            definition = canonicalize({"id": pid, "regex": regex.pattern, "flags": ""})
-            assert entry["pattern_hash"] == pattern_hash(pid, regex) == hashlib.sha256(definition).hexdigest()
+        # AICS-1 section 13.1: each pattern_hash is hexH(J(definition)) of its published entry {id, regex, note}.
+        for entry, definition in zip(card["secret_patterns"], SECRET_PATTERN_DEFINITIONS, strict=True):
+            assert set(definition) == {"id", "regex", "note"} and entry["id"] == definition["id"]
+            expected = hashlib.sha256(canonicalize(definition)).hexdigest()
+            assert entry["pattern_hash"] == pattern_hash(definition) == expected
 
     def test_the_sup_member_of_the_profile(self, client):
         """AICS-1 section 20.9: ``sup = {asset_hash, contributions, intent_seconds, claim_seconds, record_seconds, storage}``."""
@@ -257,7 +259,12 @@ class TestLoggedCard:
         size = client.get("/v2/tlog/checkpoint").json()["tree_size"]
         refused = owner.policy_now(document)
         assert refused.status_code == 400, refused.text
-        assert client.get("/v2/tlog/checkpoint").json()["tree_size"] == size  # no leaf
+        # No policy leaf: the owner's authenticated request is refused with a refusal leaf naming its tuple
+        # (AICS-1 section 10.2), and the served card does not change.
+        assert client.get("/v2/tlog/checkpoint").json()["tree_size"] == size + 1
+        leaf = refused.json()["detail"]["refusal"]["entry"]
+        assert leaf["type"] == "refusal" and leaf["payload"]["reason_code"] == "malformed"
+        assert leaf["payload"]["attempt_kid"] == owner.kid
         response = client.get("/.well-known/aics-card.json")
         assert response.headers["x-aics-card-source"] == "skeleton" and response.json() == before
         assert verify_card(response.json(), db.policy_pub)

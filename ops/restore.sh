@@ -3,13 +3,22 @@
 # ops/backup.sh — and verify BEFORE applying anything.
 #
 # Usage (run on the VPS as root):
-#   ops/restore.sh --stamp 20261018-033000 [--remote r2|b2] [--vkey-file FILE] [--yes]
+#   ops/restore.sh --stamp 20261018-033000 [--remote r2|b2|local] [--vkey-file FILE] [--yes]
+#   ops/restore.sh --archive /var/backups/aics/20261018-033000 [--vkey-file FILE] [--yes]
 #   ops/restore.sh --db aics-20261018-033000.db.gz --tiles tiles-20261018-033000.tar.gz \
 #                  [--vkey-file FILE] [--yes]
 #
+# Sources: --stamp downloads aics-backup/<stamp>/ from an rclone remote (r2 by
+# default); --stamp with --remote local, or --archive DIR, reads a backup
+# directory that ops/backup.sh wrote locally (AICS_BACKUP_LOCAL_DIR, default
+# /var/backups/aics; or a directory copied off the box); --db/--tiles name the
+# two archive files directly. When a SHA256SUMS file sits with the archives
+# (backup.sh writes one), both archives must match it before anything else runs.
+#
 # What it does:
 #   1. stages the backup (downloaded with rclone from the chosen remote, or the
-#      two local files given);
+#      local backup directory or the two local files given) and checks
+#      SHA256SUMS when present;
 #   2. runs SQLite's PRAGMA integrity_check on the database;
 #   3. verifies the staged tiles with the aics-tlog CLI (see below);
 #   4. only then (after --yes or a prompt) stops aics-server, saves the current
@@ -59,15 +68,17 @@ set -euo pipefail
 COMPOSE_DIR="${AICS_COMPOSE_DIR:-/opt/wesupport-ai/deploy}"
 COMPOSE_FILE="${COMPOSE_DIR}/docker-compose.yml"
 RCLONE_CONF="${RCLONE_CONFIG:-/root/.config/rclone/rclone.conf}"
+LOCAL_DIR="${AICS_BACKUP_LOCAL_DIR:-/var/backups/aics}"
 
 log() { printf '[restore %s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 die() { printf '[restore] ERROR: %s\n' "$*" >&2; exit 1; }
 
-STAMP="" REMOTE="r2" DB_IN="" TILES_IN="" VKEY_FILE="${AICS_LOG_VKEY_FILE:-}" ASSUME_YES=0
+STAMP="" REMOTE="r2" ARCHIVE_DIR="" DB_IN="" TILES_IN="" VKEY_FILE="${AICS_LOG_VKEY_FILE:-}" ASSUME_YES=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --stamp)     STAMP="${2:?}"; shift 2 ;;
     --remote)    REMOTE="${2:?}"; shift 2 ;;
+    --archive)   ARCHIVE_DIR="${2:?}"; shift 2 ;;
     --db)        DB_IN="${2:?}"; shift 2 ;;
     --tiles)     TILES_IN="${2:?}"; shift 2 ;;
     --vkey-file) VKEY_FILE="${2:?}"; shift 2 ;;
@@ -110,8 +121,35 @@ sys.exit(0 if ok == "ok" else 1)
 ' "$1"
 }
 
+sha256_of() {
+  if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
+  else shasum -a 256 "$1" | awk '{print $1}'; fi
+}
+
 # --- 1. Stage -----------------------------------------------------------------
-if [ -n "$STAMP" ]; then
+if [ -n "$STAMP" ] && [ "$REMOTE" = local ]; then
+  [ -z "$ARCHIVE_DIR" ] || die "give either --stamp with --remote local or --archive, not both"
+  ARCHIVE_DIR="${LOCAL_DIR%/}/${STAMP}"
+  STAMP=""
+fi
+if [ -n "$ARCHIVE_DIR" ]; then
+  [ -z "$STAMP" ] && [ -z "$DB_IN" ] && [ -z "$TILES_IN" ] || die "--archive cannot be combined with --stamp, --db or --tiles"
+  [ -d "$ARCHIVE_DIR" ] || die "backup directory not found: $ARCHIVE_DIR"
+  for f in "$ARCHIVE_DIR"/aics-*.db.gz; do
+    if [ -e "$f" ]; then
+      [ -z "$DB_IN" ] || die "more than one aics-*.db.gz in $ARCHIVE_DIR"
+      DB_IN="$f"
+    fi
+  done
+  for f in "$ARCHIVE_DIR"/tiles-*.tar.gz; do
+    if [ -e "$f" ]; then
+      [ -z "$TILES_IN" ] || die "more than one tiles-*.tar.gz in $ARCHIVE_DIR"
+      TILES_IN="$f"
+    fi
+  done
+  [ -n "$DB_IN" ] && [ -n "$TILES_IN" ] || die "$ARCHIVE_DIR does not hold an aics-*.db.gz and a tiles-*.tar.gz"
+  log "using the local backup directory $ARCHIVE_DIR"
+elif [ -n "$STAMP" ]; then
   command -v rclone >/dev/null 2>&1 || die "rclone is not installed"
   [ -f "$RCLONE_CONF" ] || die "rclone config not found: $RCLONE_CONF"
   log "downloading aics-backup/${STAMP}/ from ${REMOTE}"
@@ -120,20 +158,43 @@ if [ -n "$STAMP" ]; then
   DB_IN="$STAGING/aics-${STAMP}.db.gz"
   TILES_IN="$STAGING/tiles-${STAMP}.tar.gz"
 fi
-[ -n "$DB_IN" ] && [ -n "$TILES_IN" ] || die "give --stamp REMOTE | (--db FILE --tiles FILE); see header comment"
+[ -n "$DB_IN" ] && [ -n "$TILES_IN" ] || die "give --stamp STAMP [--remote r2|b2|local] | --archive DIR | (--db FILE --tiles FILE); see header comment"
 [ -f "$DB_IN" ] || die "database archive not found: $DB_IN"
 [ -f "$TILES_IN" ] || die "tiles archive not found: $TILES_IN"
 
+# SHA256SUMS written by backup.sh, when it sits with both archives.
+SUMS_DIR="$(dirname "$DB_IN")"
+if [ "$(dirname "$TILES_IN")" = "$SUMS_DIR" ] && [ -f "$SUMS_DIR/SHA256SUMS" ]; then
+  for f in "$DB_IN" "$TILES_IN"; do
+    name="${f##*/}"
+    want="$(awk -v f="$name" '$2 == f { print $1 }' "$SUMS_DIR/SHA256SUMS")"
+    [ -n "$want" ] || die "$name is not listed in $SUMS_DIR/SHA256SUMS; refusing an unlisted archive."
+    [ "$want" = "$(sha256_of "$f")" ] || die "SHA256 mismatch on $f against $SUMS_DIR/SHA256SUMS; the archive is damaged or was altered. Nothing was applied."
+  done
+  log "SHA256SUMS match for both archives"
+else
+  log "no SHA256SUMS beside the archives; skipping the checksum check (integrity_check and the tree-root verification still run)"
+fi
+
 log "staged: $DB_IN, $TILES_IN"
 gunzip -c "$DB_IN" > "$STAGING/aics.db"
+# Only tiles/ may come out of the tiles archive (no absolute or ../ paths, no
+# stray files), and never a seed or .env.
+tar -tzf "$TILES_IN" > "$STAGING/tiles.list" || die "cannot list $TILES_IN"
+if grep -vE '^(\./)?tiles(/|$)' "$STAGING/tiles.list" | grep -q . || grep -qE '(^|/)\.\.(/|$)' "$STAGING/tiles.list"; then
+  die "$TILES_IN holds entries outside tiles/; refusing it."
+fi
+if grep -E '(^|/)([^/]*\.seed|\.env(\.[^/]*)?)/?$' "$STAGING/tiles.list" >&2; then
+  die "the tiles archive contains a *.seed or .env file; refusing to apply it."
+fi
 mkdir -p "$STAGING/unpack"
 tar -xzf "$TILES_IN" -C "$STAGING/unpack"
 [ -d "$STAGING/unpack/tiles" ] || die "tiles archive does not contain a tiles/ directory"
 cp "$VKEY_FILE" "$STAGING/log.vkey"
 
-# Seed guard, same as backup.sh: nothing matching *.seed may be applied.
-if find "$STAGING" -name '*.seed' -print -quit | grep -q .; then
-  die "a *.seed file is in the staged backup; refusing to apply it."
+# Seed guard, same as backup.sh: nothing matching *.seed or .env may be applied.
+if find "$STAGING" \( -name '*.seed' -o -name '.env' -o -name '.env.*' \) -print -quit | grep -q .; then
+  die "a *.seed or .env file is in the staged backup; refusing to apply it."
 fi
 
 # --- 2. SQLite integrity ------------------------------------------------------

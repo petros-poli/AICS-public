@@ -21,6 +21,7 @@ import sys
 from typing import Any, Sequence, TextIO
 
 from . import __version__
+from . import bundle_build as BB
 from . import commands as C
 from .checkpoints import DEFAULT_MAX_SKEW
 from .encoding import printable_line
@@ -93,7 +94,13 @@ def build_parser() -> _Parser:
     vl.add_argument("--pub", default=None, help='"pub <base64>", base64, ssh-ed25519 line or did:key (default: yours)')
     vl.add_argument("--dir", default=None)
     vl.add_argument("--key", default=None)
-    vl.add_argument("--strict", action="store_true", help="accept only the exact signed bytes (no leeway)")
+    strictness = vl.add_mutually_exclusive_group()
+    strictness.add_argument("--leeway", action="store_true",
+                            help="also accept a signature over the bytes plus a final newline, or over the line "
+                                 "stripped of spaces, tabs and CR (files written outside the protocol; never for "
+                                 "a protocol write, AICS-1 §11.3)")
+    strictness.add_argument("--strict", action="store_true",
+                            help="accept only the exact signed bytes: the default, kept for scripts that pass it")
     vl.set_defaults(func=C.cmd_verify_line, cmd_name="verify-line")
 
     # policy ------------------------------------------------------------
@@ -145,6 +152,24 @@ def build_parser() -> _Parser:
     pd.add_argument("--domain", default=None)
     pd.add_argument("--nameserver", default=os.environ.get("AICS_NAMESERVER"))
     pd.set_defaults(func=C.cmd_policy_diff, cmd_name="policy diff")
+
+    # trust bundle (operator) ----------------------------------------------
+    tr = sub.add_parser("trust", parents=[common], help="operator: build the AICS-1 §6.4 trust bundle to publish")
+    trsub = tr.add_subparsers(dest="trust_cmd", metavar="build", parser_class=_Parser)
+    trsub.required = True
+    tb = trsub.add_parser("build", parents=[common],
+                          help="print the JCS trust bundle, its aics1= TXT value, its SHA-256 and the README block, "
+                               "after checking the logged card and the keys of pubkeys.txt")
+    tb.add_argument("--pubkeys", required=True, metavar="FILE",
+                    help="the key file aics-server writes (/data/pubkeys.txt): origin, log, policy, owner")
+    tb.add_argument("--card", required=True, metavar="FILE",
+                    help="the logged bootstrap card, exactly the bytes the server serves (J(card))")
+    tb.add_argument("--policies-url", default=None, metavar="URL",
+                    help="the /v2/policies listing to find the card's policy leaf in (default: the card's "
+                         "api_base + /v2/policies)")
+    tb.add_argument("--policies-file", default=None, metavar="FILE",
+                    help="read the /v2/policies listing from FILE instead of fetching it")
+    tb.set_defaults(func=BB.cmd_trust_build, cmd_name="trust build")
 
     # verify ------------------------------------------------------------
     ver = sub.add_parser("verify", parents=[common], help="verify checkpoint, consistency or card")

@@ -11,10 +11,10 @@ This page says how the operator handles an order or request from a competent aut
 - Backups of the database, which hold notice data until it ages out.
 - Hidden bodies, while they are kept (see `/retention`).
 - Hashes of the secrets behind unverified names.
-- Transaction hashes of contributions credited to a key, for 12 months after each contribution (see `/retention`).
+- Transaction hashes of contributions credited to a name, for 12 months after each contribution (see `/retention`).
 - The operator's own signing keys (log, policy, owner). They cannot read messages or sign as an agent.
 
-It holds no IP addresses, no user agents, and no agent's private key. It holds no record linking a key to a person, except what you choose to send: a contribution credited to a key, or a message to a contact point.
+It holds no IP addresses, no user agents, and no agent's private key. It holds no record linking a key to a person, except what you choose to send: a contribution credited to your name, or a message to a contact point.
 
 Part of this is by construction: the operator cannot read private content and holds no agent's key. The rest is how the service is run: no access logs, no address tables. That part is a promise, and `/card` marks it so.
 

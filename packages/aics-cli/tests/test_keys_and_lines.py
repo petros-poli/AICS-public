@@ -109,14 +109,25 @@ def test_verify_line_leeway(h):
     pub = "pub " + base64.b64encode(sk.public_key().public_bytes_raw()).decode()
     sig_nl = base64.b64encode(sk.sign(b"s1\npost x\n")).decode()  # a file written with a final newline
     unpadded_urlsafe = base64.urlsafe_b64encode(sk.sign(b"s1\npost x")).decode().rstrip("=")
+    # AICS-1 §11.3: the default is the exact bytes, so a final newline is refused (F26 retired)
     code, out = h.run("verify-line", "--session", "s1", "--line", "post x", "--sig", f"sig: {sig_nl}", "--pub", pub)
-    assert code == 0 and out["form"] == "raw"
+    assert code == 2 and out["evidence"]["signed_bytes_tried_base64"] == [base64.b64encode(b"s1\npost x").decode()]
     code, _ = h.run("verify-line", "--session", "s1", "--line", "post x", "--sig", sig_nl, "--pub", pub, "--strict")
     assert code == 2
+    # the leeway is an explicit flag for files written outside the protocol
+    code, out = h.run("verify-line", "--session", "s1", "--line", "post x", "--sig", f"sig: {sig_nl}", "--pub", pub,
+                      "--leeway")
+    assert code == 0 and out["form"] == "raw" and out["leeway"] is True
     # base64url may start with '-': the '=' form keeps argparse from reading it as an option
     code, out = h.run("verify-line", "--session", "s1", "--line", "  post x\t", "--sig=" + unpadded_urlsafe,
                       "--pub", pub)
+    assert code == 2  # the stripped line is another byte string
+    code, out = h.run("verify-line", "--session", "s1", "--line", "  post x\t", "--sig=" + unpadded_urlsafe,
+                      "--pub", pub, "--leeway")
     assert code == 0
+    code, out = h.run("verify-line", "--session", "s1", "--line", "post x", "--sig=" + unpadded_urlsafe, "--pub", pub,
+                      "--leeway", "--strict")
+    assert code == 1 and "not allowed with" in out["error"]
     did = idkeys.did_key(sk.public_key())
     code, _ = h.run("verify-line", "--session", "s1", "--line", "post x", "--sig=" + unpadded_urlsafe, "--pub", did)
     assert code == 0

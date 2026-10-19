@@ -22,6 +22,9 @@ Remote default: /opt/wesupport-ai/deploy/docs-public
 The destination must be dedicated to this export; stale files are removed.
 --check validates the publication sources without writing or connecting anywhere.
 --check-links verifies published document/alias bytes over HTTPS after deployment.
+Published: docs/{spec,legal,site}/*.md, the four top-level documents and one data
+file, docs/legal/secret-patterns.json (the secret-pattern definitions the card hashes
+and the server scans with). Nothing else, and never docs/internal.
 The publisher preserves source bytes. The site must serve /spec, /legal, /site,
 /docs/spec, /docs/legal and /docs/site aliases plus root aliases for the four top-level
 documents. Repository-only research/package links require their own public
@@ -30,6 +33,9 @@ repository URL; never expose docs/internal to satisfy a broken link.
 
 def fail(message):
     raise ValueError(message)
+
+#: Exactly the data files docs/legal may publish besides its Markdown.
+DATA_FILES = ("secret-patterns.json",)
 
 def below(path, parent):
     return path == parent or parent in path.parents
@@ -49,6 +55,9 @@ def validate_sources(extra):
                        for p in sorted((docs / section).glob("*.md")))
     sources.extend((docs / name, Path("docs") / name) for name in
                    ("BANNER.md", "DESIGN.md", "DECISIONS.md", "PROTOCOL-TEXT.md"))
+    # The one non-Markdown file, named exactly: the secret-pattern definitions that the
+    # card's [secret-scan-scope] names at /legal/secret-patterns.json (decision 29).
+    sources.extend((docs / "legal" / name, Path("legal") / name) for name in DATA_FILES)
     allowed = {source for source, target in sources}
     for source in [p for p, target in sources] + [Path(p).absolute() for p in extra]:
         resolved = source.resolve(strict=True)
@@ -63,7 +72,7 @@ def validate_sources(extra):
         stat = source.stat()
         if (stat.st_dev, stat.st_ino) in private_inodes:
             fail(f"REFUSED hard link to internal document: {source}")
-        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.md", source.name):
+        if not (re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.md", source.name) or source.name in DATA_FILES):
             fail(f"REFUSED unsafe index filename: {source.name}")
     return sources
 
@@ -95,7 +104,7 @@ def main():
                 # be rejected by edge browser-integrity checks before reaching Caddy.
                 request = Request(url, headers={
                     "User-Agent": "AICS-Docs-Check/1.0 (+https://wesupport-ai.com)",
-                    "Accept": "text/markdown,text/plain;q=0.9,*/*;q=0.1",
+                    "Accept": "text/markdown,application/json,text/plain;q=0.9,*/*;q=0.1",
                 })
                 try:
                     with urlopen(request, timeout=15) as response:
@@ -108,7 +117,7 @@ def main():
         print(f"OK: {count} published document and relative-link alias URLs match source bytes.")
         return 0
     if check:
-        print(f"OK: {len(sources)} public Markdown files; internal sources excluded.")
+        print(f"OK: {len(sources)} public documents ({len(DATA_FILES)} data file); internal sources excluded.")
         return 0
     if args[0].startswith("-") or len(args) > 2:
         fail(usage)
@@ -166,7 +175,7 @@ def main():
                 if target.exists():
                     shutil.rmtree(target)
                 shutil.copytree(stage / section, target)
-        print(f"Published {len(sources)} Markdown files and four plain indexes to {destination}")
+        print(f"Published {len(sources)} documents ({len(DATA_FILES)} data file) and four plain indexes to {destination}")
     return 0
 
 try:

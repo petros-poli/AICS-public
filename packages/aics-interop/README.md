@@ -63,7 +63,7 @@ clean checkout), their versions and the tools found.
 * **Findings as strict xfails.** A test that demonstrates a package's
   departure from AICS-1 is marked `xfail(strict=True, raises=...)` with the
   finding ID and the exception the departure raises today
-  ([`findings.py`](src/aics_interop/findings.py): `finding("F26",
+  ([`findings.py`](src/aics_interop/findings.py): `finding("Fnn",
   raises=AssertionError)` for a test that asserts the AICS-1 behaviour, the
   library's own exception for one that calls the departing code). The suite
   stays green while the finding is open; any other exception (an API rename in
@@ -87,7 +87,7 @@ independent, so the reference (or an external tool) verifies the same bytes.
 
 | Artifact (AICS-1) | Producers | Verifiers | Shares code with | Result |
 | --- | --- | --- | --- | --- |
-| Line signature, raw Ed25519 (§11.3, PROTOCOL-TEXT §2) | aics-identity `linesig`; `aics sign-line` (API and child process); `openssl pkeyutl -rawin` (file input); reference | aics-identity `verify_line`; `aics verify-line --strict`; `openssl pkeyutl -verify`; reference | `aics verify-line` and `sign-line` call aics-identity `linesig`; the reference (Ed25519 over the §11.3 bytes) and openssl are independent | Interoperates, byte-identical; aics-identity's default is the exact bytes ([F07](#f07) retired), `aics verify-line` without `--strict` still accepts a final LF: [F26](#f26). The recipes AICS-1 §11.4, PROTOCOL-TEXT §3 and aics-conformance print sign on OpenSSL 3+ ([F17](#f17) retired) |
+| Line signature, raw Ed25519 (§11.3, PROTOCOL-TEXT §2) | aics-identity `linesig`; `aics sign-line` (API and child process); `openssl pkeyutl -rawin` (file input); reference | aics-identity `verify_line`; `aics verify-line`; `openssl pkeyutl -verify`; reference | `aics verify-line` and `sign-line` call aics-identity `linesig`; the reference (Ed25519 over the §11.3 bytes) and openssl are independent | Interoperates, byte-identical; the default of aics-identity and of `aics verify-line` is the exact bytes ([F07](#f07), [F26](#f26) retired; `aics verify-line --leeway` is the explicit opt-out for files written outside the protocol). The recipes AICS-1 §11.4, PROTOCOL-TEXT §3 and aics-conformance print sign on OpenSSL 3+ ([F17](#f17) retired) |
 | Line signature, SSHSIG | `ssh-keygen -Y sign`; aics-identity; reference | aics-identity; `aics verify-line --sig-file`; `ssh-keygen -Y verify`; aics-conformance; reference | aics and aics-conformance call aics-identity `linesig`/`sshsig`; ssh-keygen and the reference are independent | Interoperates, blobs byte-identical |
 | Native envelope `ed25519-jcs` (§4.1) | reference; aics-conformance `protocol.envelope`; aics-identity digest/key API and `sign_envelope` | aics-conformance `verify_signature`, `schema`, `History`; aics-identity `verify_envelope` | aics-conformance's `envelope` and `verify_signature` use aics-identity `envelope_signing_digest` and `canonicalize`; every envelope is compared with the reference's bytes | Interoperates, byte-identical, `seen: null` included; aics-identity's `sign_envelope` writes the reference's bytes and its §4.3 freshness agrees ([F02](#f02), [F03](#f03), [F04](#f04), [F23](#f23) retired) |
 | `envelope_hash`, `seq`/`prev` chain (§4.2) | reference; aics-conformance; aics-identity `next_chain` | aics-conformance `History`; aics-identity chain helpers | | Interoperates: every hash agrees and both report the first invalid position ([F01](#f01) retired) |
@@ -101,7 +101,7 @@ independent, so the reference (or an external tool) verifies the same bytes.
 | Split views (§14.6) | nine fixture pairs from aics-tlog and aics-witness | `aics gossip-check`; aics-conformance `G5` and `verify.continuity`; `aics-tlog verify-checkpoint` with two tile sources (informative); reference | aics-tlog (`verify_checkpoint`, `verify_consistency`, tile readers) in all three packages; the reference classifier is independent | Classified identically for all nine; G5 states the split even when a note missed its witness policy ([F11](#f11) retired). See below |
 | Offline bundle (§14.3) | aics-tlog `bundle_from_tiles`, CLI `--bundle-out`; reference wire bundle; aics-conformance fake; aics-server `GET /v2/entries/{index}` | aics-tlog `verify_bundle`, CLI `verify-bundle`; aics-conformance `verify.bundle`; reference; aics (checkpoint note only) | aics-conformance checks the note with aics-tlog `verify_checkpoint` and inclusion with `verify_leaf_inclusion`; the reference verifies the wire bundle itself | Interoperates: one wire form, aics-tlog's bytes are the reference's and every server bundle verifies in all three ([F10](#f10) retired) |
 | Verification package (§14.3) | reference; aics-conformance G8 | aics-conformance `offline_package` | | Interoperates: exactly the five §14.3 members ([F19](#f19) retired) |
-| Trust bundle (§6.4) | reference: JCS, TXT RR, README block, DNS response with fragmented character-strings | aics `trust`, `dnstxt`, `policy init/show/diff`, the `AICS_TRUST_BUNDLE` constant; aics-conformance `Policy`; JCS of aics-identity and aics-tlog | aics canonicalizes with aics-identity `canonicalize`; the reference checks the bytes and members itself | Bytes agree; bootstrap from agreeing DNS, README and PyPI sources works and any disagreeing source stops it. aics checks the README digest line and aics-conformance refuses invalid bundles ([F20](#f20), [F21](#f21) retired). The repository README block and the PyPI constant are both placeholders today (equivalent) |
+| Trust bundle (§6.4) | reference: JCS, TXT RR, README block, DNS response with fragmented character-strings; `aics trust build` over the real server's key file and logged card | aics `trust`, `dnstxt`, `policy init/show/diff`, the `AICS_TRUST_BUNDLE` constant; aics-conformance `Policy`; JCS of aics-identity and aics-tlog | aics canonicalizes with aics-identity `canonicalize`; the reference checks the bytes and members itself | Bytes agree; bootstrap from agreeing DNS, README and PyPI sources works and any disagreeing source stops it. aics checks the README digest line and aics-conformance refuses invalid bundles ([F20](#f20), [F21](#f21) retired). `aics trust build` prints the reference's bytes, TXT value and digest for the real server, and its README block pins them in `aics policy init`. The repository README block and the PyPI constant are both placeholders today (equivalent) |
 | Assurance card (§13) | reference; aics `card.sign_card` | `aics verify card`, `aics policy init`; aics-conformance `verify_card`; reference §13.1 checks | both canonicalize with aics-identity, and aics-conformance parses the policy did:key with aics-identity `keys`; the JWS and schema checks are each package's own, and the reference checks the schema and signature itself | JWS bytes identical; the 0.2-draft card interoperates and both refuse a 0.1-draft one; both compare every reason registry with §17.2, including the card's own `secret_format:<id>` instances ([F13](#f13), [F22](#f22), [F24](#f24), [F25](#f25) retired) |
 | Receipt (§10.1) | reference; aics-tlog `sign_note`; aics-conformance fake | aics-conformance `verify.receipt`; aics-tlog `verify_note`; reference | aics-conformance checks the signature with aics-tlog `verify_note` | Interoperates, byte-identical |
 | Appendix A | the specification (text and A.5 program) | reference; aics-identity; aics-tlog; aics-witness; aics; aics-conformance | | Every package reproduces or accepts its values (aics-witness returns the A.3 cosignature lines byte for byte; aics-identity hashes A.1 and opens A.4: [F01](#f01), [F05](#f05) retired) |
@@ -169,6 +169,11 @@ applies each departure decision 19 removed (16-character kids, envelopes
 without origin/type/auth, server members on a leaf, polls without closes, vote
 option ids, weighted votes, free-text nonces, unregistered codes and types) to
 a real entry and requires the reference to refuse it, so a regression fails CI.
+Another boots its own instance, lets an accepted post's record expire and
+sends a fresh envelope with the same `(kid, nonce)`: the server must refuse it
+with code `replay` in a logged refusal naming the first leaf (AICS-1 §4.3 as
+amended on 2026-10-19, the rule aics verify message and aics-conformance's
+History apply).
 A server departure the journey shows is a finding with a strict xfail, like any
 other package's; none is open (the global registration window, [F28](#f28), is
 retired).
@@ -264,7 +269,7 @@ tests/
   test_tlog.py             tiles, notes, cosignatures, quorum, freshness, proofs, following the log
   test_split_view.py       §14.6 classification by aics, aics-conformance, aics-tlog
   test_bundles.py          §14.3 bundles and the verification package
-  test_trust_bundle.py     §6.4 trust bundle: bytes, TXT, DNS, README, PyPI constant
+  test_trust_bundle.py     §6.4 trust bundle: bytes, TXT, DNS, README, PyPI constant, aics trust build
   test_appendix_a.py       Appendix A against all six consumers
   test_card.py             §13 assurance card
   test_receipts.py         §10.1 receipts
@@ -330,7 +335,7 @@ repository), *spec-text* (the documents) and *packaging*.
 | [F23](#f23) | aics-identity | strictness | retired | `packages/aics-identity/src/aics_identity/envelope.py:597` |
 | [F24](#f24) | aics | strictness | retired | `packages/aics-cli/src/aics_cli/card.py:447` |
 | [F25](#f25) | aics-conformance | strictness | retired | `packages/aics-conformance/src/aics_conformance/card.py:40` |
-| [F26](#f26) | aics | strictness | open | `packages/aics-cli/src/aics_cli/commands.py:187` |
+| [F26](#f26) | aics | strictness | retired | `packages/aics-cli/src/aics_cli/commands.py:187` |
 | [F27](#f27) | aics-server | interop-breaking | retired | `packages/aics-server/src/aics_server/card.py:534` |
 | [F28](#f28) | aics-server | strictness | retired | `packages/aics-server/src/aics_server/db.py:1384` |
 
@@ -402,7 +407,7 @@ repository), *spec-text* (the documents) and *packaging*.
 - Finding: verify_line() defaults to leeway=True (line 199) and also accepts signatures over '<session>\n<line>\n' (line 122) and over the line stripped of spaces/tabs/CR (line 114); aics verify-line inherits this unless --strict, while aics-conformance verifies with leeway=False.
 - Expected: only the bytes 73657373...0a<line> without a trailing 0a verify.
 - Actual (when found): a signature over the same bytes plus 0x0a: aics verify-line exit 0, aics-conformance rejects.
-- Retired: verify_line() defaults to leeway=False: only UTF8(session) || LF || UTF8(line) verifies, and leeway=True is an explicit opt-out for tools outside the protocol. The aics CLI's verify-line still opts in unless --strict: F26.
+- Retired: verify_line() defaults to leeway=False: only UTF8(session) || LF || UTF8(line) verifies, and leeway=True is an explicit opt-out for tools outside the protocol. The aics CLI's verify-line follows the same default (F26 retired).
 
 ### F08
 
@@ -586,12 +591,13 @@ repository), *spec-text* (the documents) and *packaging*.
 
 ### F26
 
-**aics**, `packages/aics-cli/src/aics_cli/commands.py` line 187 (strictness).
+**aics**, `packages/aics-cli/src/aics_cli/commands.py` line 187 (strictness; retired, the cited line is where it was found).
 
 - Specification: AICS-1 §11.3 signature input is exactly UTF8(session_id) || LF || UTF8(C), with no final LF; §11.2 MUST NOT silently repair signed content; signature failures are not opportunities to reinterpret bytes.
 - Finding: cmd_verify_line() passes leeway=True to aics-identity verify_line() unless --strict is given (line 187; cli.py line 96 documents --strict as the exception), so 'aics verify-line' still accepts signatures over '<session>\n<line>\n' and over the line stripped of spaces, tabs and CR, although aics-identity's own default is now the exact bytes (F07 retired) and aics-conformance verifies with leeway=False.
 - Expected: aics verify-line without --strict exits 2 for a signature over the §11.3 bytes plus 0x0a.
-- Actual: exit 0 (form raw); only 'aics verify-line --strict' refuses it.
+- Actual (when found): exit 0 (form raw); only 'aics verify-line --strict' refuses it.
+- Retired: aics verify-line verifies exactly UTF8(session) || LF || UTF8(line) by default, as aics-identity and aics-conformance do: a signature over the bytes plus 0x0a, or over the stripped line, exits 2. The wider forms are accepted only with the explicit --leeway flag (for files written outside the protocol); --strict stays accepted as the default it now names.
 
 ### F27
 

@@ -314,6 +314,10 @@ class TlogStore:
         self._clock = clock
         #: When the published checkpoint first fell behind the tree (``clock`` time), or ``None`` while it is current.
         self._behind_since: float | None = None
+        #: Wall-clock times (Unix seconds) of the last checkpoint write and the last tile write by this process (the
+        #: owner stats page's health section); before the first tile write, the published checkpoint file's mtime.
+        self.checkpoint_written_at: float | None = None
+        self.tiles_written_at: float | None = None
 
     # -- checkpoints ----------------------------------------------------------
 
@@ -459,6 +463,12 @@ class TlogStore:
                 raise LogIntegrityError(f"the tiles in {self.tiles_dir} give a different root than the leaf table")
         if start < size:
             _say(f"tiles caught up from {start} to {size} leaves in {self.tiles_dir}")
+            self.tiles_written_at = time.time()
+        elif published is not None:
+            try:  # the tiles were last written with the checkpoint this start found
+                self.tiles_written_at = (self.tiles_dir / CHECKPOINT_PATH).stat().st_mtime
+            except OSError:
+                self.tiles_written_at = None
         self._writer = writer
         self._booted = True
         if size:
@@ -504,6 +514,7 @@ class TlogStore:
                 _say(f"tile write failed, will retry on the next commit: {self.tiles_error}")
                 return False
             self._unpublished.clear()
+            self.tiles_written_at = time.time()
             if result.size != self.tree.size or result.root != self.tree.root(result.size):
                 self.diverged = f"the tile writer's root at size {result.size} differs from the tree"
                 _say(f"LOG DIVERGED, new leaves refused until an operator acts: {self.diverged}")
@@ -525,6 +536,7 @@ class TlogStore:
             _say(f"checkpoint write failed, will retry on the next commit: {self.tiles_error}")
             return False
         self._published = PublishedCheckpoint(size=size, root=self.tree.root(size), note=note)
+        self.checkpoint_written_at = time.time()
         self.tiles_error = None
         return True
 

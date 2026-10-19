@@ -100,6 +100,7 @@ from .swarm_api import register_routes as register_swarm_routes
 from .db import (
     ENCRYPTION_SCHEMES,
     NOTICE_OUTCOMES,
+    GenesisRefused,
     OWNER_ACTION_CHANNEL,
     TASK_CHANNEL,
     NotFound,
@@ -108,6 +109,7 @@ from .db import (
     SanctuaryDB,
     ServiceError,
     SignedContext,
+    StateConflict,
     write_text_atomically,
 )
 from .discovery import (
@@ -156,8 +158,12 @@ from .notices import (
     parse_notice_body,
 )
 from .payments import PaymentError, PaymentsConfig
+from . import stats as stats_mod
+from .owner_stats import DEFAULT_DAYS as STATS_DEFAULT_DAYS
+from .owner_stats import MAX_DAYS as STATS_MAX_DAYS
+from .owner_stats import OwnerStats
 from .telemetry import collect_telemetry
-from .tlog_store import LogUnavailable, tile_resource
+from .tlog_store import LogIntegrityError, LogUnavailable, tile_resource
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 #: A kid in a URL path: an Ed25519 did:key (AICS-1 section 3.1).
@@ -182,6 +188,7 @@ def _run(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     try:
         return fn(*args, **kwargs)
     except Refusal as exc:
+        stats_mod.mark_refusal(exc)
         headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
         raise HTTPException(status_code=exc.status, detail=exc.detail(), headers=headers) from exc
     except ev.EnvelopeRejected as exc:
@@ -203,6 +210,44 @@ def _run(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+#: Failures of an administration write that are not a decision on it: the log or a check is unavailable, or the
+#: production guard refuses; they are answered as errors, never as refusal leaves.
+_NOT_A_DECISION = (Refusal, LogUnavailable, LogIntegrityError, SecretCheckBusy, GenesisRefused)
+#: The decisions an administration write raises on purpose: a closed code or schema rule (``ValueError``, including
+#: :class:`Rejected`), a missing reference (:class:`NotFound`), the log's state (:class:`StateConflict`), a
+#: permission or a registered service code.  Nothing else is a decision: a ``KeyError``, an ``IndexError`` or any
+#: other ``RuntimeError`` is a server fault, answered with HTTP 500 and never written as a refusal leaf.
+_OWNER_DECISIONS = (ValueError, NotFound, StateConflict, PermissionError, ServiceError)
+
+
+class OwnerWriteFault(Exception):
+    """A server fault during an owner write: no leaf, and an HTTP 500 (no mapping in :func:`_run` catches it)."""
+
+
+def _owner_write(db: SanctuaryDB, ctx: SignedContext, fn: Callable[..., Any], *args: Any) -> Any:
+    """Run an owner-login administration write; a request it then refuses is a refusal leaf (AICS-1 section 10.2).
+
+    The owner's signature verified and its nonce is spent (``Authenticator.owner``), so a field or a state that
+    fails the operation's rules is a decision on an authenticated submission: a policy-signed ``refusal`` naming
+    the owner's ``(kid, nonce, expires)`` and the request hash, with its registered code (``malformed`` with a
+    cause for a schema, reference or state failure), answered with the same status as before.  A request that
+    did not authenticate never gets here and stays an HTTP error.
+    """
+
+    def call() -> Any:
+        try:
+            return fn(*args)
+        except _NOT_A_DECISION:
+            raise
+        except _OWNER_DECISIONS as exc:
+            db.refuse_failure(ctx, exc)
+        except RuntimeError as exc:
+            # _run would answer a bare RuntimeError as 409; a fault is not a conflict.
+            raise OwnerWriteFault(f"owner write failed: {type(exc).__name__}") from exc
+
+    return _run(call)
 
 
 def _b64(data: bytes) -> str:
@@ -414,6 +459,7 @@ def create_app(
         return JSONResponse(status_code=503, content={"detail": {"error": "log_unavailable", "message": str(exc)}})
 
     def refused(exc: Refusal, **extra: Any) -> JSONResponse:
+        stats_mod.mark_refusal(exc)
         headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
         return JSONResponse(status_code=exc.status, content={"detail": {**exc.detail(), **extra}}, headers=headers)
 
@@ -441,6 +487,7 @@ def create_app(
         The one-line hint (never leaf content) travels in ``X-AICS-Hint``, the
         retry delay of a rate window in ``Retry-After``.
         """
+        stats_mod.mark_refusal(refusal)
         leaf = refusal.leaf or {}
         headers = {"X-AICS-Hint": _header_text(refusal.message)}
         if refusal.retry_after:
@@ -462,6 +509,27 @@ def create_app(
     templates.env.filters["utc_iso"] = _utc_iso
     templates.env.filters["linkify"] = _linkifier(site)
 
+    def count_stats(request: Request, status: int, marks: Mapping[str, Any], duration_ms: float) -> None:
+        """One request in the owner stats: closed-list class, group and outcome, and a latency sample.
+
+        The ``Accept`` header is read for the class and dropped; nothing about
+        the caller (address, user agent, key) is looked at or kept.
+        """
+        try:
+            template = stats_mod.template_of(request.scope.get("route"), request.url.path)
+            method = request.method if request.method in COUNTED_METHODS else "OTHER"
+            access = stats_mod.access_class(
+                path=request.url.path, method=method, accept=request.headers.get("accept", ""), signed=marks.get("signed")
+            )
+            db.stats.count_request(
+                access,
+                stats_mod.route_group(method, template),
+                stats_mod.outcome_class(status, refusal_leaf=bool(marks.get("refusal_leaf"))),
+                duration_ms,
+            )
+        except Exception as exc:  # pragma: no cover - counting never fails a request
+            print(f"aics-server: stats counter failed ({type(exc).__name__})", file=sys.stderr, flush=True)
+
     @app.middleware("http")
     async def aics_headers_middleware(request: Request, call_next):
         if db.housekeeping_due():
@@ -469,7 +537,16 @@ def create_app(
                 await run_in_threadpool(db.housekeeping)  # retention and reports, at most hourly
             except Exception as exc:  # never fail a request (a read above all) for housekeeping
                 print(f"aics-server: housekeeping failed ({type(exc).__name__}); retried later", file=sys.stderr, flush=True)
-        response = await call_next(request)
+        # The owner stats (aics_server.stats): the request's access class, route group, outcome and handling time.
+        marks, token = stats_mod.begin_request()
+        started = time.perf_counter()
+        status = 500
+        try:
+            response = await call_next(request)
+            status = response.status_code
+        finally:
+            stats_mod.end_request(token)
+            count_stats(request, status, marks, (time.perf_counter() - started) * 1000)
         # Aggregate counters only (DESIGN.md section 8): per route and UTC day, in memory, flushed by housekeeping.
         route = request.scope.get("route")
         template = getattr(route, "path", None) or "(unmatched)"
@@ -966,7 +1043,8 @@ def create_app(
         """Liveness in constant time: the tree size, the tiles' state, a freeze, resource exhaustion (AICS-1 8.2).
 
         503 when the log diverged from its tiles and refuses new leaves; otherwise 200, ``DEGRADED`` when the
-        tiles are not being written or the ciphertext budget is exhausted.
+        tiles are not being written, the ciphertext budget is exhausted or agent writes are held until the
+        owner's freeze leaf (``agent_writes_held``, ``AICS_HOLD_AGENT_WRITES``).
         """
         health = db.health()
         return JSONResponse(health, status_code=503 if health["status"] == "UNAVAILABLE" else 200)
@@ -1459,22 +1537,22 @@ def create_app(
     @app.post("/v2/admin/tombstones", status_code=201, tags=["owner"])
     def api_tombstone(body: TombstoneRequest, ctx: SignedContext = Depends(auth.owner())) -> dict[str, Any]:
         """Owner-only: a ``tombstone`` leaf hides one off-leaf body for a closed reason; the leaf stays."""
-        return _run(db.tombstone, body.target_index, body.reason_code, body.evidence_hash)
+        return _owner_write(db, ctx, db.tombstone, body.target_index, body.reason_code, body.evidence_hash)
 
     @app.post("/v2/admin/suspensions", status_code=201, tags=["owner"])
     def api_suspend(body: SuspensionRequest, ctx: SignedContext = Depends(auth.owner())) -> dict[str, Any]:
         """Owner-only: a ``suspension`` leaf (``order``), or one ending a suspension (``until`` <= now)."""
-        return _run(db.suspend, body.target_kid, body.reason_code, body.until, body.evidence_hash)
+        return _owner_write(db, ctx, db.suspend, body.target_kid, body.reason_code, body.until, body.evidence_hash)
 
     @app.post("/v2/admin/freeze", status_code=201, tags=["owner"])
     def api_freeze(body: FreezeRequest, ctx: SignedContext = Depends(auth.owner())) -> dict[str, Any]:
         """Owner-only: a ``freeze`` leaf; ``frozen`` stops agent writes, ``open`` with ``resume`` ends it."""
-        return _run(db.set_freeze, body.state, body.reason_code, body.report)
+        return _owner_write(db, ctx, db.set_freeze, body.state, body.reason_code, body.report)
 
     @app.post("/v2/admin/audits", status_code=201, tags=["owner"])
     def api_audit(body: AuditRequest, ctx: SignedContext = Depends(auth.owner())) -> dict[str, Any]:
         """Owner-only: an incident, freeze or order audit, a ``report`` leaf of kind ``audit`` naming the report by hash."""
-        return _run(db.publish_audit, body.document, body.outcome_code)
+        return _owner_write(db, ctx, db.publish_audit, body.document, body.outcome_code)
 
     @app.post("/v2/admin/policy", status_code=201, tags=["owner"])
     def api_policy(body: PolicyRequest, ctx: SignedContext = Depends(auth.owner())) -> dict[str, Any]:
@@ -1483,7 +1561,9 @@ def create_app(
         It takes effect no sooner than the published notice period (``not_before``),
         unless ``order_hash`` names an order that requires sooner and the document cites it.
         """
-        return _run(db.publish_policy, body.kind, body.document, body.not_before, body.effective_after, body.order_hash)
+        return _owner_write(
+            db, ctx, db.publish_policy, body.kind, body.document, body.not_before, body.effective_after, body.order_hash
+        )
 
     @app.get("/v2/admin/notices", tags=["owner"])
     def api_list_notices(
@@ -1499,7 +1579,86 @@ def create_app(
         report_id: str, body: NoticeCloseRequest, ctx: SignedContext = Depends(auth.owner())
     ) -> dict[str, Any]:
         """Owner-only: close a notice with its outcome, a policy-signed ``report`` leaf; text and contact go 12 months later."""
-        return _run(db.close_notice, report_id, body.outcome_code, body.target_index, body.evidence_hash)
+        return _owner_write(db, ctx, db.close_notice, report_id, body.outcome_code, body.target_index, body.evidence_hash)
+
+    owner_stats = OwnerStats(db, gate=gate, card=card_publisher, site=site, api_version=app.version)
+    app.state.owner_stats = owner_stats
+
+    @app.get("/v2/admin/stats", tags=["owner"])
+    def api_owner_stats(
+        days: int = Query(default=STATS_DEFAULT_DAYS, ge=1, le=STATS_MAX_DAYS, description="UTC days, today included"),
+        ctx: SignedContext = Depends(auth.owner()),
+    ) -> dict[str, Any]:
+        """Owner-only (owner login, decision 3): the owner stats page's one document (docs/internal/owner-stats-design.md).
+
+        Signed by the owner key like every ``/v2/admin`` route (RFC 9421, no
+        password, cookie or token); unsigned 401, signed by another key 403,
+        and either counts as ``program``.  ``days`` is 1 to 366 (default 30):
+        the last *days* UTC days, today included.  Computed on a read-only
+        connection outside the writer lock and cached for 10 seconds.
+        Aggregate figures only: closed-list classes, route groups, outcomes,
+        counts, durations and sizes; no address, user agent, key, name,
+        session id or content, and no series per key or per name.
+
+        The JSON document (every list of days runs oldest first and holds every day of the window)::
+
+            {
+              "generated_at": "YYYY-MM-DDTHH:MM:SSZ", "days": N, "window": {"from": day, "to": day},
+              "lists": {"access_classes": [...], "route_groups": [...], "outcomes": [...],
+                        "latency_bounds_ms": [50, 100, 250, 500, 1000, 5000], "latency_buckets": [...],
+                        "gate_events": [...]},
+              "requests": {
+                "daily": [{"day", "total", "by_class": {class: n}, "by_group": {group: n}, "by_outcome": {outcome: n}}],
+                "totals": {"total", "by_class", "by_group", "by_outcome"},
+                "by_group_outcome": {group: {outcome: n}}, "by_class_outcome": {class: {outcome: n}},
+                "by_class_group": {class: {group: n}},
+                "rows": [{"day", "class", "route_group", "outcome", "count"}]      # the stats_daily rollup, non-zero rows
+              },
+              "latency": {"bounds_ms": [...],
+                          "daily": [{"day", "groups": {group: SUMMARY}}], "window": {group: SUMMARY}},
+                  # SUMMARY = {"samples", "buckets": {"le50": n, ..., "gt5000": n}, "p50_ms", "p95_ms", "p99_ms",
+                  #            "max_ms", "mean_ms"}; a percentile is the upper bound of its bucket (max_ms past 5000)
+              "gate": {"daily": [{"day", **FUNNEL}], "totals": FUNNEL, "sessions_open", "max_sessions"},
+                  # FUNNEL = {"sessions_opened": {"https", "tcp-tls", "tcp-plain", "total"}, "help",
+                  #           "tools": {"openssl", "ssh-keygen", "python3", "none"},
+                  #           "claims": {"key", "third-party", "secret"}, "upgrades", "ended_malformed", "idle_expired"}
+              "activity": {
+                "leaves": {"daily": [{"day", "total", "by_type": {type: n}}], "window": {type: n},
+                           "all_time": {type: n}, "tree_size"},
+                "refusals": {"daily": [{"day", "source": "report" | "live", "report_index", "total",
+                                        "by_code": {code: n}}], "window": {code: n}},
+                "names": {"total", "claimed_by_tier": {"key", "third-party", "secret"},
+                          "claimed_daily": [{"day", "key", "third-party", "secret"}],
+                          "current_by_tier": {"key", "third-party", "secret", "revoked"}},
+                "keys": {"window" | "all_time": {"rotations", "upgrades", "x25519_rotations", "revocations"}},
+                "swarms": {"enabled", "window": {type: n}, "all_time": {type: n}, "active_swarms", "members_in_swarms"},
+                "messages": {"dm_leaves": {"window", "all_time"}, "grant_leaves": {...}, "bodies_stored", "bodies_expired"},
+                "capsules": {"capsule_leaves": {"window", "all_time"}, "slots", "bodies_stored"},
+                "hidden_bodies": {"total", "by_reason": {reason: n}, "erased", "window"},
+                "notices": {"open", "open_bytes", "max_open", "max_open_bytes", "closed",
+                            "closed_by_outcome": {outcome: n}, "received_in_window"},
+                "freeze": {"state": "open" | "frozen", "freeze_index", "reason_code", "freeze_leaves", "suspension_leaves"},
+                "sup": {"profile", "active", "contributions_open",
+                        "credits": {"window" | "all_time": {"contribution" | "task": {"count", "sup"}}},
+                        "spends": {"window" | "all_time": {purpose: {"count", "sup"}}},
+                        "tasks_published", "tasks_open", "balance_outstanding"}
+              },
+              "health": {"status", "healthz": <GET /healthz>, "usage": <the counts of GET /v2/stats>,
+                         "host": {<GET /v2/stats host>, "disk_free_bytes"}, "tiles": <tile writer status>,
+                         "tiles_bytes", "checkpoint_age_seconds", "seconds_since_tile_write",
+                         "tls_certificate": {"configured", "not_after", "seconds_left", "error"},
+                         "uptime_seconds", "started_at", "schema_version",
+                         "versions": {"api", "python", "aics-server", "aics-identity", "aics-tlog"},
+                         "budgets": {"ciphertext": {"used_bytes", "budget_bytes"}, "disk": {"used_percent", "free_bytes"},
+                                     "gate_staged": {"used_bytes", "limit_bytes"}}},
+              "witness": {"quorum", "witnesses": [{"name", "independent"}], "checkpoint_size", "cosignatures",
+                          "cosigned_by": [witness name], "quorum_met",
+                          "state": "no_witness" | "no_checkpoint" | "quorum_met" | "quorum_not_met", "g5": "promised",
+                          "error"},
+              "pages_host": host
+            }
+        """
+        return owner_stats.document(days)
 
     @app.get("/v2/policies", tags=["transparency-log"])
     def api_policies() -> dict[str, Any]:

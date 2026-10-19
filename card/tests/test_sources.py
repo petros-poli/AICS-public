@@ -431,12 +431,28 @@ def test_server_registries_fit_the_card(card, server):
     assert card["origin"] == server["DEFAULT_ORIGIN"] == vc.ORIGIN
 
 
+def _server_definitions(reader: Callable[[str], str] = read) -> list[dict[str, Any]]:
+    """The pattern definitions aics-server scans with, in scan order.
+
+    moderation.py loads them from a definition document (docs/legal/secret-patterns.json in production, through
+    ``AICS_SECRET_PATTERNS_FILE``, and otherwise the packaged copy it names in ``PACKAGED_PATTERNS``); an older
+    moderation.py held them as a literal ``SECRET_PATTERNS`` list of ``(id, re.compile(regex))``.
+    """
+    src = reader(f"{SERVER_DIR}/moderation.py")
+    tree = ast.parse(src)
+    node = next((n for n in tree.body
+                 if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "SECRET_PATTERNS"), None)
+    if node is not None and isinstance(node.value, ast.List):
+        return [{"id": elt.elts[0].value, "regex": elt.elts[1].args[0].value} for elt in node.value.elts]
+    packaged = _evaluate(_module_constants(f"{SERVER_DIR}/moderation.py", reader)["PACKAGED_PATTERNS"], {})
+    definitions = vc.pattern_definitions(vc.load_json(reader(f"{SERVER_DIR}/{packaged}").encode("utf-8")))
+    assert definitions is not None, f"{SERVER_DIR}/{packaged} is not {vc.PATTERN_DOCUMENT_SHAPE}"
+    return definitions
+
+
 def _server_patterns(reader: Callable[[str], str] = read) -> dict[str, str]:
-    """``{id: regex source}`` of moderation.py's SECRET_PATTERNS."""
-    tree = ast.parse(reader(f"{SERVER_DIR}/moderation.py"))
-    node = next(n for n in tree.body
-                if isinstance(n, ast.AnnAssign) and getattr(n.target, "id", "") == "SECRET_PATTERNS")
-    return {elt.elts[0].value: elt.elts[1].args[0].value for elt in node.value.elts}
+    """``{id: regex source}`` of the patterns aics-server scans with, in scan order."""
+    return {d["id"]: d["regex"] for d in _server_definitions(reader)}
 
 
 def test_card_patterns_are_server_patterns(card):
@@ -595,8 +611,9 @@ def _gap_unlogged_refusals(s: dict[str, str]) -> bool:
 #: detector to RESOLVED_GAPS (README launch checklist).
 GAPS: list[tuple[str, str, Callable[[dict[str, str]], bool]]] = [
     ("G4", "deviation-refusal-dedup", lambda s: bool(_function(s["db.py"], "_refuse_once"))),
-    ("G4", "deviation-secret-scan-scope", lambda s: bool(scanned_entry_types(s["db.py"]) - {"post", "poll"})),
 ]
+#: ``[deviation-secret-scan-scope]`` was closed by text, not code (decision 21): charter commitment 4 and terms item 1
+#: now name every public text body the server scans, which test_the_legal_pack_names_every_scanned_body checks.
 #: Deviations the server has closed (the week-1 fix pass and the decision 19 build): their statements and tags are
 #: gone, and their detectors guard against a regression.  A gap that comes back needs its statement and tag again.
 RESOLVED_GAPS: list[tuple[str, str, Callable[[dict[str, str]], bool]]] = [
@@ -661,13 +678,27 @@ def test_signed_write_check_finds_an_unwrapped_write():
     assert _gap_unlogged_refusals(dict(sources, **{"db.py": unwrapped}))
 
 
-def test_secret_scan_scope_reads_the_server(card):
+#: The words naming each scanned entry type's public text, in the card's [secret-scan-scope], charter commitment 4
+#: and terms item 1 (decision 21: every public text body is scanned, AICS-1 sections 10.2 and 20.3).
+SCANNED_BODY_WORDS = {"post": "post and poll bodies", "poll": "post and poll bodies", "vote": "vote reasons",
+                      "sup.task": "task and completion texts", "report": "task and completion texts"}
+
+
+def test_the_legal_pack_names_every_scanned_body(card):
     types = scanned_entry_types(server_sources()["db.py"])
     assert {"post", "poll"} <= types  # the detector still finds the scan
-    text = statement(card, "G4", "deviation-secret-scan-scope") if types - {"post", "poll"} else ""
-    for entry_type, words in (("vote", "vote reasons"), ("sup.task", "task"), ("report", "completion")):
-        if entry_type in types:
-            assert words in text, (entry_type, words)
+    unnamed = sorted(types - set(SCANNED_BODY_WORDS))
+    assert not unnamed, f"the server scans {unnamed}: name their public text in the card, charter and terms"
+    charter = read("docs/legal/charter.md")
+    commitment4 = next(line for line in charter.splitlines() if line.startswith("4. Content-agnostic."))
+    terms = read("docs/legal/terms.md")
+    item1 = next(line for line in terms.splitlines() if line.startswith("1. Secrets"))
+    texts = {"[secret-scan-scope]": statement(card, "G4", "secret-scan-scope"), "charter commitment 4": commitment4,
+             "terms item 1": item1}
+    for where, text in texts.items():
+        assert "public text bod" in text and "on a public post" not in text, where
+        for entry_type in sorted(types):
+            assert SCANNED_BODY_WORDS[entry_type] in text, (where, entry_type)
 
 
 def transaction_hash_views(sources: dict[str, str]) -> list[str]:
@@ -744,11 +775,11 @@ def test_every_hash_placeholder_names_an_existing_file(card):
 
 @launch
 def test_launch_server_scans_exactly_the_card_patterns(card):
-    server_ids = set(_server_patterns(need))
-    assert not server_ids & set(vc.FORBIDDEN_PATTERN_IDS), (
-        f"moderation.py still enforces {sorted(server_ids & set(vc.FORBIDDEN_PATTERN_IDS))}, which AICS-1 section "
-        "10.2 forbids; an anchored replacement gets a new id")
-    assert server_ids == {p["id"] for p in card["secret_patterns"]}
+    server_ids = list(_server_patterns(need))
+    assert not set(server_ids) & set(vc.FORBIDDEN_PATTERN_IDS), (
+        f"moderation.py still enforces {sorted(set(server_ids) & set(vc.FORBIDDEN_PATTERN_IDS))}, which AICS-1 "
+        "section 10.2 forbids; an anchored replacement gets a new id")
+    assert server_ids == [p["id"] for p in card["secret_patterns"]], "the card lists the server's patterns in order"
 
 
 PATTERNS_DOC = "docs/legal/secret-patterns.json"
@@ -756,12 +787,19 @@ PATTERNS_DOC = "docs/legal/secret-patterns.json"
 
 @launch
 def test_launch_pattern_definitions_are_published(card):
-    definitions = vc.load_json(need(PATTERNS_DOC).encode("utf-8"))
-    result = vc.validate(vc.fill(card, {}, None, definitions), patterns=definitions)
+    document = vc.load_json(need(PATTERNS_DOC).encode("utf-8"))
+    result = vc.validate(vc.fill(card, {}, None, document), patterns=document)
     assert result.patterns_checked
     assert [e for e in result.report.errors if "pattern" in e or "--patterns" in e] == []
-    assert {d["id"]: d["regex"] for d in definitions} == _server_patterns(need), (
+    assert vc.pattern_definitions(document) == _server_definitions(need), (
         "the server must enforce exactly the published definitions (load them from the document)")
+
+
+@launch
+def test_launch_sync_docs_publishes_the_pattern_document():
+    # [secret-scan-scope] names https://wesupport-ai.com/legal/secret-patterns.json: ops/sync-docs.sh must allow it.
+    script = need("ops/sync-docs.sh")
+    assert "secret-patterns.json" in script, "ops/sync-docs.sh does not publish docs/legal/secret-patterns.json"
 
 
 @launch

@@ -125,14 +125,16 @@ def make_record(source, cp, i, raw, e, hidden, hidden_hashes):
 def dataset_card(cp, source, count, timestamp, vkey_file):
     template = (ROOT / 'ops/discovery/hf-dataset-card.md').read_text()
     # Publish the actual card, without the template's editorial preamble.
-    template = template[template.index('license: other'):]
-    template = '---\n' + template
+    # Slice at the front-matter key, whatever licence value it carries.
+    template = template[template.index('\n---\nlicense:') + 1:]
     size = 'n<1K' if count < 1000 else ('1K<n<10K' if count < 10000 else
            '10K<n<100K' if count < 100000 else '100K<n<1M' if count < 1000000 else 'n>1M')
     replacements = {
         'PLACEHOLDER  # e.g. 100K<n<1M rows': size,
         'PLACEHOLDER: export date': timestamp[:10],
-        'https://wesupport-ai.com (instance), protocol AICS-1, spec docs/spec/AICS-1.md': cp.origin,
+        # The log origin is an identifier, not necessarily a URL: never invent a scheme.
+        'https://PLACEHOLDER_SOURCE_ORIGIN': cp.origin,
+        'PLACEHOLDER_SOURCE_ORIGIN': cp.origin,
         'PLACEHOLDER (ISO 8601)': timestamp,
         'PLACEHOLDER (tree size, decimal leaves)': str(cp.size),
         'PLACEHOLDER (64 lowercase hex characters)': cp.root.hex(),
@@ -140,7 +142,6 @@ def dataset_card(cp, source, count, timestamp, vkey_file):
         'PLACEHOLDER (DNS TXT, PyPI package, repository README)': 'Locally pinned vkey; SHA-256 ' + digest(Path(vkey_file).read_bytes()),
         'PLACEHOLDER (repository path and commit hash)': 'tools/aics-export 0.1.0; source SHA-256 ' + source_digest() + '; commit not inspected',
         'PLACEHOLDER (api origin)/checkpoint': source.tiles_url + '/checkpoint',
-        'PLACEHOLDER: replace with the chosen\nlicence and note the decision': 'undecided; no licence decision supplied',
         'PLACEHOLDER': str(count),
     }
     for old, new in replacements.items():

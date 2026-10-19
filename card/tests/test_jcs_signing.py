@@ -10,7 +10,7 @@ import rfc8785
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 import validate_card as vc
-from helpers import LOG_KEY, PATTERN_DEFINITIONS, POLICY_KEY, WITNESS_KEY, errors, raw_public
+from helpers import LOG_KEY, PATTERN_DOCUMENT, POLICY_KEY, WITNESS_KEY, errors, raw_public
 
 # --- JCS ----------------------------------------------------------------------------------------------------
 
@@ -92,12 +92,12 @@ def sign(body: dict, key=POLICY_KEY) -> dict:
 
 
 def test_signed_card_round_trip(filled):
-    payload = vc.validate(filled, final=True, patterns=PATTERN_DEFINITIONS).payload
+    payload = vc.validate(filled, final=True, patterns=PATTERN_DOCUMENT).payload
     signed = sign(filled)
     sig = signed["signatures"][0]
     Ed25519PublicKey.from_public_bytes(vc.parse_did_key(filled["policy_kid"])).verify(
         vc.b64u_decode(sig["signature"]), f"{sig['protected']}.{vc.b64u(payload)}".encode("ascii"))
-    result = vc.validate(signed, final=True, signed=True, patterns=PATTERN_DEFINITIONS)
+    result = vc.validate(signed, final=True, signed=True, patterns=PATTERN_DOCUMENT)
     assert result.report.errors == []
     assert result.payload == payload  # removing only signatures gives back the signed bytes
     assert result.document == rfc8785.dumps(signed)

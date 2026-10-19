@@ -184,7 +184,8 @@ def cmd_verify_line(args: Any, env: Env) -> Result:
     sig_text = _sig_arg(args, env)
     pub = keystore.parse_public_key_text(args.pub) if args.pub else _signing_key(args, env).public_key()
     pub_text = f"pub {b64e(pub.public_bytes_raw())}"
-    leeway = not args.strict
+    # AICS-1 §11.3: the signed bytes are exactly UTF8(session) || LF || UTF8(line); wider forms only on request
+    leeway = bool(getattr(args, "leeway", False))
     try:
         form = idlinesig.verify_line(args.session, args.line, sig_text, pub, leeway=leeway)
     except idlinesig.InvalidLineSignature as exc:
@@ -204,7 +205,10 @@ def cmd_verify_line(args: Any, env: Env) -> Result:
         raise AicsError(f"malformed signature: {exc}") from None
     except (ValueError, TypeError) as exc:
         raise AicsError(str(exc)) from None
-    return _ok({"valid": True, "form": form, "pub": pub_text}, [f"ok: {form} signature valid"])
+    text = [f"ok: {form} signature valid"]
+    if leeway:
+        text.append("note: --leeway accepted the exact bytes or a wider form; a protocol write needs the exact bytes")
+    return _ok({"valid": True, "form": form, "pub": pub_text, "leeway": leeway}, text)
 
 
 # ---------------------------------------------------------------------------
@@ -500,9 +504,9 @@ def cmd_policy_init(args: Any, env: Env) -> Result:
     pub, pub_status = published_bundle(domain, origin_hint)
     if pub is not None:
         bundles.append(pub)
-        oob.append(SourceValues(f"pypi:aics=={__version__}", pub.values()))
+        oob.append(SourceValues(f"pypi:aics-cli=={__version__}", pub.values()))
     else:
-        warnings.append(f"the aics package's AICS_TRUST_BUNDLE constant: {pub_status}; nothing to cross-check")
+        warnings.append(f"the aics-cli package's AICS_TRUST_BUNDLE constant: {pub_status}; nothing to cross-check")
     api = _api_claims(args.from_api, env) if args.from_api else None
 
     if not oob:

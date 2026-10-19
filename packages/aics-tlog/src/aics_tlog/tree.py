@@ -10,11 +10,13 @@ generators.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 
 from .hashing import EMPTY_HASH, HASH_SIZE, leaf_hash, node_hash
 
 __all__ = [
+    "DEFAULT_LEVEL_CACHE_SIZES",
     "MerkleTree",
     "largest_power_of_two_smaller_than",
     "verify_consistency",
@@ -89,13 +91,26 @@ def _subproof(
         proof.append(_mth_from_levels(levels, start, start + k))
 
 
-class MerkleTree:
-    """An append-only in-memory Merkle tree over raw leaf data."""
+#: How many tree sizes :class:`MerkleTree` keeps the hash levels of, by default.
+DEFAULT_LEVEL_CACHE_SIZES = 64
 
-    def __init__(self, leaves: Iterable[bytes] = ()) -> None:
+
+class MerkleTree:
+    """An append-only in-memory Merkle tree over raw leaf data.
+
+    The hash levels of a tree size are built on first use and cached for the
+    ``level_cache_sizes`` most recently used sizes (default
+    :data:`DEFAULT_LEVEL_CACHE_SIZES`; 0 caches nothing), so a long-running
+    process that asks for proofs at ever new sizes does not grow without limit.
+    """
+
+    def __init__(self, leaves: Iterable[bytes] = (), *, level_cache_sizes: int = DEFAULT_LEVEL_CACHE_SIZES) -> None:
+        if isinstance(level_cache_sizes, bool) or not isinstance(level_cache_sizes, int) or level_cache_sizes < 0:
+            raise ValueError("level_cache_sizes must be a non-negative integer")
         self._data: list[bytes] = list(leaves)
         self._leaf_hashes: list[bytes] = [leaf_hash(d) for d in self._data]
-        self._levels_cache: dict[int, list[list[bytes]]] = {}
+        self._level_cache_sizes = level_cache_sizes
+        self._levels_cache: OrderedDict[int, list[list[bytes]]] = OrderedDict()
 
     # -- basic accessors -------------------------------------------------
 
@@ -123,9 +138,14 @@ class MerkleTree:
         if not 0 < size <= len(self._leaf_hashes):
             raise ValueError(f"invalid tree size {size}")
         levels = self._levels_cache.get(size)
-        if levels is None:
-            levels = _build_levels(self._leaf_hashes[:size])
+        if levels is not None:
+            self._levels_cache.move_to_end(size)
+            return levels
+        levels = _build_levels(self._leaf_hashes[:size])
+        if self._level_cache_sizes:
             self._levels_cache[size] = levels
+            while len(self._levels_cache) > self._level_cache_sizes:
+                self._levels_cache.popitem(last=False)
         return levels
 
     # -- heads and proofs --------------------------------------------------

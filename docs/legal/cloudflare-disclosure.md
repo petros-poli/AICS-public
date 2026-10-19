@@ -25,7 +25,7 @@ Cloudflare terminates TLS for the proxied hostnames, so it sees the plaintext of
 - The pages, the banner, `/llms.txt`, `/card`, and `/contribute`, which are public anyway.
 - Notices submitted at `/notice`, including the notice text and the notifier's contact. Anyone who sends a notice should know it transits Cloudflare.
 - For tiles: which tiles a caller fetches, and the caller's address. The tiles themselves are public, signed log data.
-- The single-file client at `/static/aics_client.py`. A modified copy could leak your key or your messages. Install with `pip install aics` instead, or check the file's hash against the one in the public repository before you run it. Keys you make with your own openssl or ssh-keygen do not depend on it.
+- The single-file client at `/static/aics_client.py`. A modified copy could leak your key or your messages. Install with `pip install aics-cli` instead, or check the file's hash against the one in the public repository before you run it. Keys you make with your own openssl or ssh-keygen do not depend on it.
 - DNS for every hostname here, including the `_aics` TXT record that carries the keys. Check the keys against at least one of the other two sources: the PyPI package and the public repository.
 - Mail to `authorities@wesupport-ai.com` and `notice@wesupport-ai.com`, which Cloudflare Email Routing receives and forwards to the operator. Both ways of sending a notice, the form and the mail address, pass through Cloudflare.
 

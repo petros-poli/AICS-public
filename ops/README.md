@@ -63,15 +63,57 @@ exist and be private.
 **backup.sh** — the nightly backup `ops/systemd/aics-backup.timer` runs. It
 stages exactly two things — the SQLite database via sqlite3's online backup
 API (WAL-safe, no service stop, executed inside the container) and the tiles
-directory — uploads both under `aics-backup/<UTC-stamp>/` to the two rclone
-remotes, and prunes uploads older than 30 days. It never includes the server
-seed: the seed derives the log and policy signing keys, so one leaked backup
-would let its holder forge future checkpoints and administrative leaves; it is
-backed up by hand to an offline medium only. The script enforces that with an
-allowlist plus a `*.seed` guard on the staged files and the tiles archive.
+directory — and writes one directory `<UTC-stamp>/` holding
+`aics-<stamp>.db.gz`, `tiles-<stamp>.tar.gz` and `SHA256SUMS`. It never
+includes the server seed or `deploy/.env`: the seed derives the log and policy
+signing keys, so one leaked backup would let its holder forge future
+checkpoints and administrative leaves; it is backed up by hand to an offline
+medium only. The script enforces that with an allowlist plus a guard that
+refuses any staged file, and any tiles-archive member, named `*.seed`, `.env`
+or `.env.*` (and any member outside `tiles/`).
+
+Two modes, chosen per run:
+
+- **Local mode** (now: the R2 and B2 buckets do not exist yet). When
+  `AICS_BACKUP_REMOTES` is empty or the rclone config
+  (`RCLONE_CONFIG`, default `/root/.config/rclone/rclone.conf`) is absent, the
+  directory is written under `AICS_BACKUP_LOCAL_DIR` (default
+  `/var/backups/aics`, mode 0700, files 0600) and the script warns on stderr
+  that the backup is not off-box. A local copy protects against a damaged
+  database or a bad deploy, not against losing the VPS; it is no substitute
+  for the remotes. `AICS_BACKUP_REQUIRE_REMOTES=1` turns local mode into a
+  failure once the remotes are meant to exist.
+- **Remote mode.** With remotes listed (default `r2 b2`) and the rclone config
+  present, the verified directory is uploaded to every remote under
+  `aics-backup/<stamp>/` and remote files older than the retention are
+  deleted. Every remote is tried even if one fails; any failure makes the run
+  fail. The local copy is kept as well unless `AICS_BACKUP_LOCAL_DIR=` is set
+  empty.
+
+Each archive is verified after it is written and before it counts:
+`SHA256SUMS`, `gzip -t`, `tar -tzf` with the name guard, and `PRAGMA
+integrity_check` on the database decompressed from the written file (host
+`python3`, else the `sqlite3` CLI, else inside the aics-server container;
+`AICS_BACKUP_INTEGRITY_TOOL=python3|sqlite3|container` forces one). A
+directory is written as `.incoming-<stamp>` and renamed only after it
+verifies, so a failed run leaves nothing behind. Retention:
+`AICS_BACKUP_KEEP_DAYS` (default 30, the card's 30 days; the older name
+`AICS_BACKUP_RETENTION_DAYS` still works) — local directories whose stamp is
+older than that are deleted after a good run (only names of the form
+`YYYYMMDD-HHMMSS` are ever touched), remote files by `rclone delete
+--min-age`. The local backups share the disk with the log, so the script keeps
+`AICS_BACKUP_MIN_FREE_MB` (default 5120) free there: it deletes the oldest
+local backups, never the newest one, to make room, and fails without writing
+if that is not enough. Any failure exits non-zero, so `systemctl show -p
+Result aics-backup.service` and the journal show it.
 
 **restore.sh** — restores a database and tiles pair (by `--stamp` downloaded
-from a remote, or two local files), verifies before applying — SQLite
+from a remote; from a local backup directory with `--archive
+/var/backups/aics/<stamp>` or `--stamp <stamp> --remote local`, which reads
+`AICS_BACKUP_LOCAL_DIR`; or two local files with `--db`/`--tiles`), checks
+`SHA256SUMS` when it sits beside the archives and refuses a tiles archive with
+members outside `tiles/` or named `*.seed`/`.env`, then verifies before
+applying — SQLite
 `PRAGMA integrity_check`, then `aics-tlog verify-checkpoint --tiles <dir>
 --vkey-file <out-of-band log vkey>`, which recomputes the tree root from the
 staged tiles and compares it with the signed checkpoint — then, only after
@@ -89,13 +131,52 @@ saved is a public, gossip-detectable rollback.
 
 **systemd/aics-backup.service** — the one-shot unit that runs `backup.sh` as
 root (it needs the docker socket) with scheduling-friendly niceness and
-standard sandboxing directives; `ProtectSystem=strict` leaves `/run`
-read-only, so the unit has its own `RuntimeDirectory=aics-backup`, where the
-script keeps its lock. Pairs with the timer below.
+standard sandboxing directives; it sets `AICS_BACKUP_LOCAL_DIR=/var/backups/aics`
+and `AICS_BACKUP_KEEP_DAYS=30`, reads overrides from
+`/etc/default/aics-backup` if that file exists, and creates the local
+directory (0700, root) before each run. `ProtectSystem=strict` leaves `/run`
+and `/var` read-only, so the unit has its own `RuntimeDirectory=aics-backup`,
+where the script keeps its lock, and `ReadWritePaths=/var/backups/aics` for
+the local backups. Pairs with the timer below.
 
 **systemd/aics-backup.timer** — nightly 03:30 UTC with ±45 min jitter and
 `Persistent=true` so a run missed while the box was off fires after the next
 boot.
+
+**Installing the backup timer** (on the VPS, as root, after `ops/` is at
+`/opt/wesupport-ai/ops/`):
+
+```sh
+chmod 0755 /opt/wesupport-ai/ops/backup.sh /opt/wesupport-ai/ops/restore.sh
+install -d -m 0700 -o root -g root /var/backups/aics
+cp /opt/wesupport-ai/ops/systemd/aics-backup.service \
+   /opt/wesupport-ai/ops/systemd/aics-backup.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now aics-backup.timer
+systemctl start aics-backup.service          # one run now, do not wait for 03:30
+systemctl show -p Result aics-backup.service # must say Result=success
+journalctl -u aics-backup.service -n 50      # "LOCAL MODE" warning until rclone is set up
+ls -l /var/backups/aics/                     # one <stamp>/ directory, three files
+systemctl list-timers aics-backup.timer      # next run scheduled
+```
+
+Requirements on the host: docker with the compose plugin, `flock`
+(util-linux), gzip, tar, and `python3` or `sqlite3` for the integrity check
+(otherwise it runs inside the container). To change settings, write
+`/etc/default/aics-backup` (for example `AICS_BACKUP_KEEP_DAYS=30`), no unit
+edit needed; if you move `AICS_BACKUP_LOCAL_DIR`, change `ReadWritePaths=` and
+the `ExecStartPre=` line in the unit to the same path. When the R2 and B2
+buckets exist: fill `/root/.config/rclone/rclone.conf` from
+`rclone.conf.example`, start the service once more and check `rclone lsf
+r2:aics-backup/<stamp>/` and `b2:...` (three files each); then consider
+`AICS_BACKUP_REQUIRE_REMOTES=1` in `/etc/default/aics-backup` so a lost rclone
+config fails loudly instead of falling back to local mode. To test a restore
+from a local backup without touching the live service, copy the directory to a
+spare machine and run `ops/restore.sh --archive <dir> --vkey-file <vkey>`
+there against a scratch compose project (runbook step 7.5).
+
+The tests for both scripts run without docker against a fake layout:
+`uv run --no-project --with pytest pytest -q tools/test_backup_local.py`.
 
 **systemd/aics-gate-cert.service / .timer** — copies Caddy's renewed gate
 certificate into the application's gate TLS volume daily at 04:17 UTC, with a

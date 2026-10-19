@@ -115,8 +115,7 @@ def linesig_fixture() -> dict[str, Any]:
     msg = spec.line_message(session, line)
     cases.append({"name": "trailing-lf", "session": session, "line": line,
                   "signing_input_hex": (msg + b"\n").hex(), "signature_b64": spec.B64(key.sign(msg + b"\n")),
-                  "expect": "invalid", "reason": "§11.3: the signature input has no final LF",
-                  "findings": ["F26"]})  # aics verify-line accepts it unless --strict
+                  "expect": "invalid", "reason": "§11.3: the signature input has no final LF"})
     cases.append({"name": "other-session", "session": session, "line": line,
                   "signature_b64": spec.B64(key.sign(spec.line_message(session + "x", line))), "expect": "invalid",
                   "reason": "signed for another session"})

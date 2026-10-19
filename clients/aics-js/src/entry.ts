@@ -1,14 +1,14 @@
 /**
  * AICS-1 §5 entries: exactly `{v:2, origin, type, actor_kid, ts, payload}`, `payload = {envelope: E, ...Q}` with every
  * member of `Q = E.payload` copied with an exactly equal JSON value (plus `attestation` for a shared-secret entry),
- * `Q` one of the closed §5.3 schemas (§20.3 under AICS-1+SUP-1), at most 65535 bytes. `entry_bytes = J(entry)` and
+ * `Q` one of the closed §5.3 schemas (§20.3 under AICS-1+SUP-1, SWARMS §3 under AICS-1+SWARMS-1), at most 65535 bytes. `entry_bytes = J(entry)` and
  * `entry_hash = hexH(0x00 || entry_bytes)`, the RFC 6962 leaf hash, not the plain JSON digest (§5.2).
  */
 import { concat, hexH, isHex64, isU64Of, isUint, utf8 } from './bytes.js';
 import { canonicalText, canonicalize, hasMembers, isObject, parseCanonical, sameJson, type Json, type JsonObject } from './canonical.js';
 import { EnvelopeError, acceptedAt, envelopeHash, validateEnvelope, verifyEnvelope, verifySecretAttestation, type Envelope } from './envelope.js';
 import { isKid, isUnverifiedId } from './keys.js';
-import { CREDIT_SCHEMAS, ENTRY_SCHEMAS, ENUM_VALUES, REPORT_SCHEMAS, SUP_SCHEMAS, SUP_TYPES, refusalRegistry } from './registry.js';
+import { CREDIT_SCHEMAS, ENTRY_SCHEMAS, ENUM_VALUES, REPORT_SCHEMAS, SUP_SCHEMAS, SUP_TYPES, SWARMS_PROPOSE_SCHEMAS, SWARMS_SCHEMAS, SWARMS_TYPES, refusalRegistry } from './registry.js';
 export const ENTRY_MEMBERS = ['v', 'origin', 'type', 'actor_kid', 'ts', 'payload'] as const;
 /** §5.2: every entry is at most 65535 bytes (the tile entry-bundle length prefix). */
 export const MAX_ENTRY_BYTES = 65535;
@@ -34,6 +34,7 @@ function valueProblem(v: Json, t: string, path: string, o: EntryCheckOptions): s
   switch (t) {
     case 'null': ok = v === null; break;
     case 'uint': ok = isUint(v); break;
+    case 'bool': ok = typeof v === 'boolean'; break;
     case 'hash': ok = isHex64(v); break;
     case 'name': ok = isString(v) && /^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$/.test(v); break;
     case 'key32': ok = isU64Of(v, 32); break;
@@ -85,6 +86,10 @@ export function payloadSchema(type: string, q: unknown, profiles: readonly strin
     if (type === 'sup.credit') return isObject(q) && isString(q.source) ? CREDIT_SCHEMAS[q.source] ?? null : null;
     return SUP_SCHEMAS[type];
   }
+  if (profiles.includes('SWARMS-1') && (SWARMS_TYPES as readonly string[]).includes(type)) {
+    if (type === 'swarm.propose') return isObject(q) && isString(q.kind) ? SWARMS_PROPOSE_SCHEMAS[q.kind] ?? null : null;
+    return SWARMS_SCHEMAS[type];
+  }
   return null;
 }
 /** §5.3 / §20.3 for one `Q`: exactly the listed members, each of its type, and the constraints stated for the entry alone. */
@@ -110,7 +115,26 @@ export function payloadProblems(type: string, q: unknown, ts: number | null, o: 
   else if (type === 'report' && q.kind === 'owner_action' && q.action === 'quote' && (q.result_hash !== null || q.quote_index !== null)) problems.push('report/owner_action: a quote has null result_hash and quote_index');
   else if (type === 'sup.task' && !((q.reward as number) >= 1 && (q.max_awards as number) >= 1 && (q.max_awards as number) <= 1000 && (ts === null || (ts < (q.closes as number) && (q.closes as number) <= ts + 31622400)))) problems.push('sup.task: reward >= 1, 1 <= max_awards <= 1000, ts < closes <= ts + 31622400');
   else if (type === 'sup.spend' && (q.amount as number) < 1) problems.push('sup.spend: amount >= 1');
+  else if ((SWARMS_TYPES as readonly string[]).includes(type)) problems.push(...swarmPayloadProblems(type, q, ts));
   return problems;
+}
+/** SWARMS §3 constraints of one `Q` that need no history (R09-R13, R23, R30-R32); state rules are History's. */
+function swarmPayloadProblems(type: string, q: JsonObject, ts: number | null): string[] {
+  const out: string[] = [], n = (k: string) => q[k] as number;
+  if (type === 'agent.introduce') {
+    if (q.tier === 'unverified' ? q.ed25519 !== null || q.x25519 !== null : q.ed25519 === null || q.x25519 === null) out.push('agent.introduce: a key tier carries both keys, the unverified tier neither (R12, R13)');
+    if ((q.member_index === null) !== (q.prev_intro_index === null)) out.push('agent.introduce: member_index and prev_intro_index are both null (initial) or both set (update)');
+    if (q.member_index === null && q.connectable !== true) out.push('agent.introduce: an initial introduction has connectable true (R12)');
+    if (q.member_index !== null && n('prev_intro_index') < n('member_index')) out.push('agent.introduce: prev_intro_index precedes member_index');
+  }
+  if (['agent.introduce', 'swarm.form', 'swarm.propose'].includes(type) && 'size' in q && n('size') > 32768) out.push(`${type}: a public body is at most 32768 bytes`);
+  if (type === 'swarm.form' && n('peer_member_index') === n('founder_member_index')) out.push('swarm.form: founder and peer are distinct (R18)');
+  if (type === 'swarm.propose' && ts !== null && !(ts < n('closes') && n('closes') <= ts + 604800)) out.push('swarm.propose: ts < closes <= ts + 604800 (R23)');
+  if (type === 'swarm.broadcast' && ts !== null && !(ts < n('closes') && n('closes') <= ts + 86400)) out.push('swarm.broadcast: ts < closes <= ts + 86400 (R31)');
+  if (type === 'swarm.grant' && ts !== null && (n('expires') < ts || (n('max') > 0 && n('expires') === ts))) out.push('swarm.grant: a positive grant expires after ts, a closing one (max 0) at or after ts (R30)');
+  if (type === 'swarm.resolve' && q.outcome !== 'stale' && n('yes') + n('no') > n('electorate')) out.push('swarm.resolve: more votes than eligible keys');
+  if (type === 'swarm.delivery' && !(n('size') >= 48 && n('size') <= 65536)) out.push('swarm.delivery: a sealed box is 48 to 65536 bytes (R32)');
+  return out;
 }
 /**
  * §5.1-5.3 for one entry: the members, the §4.1 envelope bound to the entry's origin/type/actor, the exact copy of

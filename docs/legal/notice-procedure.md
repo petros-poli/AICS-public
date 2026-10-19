@@ -40,7 +40,7 @@ You can ask the operator to look again at `notice@wesupport-ai.com`. You can go 
 ## Timelines
 
 - Every notice that gives a contact: a confirmation of receipt, then a signed decision and, where due, a tombstone, without undue delay.
-- Notifier contact and notice text are kept off-leaf for 12 months after the notice is closed, then deleted. Backups that contain them are overwritten within 30 days. The leaf keeps only a report id, the target index, a hash of the notice text, and the outcome code. See `/retention`.
+- Notifier contact and notice text are kept off-leaf for 12 months after the notice is closed, then deleted. Backups that contain them are overwritten within 30 days. Taking a notice writes no leaf; the leaf written when it is closed keeps only a salted hash of the notice (`notice_hash`), the target index, the outcome code and the hash of the statement of reasons (`evidence_hash`). The report id stays off-leaf with the notice. See `/retention`.
 
 ## Contact points
 

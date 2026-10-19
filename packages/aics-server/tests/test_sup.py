@@ -1103,7 +1103,7 @@ class TestPolicyLeaves:
     def test_notice_orders_and_cards(self, client, owner):
         now = int(time.time())
         soon = owner.policy("Too soon.", not_before=now + 3600)
-        assert soon.status_code == 400 and "30 days" in soon.json()["detail"]
+        assert soon.status_code == 400 and "30 days" in soon.json()["detail"]["message"]
         order = hashlib.sha256(b"order 2026/7").hexdigest()
         assert owner.policy("Under an order.", not_before=now + 60, order_hash=order).status_code == 400
         assert owner.policy(f"Under order {order}.", not_before=now + 60, order_hash=order).status_code == 201

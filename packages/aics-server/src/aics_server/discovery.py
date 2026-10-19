@@ -83,7 +83,7 @@ ONLINE_WINDOW_SECONDS = 900
 #: Where the log key comes from (DESIGN.md section 4.2 item 6): never from this server alone.
 LOG_KEY_SOURCES = (
     "DNS TXT record _aics.wesupport-ai.com",
-    "the aics package on PyPI",
+    "the aics-cli package on PyPI",
     "the public repository README",
 )
 

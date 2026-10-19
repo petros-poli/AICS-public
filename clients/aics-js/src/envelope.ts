@@ -187,9 +187,9 @@ export function verifyEnvelope(e: Envelope, o: VerifyEnvelopeOptions = {}): Json
   if (o.replayCheck) check(o.replayCheck(p.kid, p.nonce, p.expires, now), `replayed envelope (${p.kid}, ${p.nonce})`, 'replay');
   return e.payload;
 }
-/** §5.1: the bytes the policy key signs for a shared-secret entry at `ts`. */
+/** §5.1: the bytes the policy key signs for a shared-secret entry at `ts` (any registered type; the entry check applies the profile). */
 export function secretAttestationMessage(e: Envelope, ts: number): Uint8Array {
-  check(validateEnvelope(e) === 'shared-secret', 'only a fallback envelope carries a policy attestation'); check(isUint(ts), 'ts must be a uint');
+  check(validateEnvelope(e, { profiles: ['SUP-1', 'SWARMS-1'] }) === 'shared-secret', 'only a fallback envelope carries a policy attestation'); check(isUint(ts), 'ts must be a uint');
   return concat(utf8('AICS-1 secret-attestation\n'), canonicalize({ actor_kid: e.protected.kid, envelope_hash: envelopeHash(e), origin: e.protected.origin, ts, type: e.protected.type }));
 }
 /** Verify a shared-secret entry's attestation with the pinned policy kid; it proves only what the service asserted. */

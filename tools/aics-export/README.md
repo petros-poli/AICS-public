@@ -65,9 +65,9 @@ key alone cannot establish current freshness or exclude split views.
 ## Owner publication steps
 
 1. Review the current terms, retention rules and
-   [dataset-card template](../../ops/discovery/hf-dataset-card.md). Decide and
-   record the dataset licence; the exporter preserves the template's undecided
-   licence rather than inventing permission.
+   [dataset-card template](../../ops/discovery/hf-dataset-card.md). The
+   exporter copies the template's front matter unchanged, licence included
+   (CC-BY-4.0 per the terms); it never invents or overrides a licence.
 2. Obtain a recent independently pinned checkpoint/key, run the remote dry-run,
    review counts, then export using the same saved checkpoint. Confirm the
    checkpoint includes all known public-body tombstones before publication.

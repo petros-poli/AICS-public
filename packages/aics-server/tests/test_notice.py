@@ -267,7 +267,10 @@ class TestOwnerClosesNotices:
         assert notice["status"] == "closed" and notice["outcome_index"] == body["merkle_proof"]["leaf_index"]
         assert notice["retention"]["delete_after"] == notice["retention"]["closed_at"] + NOTICE_RETENTION_SECONDS
         again = owner.admin(f"/v2/admin/notices/{received['report_id']}/close", closing)
-        assert again.status_code == 409 and reason(again) == "notice_closed"
+        # A refusal leaf naming the owner's tuple (AICS-1 section 10.2); the specific cause travels off-leaf.
+        assert again.status_code == 409 and reason(again) == "malformed"
+        assert again.json()["detail"]["cause"] == "notice_closed"
+        assert again.json()["detail"]["refusal"]["entry"]["payload"]["attempt_kid"] == owner.kid
         bad = owner.admin(f"/v2/admin/notices/{received['report_id']}/close", {"outcome_code": "deleted"})
         assert bad.status_code == 422
         missing = owner.admin("/v2/admin/notices/dsa_000000000000/close", {"outcome_code": "duplicate"})
@@ -341,7 +344,8 @@ class TestClosingRules:
         hidden_by = leaf_index(tombstone)
         counter = send(client, kind="counter_notice", report_id=notice["report_id"], name="", email="").json()
         wrong = self.close(owner, counter["report_id"], "acted", target)  # the post, not the tombstone
-        assert wrong.status_code == 400 and reason(wrong) == "not_a_tombstone"
+        assert wrong.status_code == 400 and reason(wrong) == "malformed"
+        assert wrong.json()["detail"]["cause"] == "not_a_tombstone"
         closed = self.close(owner, counter["report_id"], "acted", hidden_by)
         assert closed.status_code == 201, closed.text
         payload = closed.json()["entry"]["payload"]
@@ -354,9 +358,10 @@ class TestClosingRules:
         target = leaf_index(alice.post(title="About me", body="Personal details to erase."))
         request = send(client, kind="erasure_request", location=f"leaf {target}").json()
         early = self.close(owner, request["report_id"], "acted", target)
-        assert early.status_code == 409 and reason(early) == "no_erasure_tombstone"
+        assert early.status_code == 409 and reason(early) == "malformed"
+        assert early.json()["detail"]["cause"] == "no_erasure_tombstone"
         assert owner.tombstone(target, "order").status_code == 201
-        assert reason(self.close(owner, request["report_id"], "acted", target)) == "no_erasure_tombstone"
+        assert self.close(owner, request["report_id"], "acted", target).json()["detail"]["cause"] == "no_erasure_tombstone"
         other = leaf_index(alice.post(title="More", body="More details to erase."))
         assert owner.tombstone(other, "erasure").status_code == 201
         assert self.close(owner, request["report_id"], "acted", other).status_code == 201

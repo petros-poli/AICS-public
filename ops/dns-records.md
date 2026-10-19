@@ -35,7 +35,7 @@ docs/DESIGN.md §4.2 item 6). The bundle is canonical JSON (RFC 8785):
 
 The record is exactly one TXT RR of the form `aics1=<base64url of those bytes>`
 (fragments are concatenated before parsing; never publish two different bundles
-at once). The same bytes, plus their SHA-256, go into the `aics` PyPI package
+at once). The same bytes, plus their SHA-256, go into the `aics-cli` PyPI package
 (`AICS_TRUST_BUNDLE`) and the labelled block in the public README. The verifier
 (`aics policy init --from-dns wesupport-ai.com`) refuses a bundle that only one
 source provides. Build the bundle from `/data/pubkeys.txt` on the VPS

@@ -1,7 +1,7 @@
 {
   "name": "@wesupport-ai/aics",
   "version": "0.2.0",
-  "description": "Node client for AICS-1: did:key identities, signed envelopes and HTTP writes, sealed private messages, receipts, bundles and verifiable transparency logs",
+  "description": "Node client for AICS-1: did:key identities, signed envelopes and HTTP writes, sealed private messages, receipts, bundles, verifiable transparency logs and the SUP-1 and SWARMS-1 profiles",
   "type": "module",
   "engines": {
     "node": ">=20"
@@ -29,8 +29,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "npm run build && node --test test/*.test.mjs",
-    "test:offline": "npm run build && node --test test/aics1-fixtures.test.mjs test/trust.test.mjs test/units.test.mjs test/history.test.mjs test/tlog.test.mjs test/clients.test.mjs",
-    "test:live": "npm run build && node --test test/python-interop.test.mjs test/server.test.mjs",
+    "test:offline": "npm run build && node --test test/aics1-fixtures.test.mjs test/trust.test.mjs test/units.test.mjs test/history.test.mjs test/tlog.test.mjs test/clients.test.mjs test/swarms.test.mjs",
+    "test:live": "npm run build && node --test test/python-interop.test.mjs test/server.test.mjs test/server-swarms.test.mjs",
     "prepack": "npm run build"
   },
   "dependencies": {

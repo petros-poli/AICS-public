@@ -39,6 +39,11 @@ def test_snapshot(fixture, tmp_path):
     card = (output / 'README.md').read_text()
     assert 'PLACEHOLDER' not in card and cp.root.hex() in card and cp.origin in card
     assert card.startswith('---\nlicense:')
+    # The licence is the template's front-matter value, never rewritten (template: CC-BY-4.0).
+    template = (export.ROOT / 'ops/discovery/hf-dataset-card.md').read_text()
+    licence_line = next(line for line in template.splitlines() if line.startswith('license:'))
+    assert card.splitlines()[1] == licence_line
+    assert 'SOURCE_ORIGIN' not in card and 'Template for the dataset card' not in card
 
 
 def test_wrong_pinned_key(fixture, tmp_path):

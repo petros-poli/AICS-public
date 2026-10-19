@@ -254,7 +254,9 @@ test('cards: an AICS-1+SUP-1 card with its sup member and the §20.8 codes verif
   assert.match(verifyCard(resign({ ...supCard(), spec: 'AICS-1' }), { policyKid: CF.policy_kid, now: cardNow }).problems.join(), /sup|refusal/);
   assert.match(verifyCard(supCard({ sup: { ...supCard().sup, asset_hash: H64 } }), { policyKid: CF.policy_kid, now: cardNow }).problems.join(), /asset hash/);
   assert.match(verifyCard(supCard({ sup: { ...supCard().sup, intent_seconds: 90000 } }), { policyKid: CF.policy_kid, now: cardNow }).problems.join(), /intent_seconds/);
-  assert.match(verifyCard(resign({ ...CF.card.card, spec: 'AICS-1+SWARMS-1' }), { policyKid: CF.policy_kid, now: cardNow }).problems.join(), /\$\.spec/);
+  // SWARMS-1 is a supported profile now: a base card relabelled as one lacks its R47 member; an unknown profile is refused.
+  assert.match(verifyCard(resign({ ...CF.card.card, spec: 'AICS-1+SWARMS-1' }), { policyKid: CF.policy_kid, now: cardNow }).problems.join(), /missing swarms/);
+  assert.match(verifyCard(resign({ ...CF.card.card, spec: 'AICS-1+OTHER-1' }), { policyKid: CF.policy_kid, now: cardNow }).problems.join(), /\$\.spec/);
 });
 for (const [name, change, pattern] of [
   ['a null ciphertext budget (finding F27)', c => { c.retention = { ...c.retention, ciphertext_budget_bytes: null }; }, /ciphertext_budget_bytes/],

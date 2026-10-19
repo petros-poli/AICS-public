@@ -49,7 +49,7 @@ jobs:
                   continue
               project = tomllib.loads(path.read_text())["project"]
               # Directory names select release members; PyPI names come from metadata.
-              # In particular packages/aics-cli publishes the project named "aics".
+              # In particular packages/aics-cli publishes the project named "aics-cli".
               name = re.sub(r"[-_.]+", "-", project["name"]).lower()
               if name in project_names:
                   raise SystemExit(f"Duplicate PyPI project name: {name}")

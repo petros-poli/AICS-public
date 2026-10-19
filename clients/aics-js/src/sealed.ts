@@ -67,6 +67,24 @@ export function seal(header: InnerHeader, content: Uint8Array | string, recipien
   const ephemeral = random(32), pub = x25519PublicKey(ephemeral);
   try { return concat(pub, nacl.box(plaintext, boxNonce(pub, recipientPublic), recipientPublic, ephemeral)); } finally { ephemeral.fill(0); }
 }
+/** `crypto_box_seal` of already framed bytes (a fresh ephemeral key, erased afterwards); profile framings build on it. */
+export function sealFramed(plaintext: Uint8Array, recipientPublic: Uint8Array, o: { maxCiphertextBytes?: number } = {}): Uint8Array {
+  validateX25519PublicKey(recipientPublic);
+  check(plaintext.length + SEAL_OVERHEAD <= (o.maxCiphertextBytes ?? MAX_CIPHERTEXT_BYTES), 'Ciphertext exceeds the limit');
+  const ephemeral = random(32), pub = x25519PublicKey(ephemeral);
+  try { return concat(pub, nacl.box(plaintext, boxNonce(pub, recipientPublic), recipientPublic, ephemeral)); } finally { ephemeral.fill(0); }
+}
+/** `crypto_box_seal_open` with the recipient's X25519 secret: the framed plaintext, or a SealedError. */
+export function openFramed(ct: Uint8Array, recipientSecret: Uint8Array): Uint8Array {
+  check(recipientSecret.length === 32, 'X25519 secret must be 32 bytes');
+  check(ct.length >= SEAL_OVERHEAD && ct.length <= MAX_CIPHERTEXT_BYTES, 'Invalid ciphertext size');
+  const epk = ct.slice(0, 32); validateX25519PublicKey(epk);
+  const plain = nacl.box.open(ct.slice(32), boxNonce(epk, x25519PublicKey(recipientSecret)), epk, recipientSecret);
+  check(plain, 'Sealed box does not open with this key');
+  return plain!;
+}
+/** Content bytes that must be UTF-8 text (§8.1). */
+export const contentBytes = (content: Uint8Array | string): Uint8Array => utf8Content(content);
 export type OpenedMessage = { header: InnerHeader; body: Uint8Array; readonly text: string };
 /**
  * Open a sealed body and require its inner header to equal what the (already verified) outer envelope promises.

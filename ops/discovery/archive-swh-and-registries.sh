@@ -38,10 +38,10 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SWH_SAVE_URL="${SWH_SAVE_URL:-https://archive.softwareheritage.org/api/1/origin/save/git/url/https://github.com/petros-poli/AICS-public/}"
 GITHUB_ORIGIN="https://github.com/petros-poli/AICS-public/"
 
-# Python packages, in dependency order. aics-cli publishes to PyPI as "aics"
+# Python packages, in dependency order. aics-cli retains the console command "aics"
 # (docs/RELEASING.md); aics-server is built and tested but never uploaded.
 PY_PACKAGES="aics-identity aics-tlog aics-witness aics-conformance aics-cli aics-mcp aics-server"
-PYPI_NAME_aics_cli="aics"
+PYPI_NAME_aics_cli="aics-cli"
 PYPI_NAME_aics_identity="aics-identity"
 PYPI_NAME_aics_tlog="aics-tlog"
 PYPI_NAME_aics_witness="aics-witness"

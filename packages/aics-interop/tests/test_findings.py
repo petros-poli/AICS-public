@@ -48,13 +48,18 @@ def test_statuses_are_known():
     assert {f.status for f in findings.FINDINGS.values()} <= {"open", "retired"}
 
 
-@pytest.mark.parametrize("fid", OPEN)
-def test_citation_is_exact_at_head(fid):
-    """An open finding's line is checked at git HEAD; a retired one keeps the line where it was found."""
-    f = findings.FINDINGS[fid]
-    lines = _head(f.file)
-    assert 1 <= f.line <= len(lines), f"{f.file} has {len(lines)} lines"
-    assert f.needle and f.needle in lines[f.line - 1], f"{f.file}:{f.line} is now: {lines[f.line - 1]!r}"
+def test_citations_are_exact_at_head():
+    """An open finding's line is checked at git HEAD; a retired one keeps the line where it was found (one test,
+    so that no open finding leaves nothing to collect rather than a skip)."""
+    wrong = []
+    for fid in OPEN:
+        f = findings.FINDINGS[fid]
+        lines = _head(f.file)
+        if not 1 <= f.line <= len(lines):
+            wrong.append(f"{fid}: {f.file} has {len(lines)} lines")
+        elif not (f.needle and f.needle in lines[f.line - 1]):
+            wrong.append(f"{fid}: {f.file}:{f.line} is now: {lines[f.line - 1]!r}")
+    assert wrong == []
 
 
 def _test_sources() -> dict[str, str]:
@@ -99,5 +104,5 @@ def test_fixture_annotations_name_open_findings():
     used = set()
     for p in generate.DEFAULT_OUT.rglob("*.json"):
         used |= set(re.findall(r'"(F\d\d)"', p.read_text("utf-8")))
-    assert used and used <= set(OPEN)
+    assert used <= set(OPEN)  # empty once every finding a fixture names is retired
     assert json.loads((generate.DEFAULT_OUT / "manifest.json").read_text())["format"] == generate.FORMAT

@@ -192,3 +192,35 @@ def test_consistency_rejects_malformed_sizes_and_hashes():
     assert not verify_consistency(3, 5, t.root(3), t.root(5) + b"\0", proof)
     assert not verify_consistency(3, 5, t.root(3), t.root(5), [proof[0][:16], *proof[1:]])
     assert not verify_consistency(5, 5, t.root(5)[:31], t.root(5)[:31], [])  # equal, but not hashes
+
+
+def test_the_level_cache_keeps_only_the_most_recently_used_sizes():
+    leaves = make_leaves(200)
+    t = MerkleTree(leaves, level_cache_sizes=8)
+    for size in range(1, 201):
+        assert t.root(size) == ref_mth(leaves[:size])
+        assert len(t._levels_cache) <= 8
+    assert list(t._levels_cache) == list(range(193, 201))  # the newest sizes
+    t.root(193)  # a hit moves its size to the newest end, so 194 is evicted next
+    t.root(50)
+    assert 193 in t._levels_cache and 194 not in t._levels_cache and 50 in t._levels_cache
+    # Proofs at evicted sizes are rebuilt and still verify.
+    proof = t.inclusion_proof(3, 17)
+    assert verify_inclusion(leaf_hash(leaves[3]), 3, 17, proof, ref_mth(leaves[:17]))
+    old_new = t.consistency_proof(9, 120)
+    assert verify_consistency(9, 120, ref_mth(leaves[:9]), ref_mth(leaves[:120]), old_new)
+
+
+def test_the_default_level_cache_is_bounded_and_zero_disables_it():
+    from aics_tlog.tree import DEFAULT_LEVEL_CACHE_SIZES
+
+    assert DEFAULT_LEVEL_CACHE_SIZES == 64
+    t = MerkleTree(make_leaves(130))
+    for size in range(1, 131):
+        t.root(size)
+    assert len(t._levels_cache) == 64
+    off = MerkleTree(make_leaves(10), level_cache_sizes=0)
+    assert off.root(10) == ref_mth(make_leaves(10)) and not off._levels_cache
+    for bad in (-1, 1.5, True, "8"):
+        with pytest.raises(ValueError):
+            MerkleTree(level_cache_sizes=bad)

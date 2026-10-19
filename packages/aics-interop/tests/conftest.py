@@ -50,7 +50,7 @@ def pytest_report_header(config):
         lines.append("aics-interop: sibling package sources match HEAD" if differences is not None else
                      "aics-interop: sibling package state unknown")
     names = {"aics-identity": "aics-identity", "aics-tlog": "aics-tlog", "aics-witness": "aics-witness",
-             "aics-cli": "aics", "aics-conformance": "aics-conformance", "aics-server": "aics-server"}
+             "aics-cli": "aics-cli", "aics-conformance": "aics-conformance", "aics-server": "aics-server"}
     lines.append("aics-interop: " + ", ".join(f"{d}={version(n)}" for d, n in names.items()))
     tools = {t: shutil.which(t) for t in ("openssl", "ssh-keygen", "git")}
     missing = "absent (tests fail: " + drivers.REQUIRE_TOOLS + ")" if drivers.tools_required() else \

@@ -10,7 +10,17 @@ import sys
 import rfc8785
 
 import validate_card as vc
-from helpers import CARD_DIR, CARD_PATH, PATTERN_DEFINITIONS, REPO, assurance, dump, fill_values, load_template
+from helpers import (
+    CARD_DIR,
+    CARD_PATH,
+    PATTERN_DEFINITIONS,
+    PATTERN_DOCUMENT,
+    REPO,
+    assurance,
+    dump,
+    fill_values,
+    load_template,
+)
 
 
 def run(*args: str) -> tuple[int, dict]:
@@ -59,7 +69,7 @@ def test_cli_input_errors_exit_2(tmp_path):
 
 def test_cli_fill_write_and_jcs_out(tmp_path):
     sets = [f"--set={k}={v}" for k, v in fill_values().items()]
-    patterns = dump(PATTERN_DEFINITIONS, tmp_path / "secret-patterns.json")
+    patterns = dump(PATTERN_DOCUMENT, tmp_path / "secret-patterns.json")
     out, jcs_out = tmp_path / "filled" / "card-unsigned.json", tmp_path / "filled" / "card-unsigned.jcs"
     code, report = run("card-content.json", "--fill-hashes", str(REPO), "--patterns", str(patterns), *sets,
                        "--final", "--write", str(out), "--jcs-out", str(jcs_out))

@@ -1,11 +1,14 @@
 /**
  * AICS-1 §14.3 step 2: a complete authenticated entry prefix replayed in index order, each entry judged against the
  * state immediately before its index (§7.3): entry schemas and envelope signatures (§5), acceptance-time freshness
- * and nonce uniqueness (§4.3), per-key sequences (§4.2), name claims, rotations, revocations and encryption-key
+ * (§4.3), nonce uniqueness (decision 26: a `(kid, nonce)` any earlier leaf carries, as an accepted envelope or as a
+ * refusal's attempt tuple, is a replay forever, also after its expiry), per-key sequences (§4.2), name claims, rotations, revocations and encryption-key
  * rotations (§7), consent grants and capacity (§9), recipient key provenance (§7.3), tombstone targets (§10.3), the
  * policy chain from the dual-signed charter at leaf 0 (§6.4) and the pinned service keys as administrative actors.
  * Under AICS-1+SUP-1 the tasks, awards, owner actions, contributions and balances are replayed too (§20.9), while a
- * contribution's on-chain check stays unproven (its transaction is off-leaf). Swarms entries are not interpreted.
+ * contribution's on-chain check stays unproven (its transaction is off-leaf). Under AICS-1+SWARMS-1 (§19) the ten
+ * swarm types are replayed by `SwarmReplay` (introductions, membership, governance, grants, broadcasts, deliveries), and
+ * introduced unnamed identities write base entries and receive DMs as SWARMS-1 permits (`history.swarms`).
  */
 import { concat, decodeU64, hexH, utf8 } from './bytes.js';
 import { canonicalize, type JsonObject } from './canonical.js';
@@ -13,7 +16,8 @@ import { envelopeHash, type Envelope } from './envelope.js';
 import { entryHash, parseEntry, validateEntry, type Entry } from './entry.js';
 import { didKey, parseDidKey, verify } from './keys.js';
 import { parseVkey } from './note.js';
-import { KEY_TIERS, POLICY_ACTOR_TYPES, supAssetDescriptor } from './registry.js';
+import { KEY_TIERS, POLICY_ACTOR_TYPES, SWARMS_TYPES as SWARM_TYPES, fallbackTypes, supAssetDescriptor } from './registry.js';
+import { SwarmError, SwarmReplay } from './swarms.js';
 import { verifySshsig } from './sshsig.js';
 export type HistoryTrust = { origin: string; log_vkey: string; policy_kid: string; owner_kid: string };
 export type HistoryOptions = { trust: HistoryTrust; profiles?: readonly string[]; secretIds?: readonly string[] };
@@ -48,15 +52,19 @@ export class History {
   private awarded = new Set<number>(); private ownerActions = new Map<number, OwnerAction>(); private requests = new Map<string, { post: number; quotes: number[]; completion: number | null }>();
   private paid = new Set<number>(); private contributions = new Set<string>();
   private logKid: string; private profiles: readonly string[];
+  /** The SWARMS-1 replay (§19), present when the profile is active. */
+  readonly swarms: SwarmReplay | null;
   /** Replays `rawEntries` (the complete prefix `[0, n)`, exact bytes); throws `HistoryError` at the first invalid index. */
   constructor(rawEntries: readonly Uint8Array[], readonly options: HistoryOptions) {
     this.profiles = options.profiles ?? [];
     this.logKid = didKey(parseVkey(options.trust.log_vkey).publicKey);
+    this.swarms = this.profiles.includes('SWARMS-1') ? new SwarmReplay({ origin: options.trust.origin, serviceKids: [options.trust.policy_kid, options.trust.owner_kid, this.logKid] }) : null;
     rawEntries.forEach((raw, i) => {
       let e: Entry;
       try { e = validateEntry(parseEntry(raw), { origin: options.trust.origin, profiles: this.profiles, secretIds: options.secretIds, policyKid: options.trust.policy_kid }); }
       catch (err) { throw new HistoryError(i, (err as Error).message); }
-      this.apply(i, e); this.entries.push(e); this.leafIndex.set(entryHash(raw), i);
+      if (this.swarms) { try { this.swarms.validate(i, e); } catch (err) { if (err instanceof SwarmError) throw new HistoryError(i, err.message); throw err; } }
+      this.apply(i, e); this.swarms?.apply(i, e); this.entries.push(e); this.leafIndex.set(entryHash(raw), i);
     });
   }
   get size(): number { return this.entries.length; }
@@ -69,15 +77,17 @@ export class History {
     const req = (ok: unknown, m: string) => this.require(i, ok, m);
     const env = e.payload.envelope, p = env.protected, q = env.payload, kid = p.kid, typ = e.type, ts = e.ts, trust = this.options.trust;
     const secret = env.auth.scheme === 'shared-secret';
-    if (secret) req(typ === 'name.claim' || typ === 'post', 'the secret tier cannot authorize this type');
+    if (secret) req(fallbackTypes(this.profiles).includes(typ), 'the secret tier cannot authorize this type');
     const prior = this.last.get(kid);
     req(p.seq === (prior ? prior.protected.seq + 1 : 0) && p.prev === (prior ? envelopeHash(prior) : null), 'sender sequence/predecessor');
-    const nonceKey = kid + '\n' + p.nonce, until = this.nonces.get(nonceKey);
-    req(until === undefined || until <= ts, 'reused nonce'); this.nonces.set(nonceKey, p.expires); this.last.set(kid, env);
+    // Decision 26 (2026-10-19): a tuple an earlier leaf carries is a replay forever, not only until its recorded expiry.
+    const nonceKey = kid + '\n' + p.nonce, earlier = this.nonces.get(nonceKey);
+    req(earlier === undefined, `reused nonce (the tuple is carried by entry ${earlier})`); this.nonces.set(nonceKey, i); this.last.set(kid, env);
     if ((POLICY_ACTOR_TYPES as readonly string[]).includes(typ)) req(kid === (typ === 'report' && q.kind === 'owner_action' ? trust.owner_kid : trust.policy_kid), 'administrative actor is not the pinned authority');
     else if (typ === 'sup.task' || (typ === 'sup.credit' && q.source === 'task')) req(kid === trust.owner_kid, 'owner-signed SUP-1 entry by another key');
     else if (typ === 'sup.credit') req(kid === trust.policy_kid, 'a contribution credit is a policy statement');
-    else if (typ !== 'name.claim' && !(typ === 'key.rotate' && q.mode === 'upgrade')) req(this.active.has(kid), 'signer is not a current key at this index');
+    else if (this.swarms && (SWARM_TYPES as readonly string[]).includes(typ)) { /* SwarmReplay.validate authorizes the actor */ }
+    else if (typ !== 'name.claim' && !(typ === 'key.rotate' && q.mode === 'upgrade')) req(this.active.has(kid) || this.swarms?.unnamedActor(kid), 'signer is not a current key at this index');
     switch (typ) {
       case 'name.claim': {
         const name = q.name_norm as string; req(!this.names.has(name) && !this.bound.has(kid), 'duplicate claim or key reuse');
@@ -123,8 +133,8 @@ export class History {
         this.grants.set(pair, { index: i, ts, max: q.max as number, expires: q.expires as number, sender_kid: q.sender_kid as string }); break;
       }
       case 'dm': case 'capsule': {
-        const recipient = (typ === 'dm' ? q.to_kid : q.owner_kid) as string, state = this.active.get(recipient);
-        req(state && state.keyIndex === q.to_key_leaf_index, 'recipient key provenance');
+        const recipient = (typ === 'dm' ? q.to_kid : q.owner_kid) as string, state = this.active.get(recipient), unnamed = this.swarms?.unnamedActor(recipient);
+        req(state ? state.keyIndex === q.to_key_leaf_index : unnamed && unnamed.x25519 !== null && unnamed.key_leaf_index === q.to_key_leaf_index, 'recipient key provenance');
         if (typ === 'dm') {
           req(q.seq === p.seq && q.prev === p.prev, 'dm chain copy');
           const g = this.grants.get(recipient + '\n' + kid) ?? this.grants.get(recipient + '\n*');
@@ -135,11 +145,11 @@ export class History {
       }
       case 'tombstone': {
         const target = q.target_index as number; req(target < i, 'a tombstone targets an earlier entry');
-        if (['dm', 'capsule'].includes(this.entries[target].type)) req(q.reason_code === 'order', 'a ciphertext tombstone reason is order');
+        if (['dm', 'capsule', 'swarm.delivery'].includes(this.entries[target].type)) req(q.reason_code === 'order', 'a ciphertext tombstone reason is order');
         this.tombstones.set(target, i); break;
       }
       case 'refusal':
-        if (q.attempt_kid !== null) { req(q.attempt_nonce !== null && q.attempt_expires !== null, 'partial authenticated tuple'); this.nonces.set(q.attempt_kid + '\n' + q.attempt_nonce, q.attempt_expires as number); }
+        if (q.attempt_kid !== null) { req(q.attempt_nonce !== null && q.attempt_expires !== null, 'partial authenticated tuple'); const t = q.attempt_kid + '\n' + q.attempt_nonce; if (!this.nonces.has(t)) this.nonces.set(t, i); }
         break;
       case 'policy': {
         req(q.log_kid !== q.policy_kid && q.owner_kid !== q.log_kid && q.owner_kid !== q.policy_kid, 'service key separation');

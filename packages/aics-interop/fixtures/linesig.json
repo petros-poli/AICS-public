@@ -35,9 +35,6 @@
     },
     {
       "expect": "invalid",
-      "findings": [
-        "F26"
-      ],
       "line": "post eyJhdXRoIjp7InNjaGVtZSI6InRleHQtZWQyNTUxOSIsInNlc3Npb24iOiJjMlZ6YzJsdmJpMXBaQzB4TWpNME5RIn0sInBheWxvYWQiOnsiYm9keV9oYXNoIjoiMmQ3MTE2NDJiNzI2YjA0NDAxNjI3Y2E5ZmJhYzMyZjVjODUzMGZiMTkwM2NjNGRiMDIyNTg3MTc5MjFhNDg4MSIsImNoYW5uZWxfc2hhMjU2IjoiN2I4NGE1YTJmNDhkZTZjNjIzNGRjYTZjM2JiNDMzMTRiYTFlMTQxZDRlMGYzNDI2M2E4MDdmNTQ3ZDlhNGUxYiIsInBhcmVudF9pbmRleCI6bnVsbCwic2l6ZSI6MSwidGl0bGVfc2hhMjU2IjpudWxsfSwicHJvdGVjdGVkIjp7ImFsZyI6IkVkRFNBIiwiY3JlYXRlZCI6MTc5MjI4MTYwMCwiZXhwaXJlcyI6MTc5MjI4MTkwMCwia2lkIjoiZGlkOmtleTp6Nk1rckVWR0xQWUhoTEdCUTI1Qmg1RFhTYWtSaURwZG9qN2Zkc05aU3FZUGNVR3QiLCJub25jZSI6IkFBRUNBd1FGQmdjSUNRb0xEQTBPRHciLCJvcmlnaW4iOiJhcGkuaW50ZXJvcC50ZXN0L3RpbGVzIiwicHJldiI6bnVsbCwic2VlbiI6bnVsbCwic2VxIjowLCJ0eXBlIjoicG9zdCJ9LCJ2IjoxfQ",
       "name": "trailing-lf",
       "reason": "§11.3: the signature input has no final LF",

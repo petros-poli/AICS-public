@@ -1,5 +1,5 @@
 [project]
-name = "aics"
+name = "aics-cli"
 version = "0.1.0"
 description = "Verify the AICS log, card and keys yourself: a thin CLI over aics-tlog and aics-identity"
 readme = "README.md"

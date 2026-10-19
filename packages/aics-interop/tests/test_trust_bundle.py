@@ -8,7 +8,9 @@ character-strings).  Consumers: aics (``aics_cli.trust``: ``bundle_from_text``,
 ``AICS_TRUST_BUNDLE`` PyPI constant set in process), aics-conformance
 (``Policy(trust=...)``, which takes the bundle as a JSON object), and the
 canonicalizers of aics-identity and aics-tlog.  The repository README block
-and the published constant are checked against each other.
+and the published constant are checked against each other.  ``aics trust
+build`` (runbook step 5) is run over the real server's key file and logged
+card, and must print the reference's bundle in every form.
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ SHA = hashlib.sha256(RAW).hexdigest()
 
 @pytest.fixture
 def pypi(monkeypatch):
-    """Set the aics package's AICS_TRUST_BUNDLE constant (published_keys.py) for this test."""
+    """Set the aics-cli package's AICS_TRUST_BUNDLE constant (published_keys.py) for this test."""
     from aics_cli import published_keys as pk
 
     def publish(raw: bytes | None = RAW, sha: str | None = SHA, domain: str = DOMAIN) -> None:
@@ -119,7 +121,7 @@ def test_dns_and_the_pypi_constant_meet_the_default_two_sources(tmp_path, pypi):
     r = init(tmp_path, "--from-dns", DOMAIN, txt=[spec.txt_record(RAW)])
     assert r.code == 0, r.data
     sources = r.data["policy"]["sources"]["log_vkey"]
-    assert sources[0] == f"dns:{TXT_NAME}" and sources[1].startswith("pypi:aics==")
+    assert sources[0] == f"dns:{TXT_NAME}" and sources[1].startswith("pypi:aics-cli==")
     r = drivers.AicsCli(home=tmp_path / "home", txt={TXT_NAME: [spec.txt_record(RAW)]}).run("policy", "diff")
     assert r.code == 0 and all(row["agree"] for row in r.data["rows"]), r.data
 
@@ -255,3 +257,46 @@ def test_repository_readme_block_and_pypi_constant_are_equivalent(tmp_path):
     sha = next(line.split(":", 1)[1].strip() for line in lines if line.startswith("sha256:"))
     assert sha == spec.hexH(raw)
     assert pk.PLACEHOLDER is False and pk.AICS_TRUST_BUNDLE == raw and pk.AICS_TRUST_BUNDLE_SHA256 == sha
+
+
+# ---------------------------------------------------------------------------
+# aics trust build against the real server (runbook step 5)
+# ---------------------------------------------------------------------------
+
+
+def test_trust_build_over_the_real_servers_key_file_and_logged_card(tmp_path):
+    """``aics trust build`` reads the key file aics-server writes and the card exactly as served after the owner
+    logged it, and prints the bundle the reference builds from the same values, in every published form."""
+    from aics_interop import server
+
+    instance = server.ServerInstance(tmp_path / "instance", tcp=False)
+    card = instance.log_card()
+    (tmp_path / "card.json").write_bytes(card)
+    listing = instance.get("/v2/policies")
+    assert listing.status == 200
+    (tmp_path / "policies.json").write_bytes(listing.body)
+    cli = drivers.AicsCli(home=tmp_path / "home")
+    r = cli.run("trust", "build", "--pubkeys", str(tmp_path / "instance" / "aics-keys.txt"),
+                "--card", str(tmp_path / "card.json"), "--policies-file", str(tmp_path / "policies.json"))
+    assert r.code == 0, r.data
+    raw = spec.J(instance.oob.trust_bundle(spec.hexH(card)))
+    assert r.data["bundle_jcs"].encode("utf-8") == raw
+    assert spec.validate_trust_bundle(raw)["bootstrap_card_hash"] == spec.hexH(card)
+    assert (r.data["txt"], r.data["sha256"]) == (spec.txt_record(raw), hashlib.sha256(raw).hexdigest())
+    assert r.data["readme_block"].splitlines()[1:] == spec.readme_block(raw).splitlines()[1:]
+    # the README block pins exactly that bundle in aics policy init (with the TXT record as the second source)
+    cli.txt[TXT_NAME] = [r.data["txt"]]
+    (tmp_path / "readme-block.txt").write_text(r.data["readme_block"], "utf-8")
+    pinned = cli.run("policy", "init", "--from-dns", DOMAIN, "--bundle", str(tmp_path / "readme-block.txt"),
+                     "--no-card", "--quorum", "0")
+    assert pinned.code == 0, pinned.data
+    show = cli.run("policy", "show")
+    assert show.data["trust_bundle"] == spec.strict_json(raw)
+    # before the owner logged it, no policy leaf names the card: nothing is built
+    before = spec.strict_json(listing.body)
+    before["policies"] = [p for p in before["policies"] if p["kind"] != "card"]
+    (tmp_path / "before.json").write_bytes(spec.J(before))
+    r = cli.run("trust", "build", "--pubkeys", str(tmp_path / "instance" / "aics-keys.txt"),
+                "--card", str(tmp_path / "card.json"), "--policies-file", str(tmp_path / "before.json"))
+    assert r.code == 1 and "no policy leaf of kind card names this card" in r.data["error"], r.data
+    assert "bundle_jcs" not in r.data

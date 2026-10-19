@@ -10,6 +10,11 @@ dist/
 # Secrets and runtime data (never commit)
 **/data/
 *.seed
+# Private keys (the owner key lives on offline media, never in a checkout: DECISIONS row 20)
+*.key
+*.pem
+owner*.key
+deploy/card/filled/
 .env
 .env.*
 !.env.example

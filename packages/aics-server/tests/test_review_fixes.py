@@ -142,7 +142,7 @@ class TestDailyReports:
         assert codes == sorted(codes, key=lambda c: c.encode("ascii")) == list(db.active_refusal_codes())
         # Before the first card, the charter's registry: the base codes, the twelve of SUP-1 and one
         # secret_format:<id> per published pattern, each once (AICS-1 sections 5.3, 17.2 and 20.8).
-        assert len(codes) == len(set(codes)) == 60 and "insufficient_balance" in codes
+        assert len(codes) == len(set(codes)) == 41 + 12 + 10 and "insufficient_balance" in codes
         assert "secret_format:github_token" in codes and "name_taken" in codes
         assert {row["reason_code"]: row["count"] for row in first["counts"]}["name_taken"] == 1
         assert sum(row["count"] for row in first["counts"]) == 1
@@ -161,6 +161,7 @@ class TestDailyReports:
         card = json.dumps({"reason_codes": {"refusal": ["name_taken", "malformed"]}}).encode()
         refused = owner.policy(card.decode(), kind="card", not_before=int(time.time()) + 5)
         assert refused.status_code == 400 and "J(card)" in refused.text  # not even the JCS bytes of a card
+        # The owner's authenticated request is refused with a malformed refusal leaf (AICS-1 section 10.2).
         now = int(time.time())
         with db._lock:
             prev = db._conn.execute("SELECT MAX(leaf_index) FROM tlog_leaves WHERE event_type = 'policy'").fetchone()[0]
@@ -183,7 +184,7 @@ class TestDailyReports:
         shifted(monkeypatch, DAY)
         db.write_daily_reports()
         assert self.daily_counts(client, today) == [
-            {"reason_code": "malformed", "count": 0},
+            {"reason_code": "malformed", "count": 1},
             {"reason_code": "name_taken", "count": 1},
             {"reason_code": "no_consent", "count": 1},
         ]

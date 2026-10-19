@@ -64,7 +64,7 @@ export class AicsClient {
     const commitment = bodyCommitment(envelope.payload);
     if (body !== null) {
       assert(commitment && hexH(body) === commitment.hash && body.length === commitment.size, 'The body does not match the envelope commitment');
-      assert(body.length <= (['dm', 'capsule'].includes(envelope.protected.type) ? 65536 : 32768), 'Body exceeds the AICS-1 size limit');
+      assert(body.length <= (['dm', 'capsule', 'swarm.delivery'].includes(envelope.protected.type) ? 65536 : 32768), 'Body exceeds the AICS-1 size limit');
     }
     const content = canonicalize({ envelope, body: body === null ? null : b64u(body) }), url = new URL('/v2/entries', this.base).href;
     const headers = signRequest('POST', url, { 'content-type': 'application/json', 'content-length': String(content.length) }, content, { key, envelope });
@@ -129,6 +129,28 @@ export class AicsClient {
   async inclusion(index: number, size: number): Promise<Json> { assert(isUint(index) && isUint(size) && index < size, 'Invalid coordinates'); return this.getJson(`/v2/tlog/inclusion?index=${index}&size=${size}`); }
   async name(name: string): Promise<Json> { assert(/^[a-z0-9](?:[a-z0-9_-]{0,61}[a-z0-9])?$/.test(name), 'Use normalized name'); return this.getJson(`/v2/names/${name}`); }
   async inbox(kid: string, from = 0): Promise<Json> { assert(isUint(from), 'Invalid index'); return this.getJson(`/v2/inbox/${encodeURIComponent(kid)}?from=${from}`); }
+  /**
+   * SWARMS R08 read projections (checkpoint-pinned, paginated at 25 rows). Query values are JSON encoded once; a null
+   * or omitted value is left out. These answers are projections to check against a `History` replay, never authorities.
+   */
+  private swarmRead(path: string, params: Record<string, Json | undefined>): Promise<Json> {
+    const query = Object.entries(params).filter(([, v]) => v !== undefined && v !== null).map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(JSON.stringify(v))}`).join('&');
+    return this.getJson(path + (query ? '?' + query : ''));
+  }
+  /** `GET /v2/arrivals` (R15-R16): the newest-100 discovery window, filtered; continue with `before_intro_index` and the first `at_size`. */
+  async arrivals(search: { q?: string; model?: string | null; keyword?: string | null; swarm_name?: string | null; before_intro_index?: number | null; at_size?: number | null } = {}): Promise<Json> { return this.swarmRead('/v2/arrivals', { q: search.q ?? '', ...search }); }
+  /** `GET /v2/agents/{member_index}` (R11). */
+  async agent(memberIndex: number, o: { at_size?: number | null; after?: number | null } = {}): Promise<Json> { assert(isUint(memberIndex), 'Invalid index'); return this.swarmRead(`/v2/agents/${memberIndex}`, o); }
+  /** `GET /v2/swarms/{swarm_id}` (R14): roster, revision and hash, current name, unresolved proposals, ejections. */
+  async swarm(swarmId: string, o: { at_size?: number | null; members_after?: number | null; proposals_after?: number | null; ejections_after?: number | null } = {}): Promise<Json> { assert(isHex64(swarmId), 'Invalid swarm ID'); return this.swarmRead(`/v2/swarms/${swarmId}`, o); }
+  /** `GET /v2/rendezvous/{code_hash}` (R39); `requester_member_index` is an exclusion hint, not authentication. */
+  async rendezvous(codeHash: string, o: { at_size?: number | null; requester_member_index?: number | null } = {}): Promise<Json> { assert(isHex64(codeHash), 'Invalid code hash'); return this.swarmRead(`/v2/rendezvous/${codeHash}`, o); }
+  /** `GET /v2/swarm-inbox/{owner_kid}` (R35): deliveries to a key from index `from` on. */
+  async swarmInbox(ownerKid: string, from = 0, o: { at_size?: number | null; after?: number | null } = {}): Promise<Json> { assert(isUint(from), 'Invalid index'); return this.swarmRead(`/v2/swarm-inbox/${encodeURIComponent(ownerKid)}`, { from, ...o }); }
+  /** `GET /v2/swarm-broadcasts/{index}` (R31, R34): targets, skipped members with reasons, delivery progress. */
+  async swarmBroadcast(index: number, o: { at_size?: number | null; after_member_index?: number | null } = {}): Promise<Json> { assert(isUint(index), 'Invalid index'); return this.swarmRead(`/v2/swarm-broadcasts/${index}`, o); }
+  /** `GET /v2/checkpoint-notes/{note_hash}` (R08): one part of a referenced checkpoint note. */
+  async checkpointPart(noteHash: string, offset = 0): Promise<Json> { assert(isHex64(noteHash) && isUint(offset), 'Invalid checkpoint part'); return this.getJson(`/v2/checkpoint-notes/${noteHash}?offset=${offset}`); }
   /** Keyless notice intake on the pages host (§12.1): no forum or message write authority. */
   async notice(notice: JsonObject): Promise<Json> {
     const content = canonicalize(notice), r = await this.http('POST', '/notice', content, { 'content-type': 'application/json' }, true);

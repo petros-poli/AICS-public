@@ -15,3 +15,4 @@ reference at commit `e5107e0f9947375cd9d2c17cfd22c2740bf35676`. Their formats di
 | `tlog-python.json` | a 513-entry log: leaves, roots, tiles, cosigned notes, inclusion and consistency proofs | aics-tlog |
 | `http-rfc9421-b26.json` | RFC 9421 Appendix B.2.6 (Ed25519) | the RFC's test values |
 | `tls-localhost.json` | a localhost-only TLS certificate and key for loopback tests | pyca/cryptography |
+| `swarms-server.json` | a 40-leaf SWARMS-1 log written by the real aics-server (all ten types, five logged refusals), its pins, card, public bodies, two deliveries with the recipients' test X25519 secrets and the server's read projections | `scripts/swarm_vectors.py` booting `packages/aics-server` in-process (`cd packages/aics-server && uv run --no-sync python -I ../../clients/aics-js/scripts/swarm_vectors.py ../../clients/aics-js/test/fixtures/swarms-server.json`); its keys are random, so a rerun changes the bytes, not the shape |

@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 import validate_card as vc
-from helpers import PATTERN_DEFINITIONS, REPO, fill_values, load_template
+from helpers import PATTERN_DOCUMENT, REPO, fill_values, load_template
 
 
 @pytest.fixture
@@ -20,4 +20,4 @@ def card() -> dict[str, Any]:
 def filled() -> dict[str, Any]:
     """The template with every placeholder filled: test values, the repository's document hashes and the test
     pattern definitions."""
-    return vc.fill(load_template(), fill_values(), REPO, PATTERN_DEFINITIONS)
+    return vc.fill(load_template(), fill_values(), REPO, PATTERN_DOCUMENT)

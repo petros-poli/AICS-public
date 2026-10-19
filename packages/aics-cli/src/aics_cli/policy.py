@@ -436,7 +436,7 @@ def _toml_value(v: Any) -> str:
 def dumps(policy: Policy) -> str:
     lines = [
         "# aics pinned policy.  Trust anchors come from the out-of-band trust bundle",
-        "# (DNS TXT _aics.<domain>, the aics package on PyPI, the public README); the",
+        "# (DNS TXT _aics.<domain>, the aics-cli package on PyPI, the public README); the",
         "# witness policy from the bootstrap card the bundle pins, or by hand.  Never",
         "# from the API host alone.  [sources] records where each value came from.",
         f"version = {POLICY_VERSION}",
@@ -581,7 +581,7 @@ def save(policy: Policy, home: Path, *, force: bool = False) -> Path:
 
 @dataclass
 class SourceValues:
-    label: str  # "dns:_aics.example", "pypi:aics==0.1.0", "readme", "manual", "api:https://..."
+    label: str  # "dns:_aics.example", "pypi:aics-cli==0.1.0", "readme", "manual", "api:https://..."
     values: dict[str, Any]
 
 

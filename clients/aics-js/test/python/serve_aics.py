@@ -1,6 +1,7 @@
 """Boot the real aics-server on loopback for the npm client's live tests (a production genesis on throwaway paths).
 
-Run inside packages/aics-server: ``uv run --no-sync python -I serve_aics.py ROOT OWNER_PUBLIC_KEY_U64``.  Prints one
+Run inside packages/aics-server: ``uv run --no-sync python -I serve_aics.py ROOT OWNER_PUBLIC_KEY_U64 [swarms]``; with
+``swarms`` the origin bootstraps the SWARMS-1 profile card (``create_app(swarms=True)``, as its own tests do).  Prints one
 JSON line {port, origin, log_vkey, policy_kid, owner_kid} once the socket listens, then serves until killed.  The
 service keys come from the out-of-band key file the server writes, never from its API.
 """
@@ -11,7 +12,7 @@ import socket
 import sys
 from pathlib import Path
 
-root, owner = Path(sys.argv[1]), sys.argv[2]
+root, owner, swarms = Path(sys.argv[1]), sys.argv[2], sys.argv[3:] == ["swarms"]
 root.mkdir(parents=True, exist_ok=True)
 for name, text in (("charter.md", "aics-js live test charter: a throwaway log, not a service policy.\n"),
                    ("terms.md", "aics-js live test terms.\n"), ("privacy.md", "aics-js live test privacy.\n")):
@@ -27,7 +28,7 @@ import uvicorn  # noqa: E402
 
 limits = {"registrations": {"count": 10000, "interval_seconds": 60}, "preidentity": {"count": 10000, "interval_seconds": 60}}
 app = create_app(db_path=root / "aics.db", owner_public_key=owner, pubkeys_out=root / "aics-keys.txt", announce=False,
-                 limits=limits)
+                 limits=limits, swarms=swarms)
 pins = dict(line.split(" ", 1) for line in (root / "aics-keys.txt").read_text("utf-8").splitlines()
             if line and not line.startswith("#"))
 sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

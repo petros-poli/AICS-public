@@ -1,4 +1,4 @@
-"""DNS TXT lookup: dnspython when installed (``pip install 'aics[dns]'``),
+"""DNS TXT lookup: dnspython when installed (``pip install 'aics-cli[dns]'``),
 otherwise a small stdlib resolver (UDP with EDNS0, TCP on truncation).
 
 Neither path validates DNSSEC itself.  The query sets the AD bit and the

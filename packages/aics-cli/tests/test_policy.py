@@ -26,7 +26,7 @@ def serve_api(h, log, vkey=None):
                                       "signed_checkpoint": log.note()}))
 
 
-def test_init_from_dns_pins_the_bundle_and_the_bootstrap_card(h):
+def test_init_from_dns_pins_the_bundle_and_the_bootstrap_card(h, placeholder_pypi):
     w = Witness("witness.test/w1")
     inst = Instance(Log(3), witnesses=[w], quorum=1, max_age=300)
     raw = inst.bundle.txt
@@ -168,6 +168,7 @@ def test_pypi_constant_disagreeing_with_dns_stops_bootstrap(h, monkeypatch):
     inst, other = Instance(Log(3)), Instance(Log(3))
     inst.publish(h)
     monkeypatch.setattr(published_keys, "AICS_TRUST_BUNDLE", other.bundle.jcs)
+    monkeypatch.setattr(published_keys, "AICS_TRUST_BUNDLE_SHA256", other.bundle.sha256)
     monkeypatch.setattr(published_keys, "AICS_TRUST_BUNDLE_DOMAIN", DOMAIN)
     code, out = h.run("policy", "init", "--from-dns", DOMAIN, "--require-sources", "1")
     assert code == 2
@@ -266,7 +267,7 @@ def test_policy_show_prints_the_bundle(h):
     assert out["txt_record"] == inst.bundle.txt and out["trust_bundle_sha256"] == inst.bundle.sha256
 
 
-def test_policy_diff_agreement(h):
+def test_policy_diff_agreement(h, placeholder_pypi):
     inst = Instance(Log(3))
     inst.publish(h)
     assert h.run("policy", "init", "--from-dns", DOMAIN, "--require-sources", "1")[0] == 0
@@ -291,7 +292,9 @@ def test_policy_diff_reports_pypi_disagreement(h, monkeypatch):
     inst = Instance(Log(3))
     inst.publish(h)
     assert h.run("policy", "init", "--from-dns", DOMAIN, "--require-sources", "1")[0] == 0
-    monkeypatch.setattr(published_keys, "AICS_TRUST_BUNDLE", Instance(Log(3)).bundle.jcs)
+    other = Instance(Log(3))
+    monkeypatch.setattr(published_keys, "AICS_TRUST_BUNDLE", other.bundle.jcs)
+    monkeypatch.setattr(published_keys, "AICS_TRUST_BUNDLE_SHA256", other.bundle.sha256)
     monkeypatch.setattr(published_keys, "AICS_TRUST_BUNDLE_DOMAIN", DOMAIN)
     code, out = h.run("policy", "diff")
     assert code == 2

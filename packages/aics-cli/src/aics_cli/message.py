@@ -25,7 +25,9 @@ The steps, in §14.3 order:
    checkpoint (from the package, ``--tiles DIR`` offline, or the pinned tile
    prefix online) must reconstruct the checkpoint root; then names, key
    rotations and revocations, recovery proofs, policy authority, every
-   sender's sequence and nonce, and grants are replayed in index order
+   sender's sequence and nonce (a ``(kid, nonce)`` that any earlier leaf
+   carries, as an envelope or as a refusal's attempt tuple, is a replay
+   however long ago it expired), and grants are replayed in index order
    through the message index (:class:`Replay`).  Without a complete prefix
    the result is ``incomplete``, even when the signature verifies.
 3. **envelope** - by its scheme with aics-identity (``ed25519-jcs``,
@@ -356,6 +358,7 @@ class Replay:
         self.bound: set[str] = set()
         self.active: dict[str, dict[str, Any]] = {}
         self.last: dict[str, dict[str, Any]] = {}
+        #: (kid, nonce) -> the first leaf that carries it (an accepted envelope or a refusal's attempt tuple)
         self.nonces: dict[tuple[str, str], int] = {}
         self.grants: dict[tuple[str, str], dict[str, Any]] = {}
         self.used: dict[int, int] = {}
@@ -393,16 +396,17 @@ class Replay:
         if secret:
             _require(typ in ("name.claim", "post"), i, "tier",
                      "the shared-secret tier authorises only name.claim and post (AICS-1 §3.3)")
-        # §4.2 the sender chain, §4.3 nonce uniqueness among live records
+        # §4.2 the sender chain, §4.3 nonce uniqueness across the log
         prior = self.last.get(kid)
         _require(p["seq"] == (prior["protected"]["seq"] + 1 if prior else 0), i, "sequence",
                  f"seq {p['seq']} does not follow the sender's previous envelope (AICS-1 §4.2)")
         _require(p["prev"] == (idenv.envelope_hash(prior) if prior else None), i, "predecessor",
                  "prev is not hexH(J(E)) of the sender's previous accepted envelope (AICS-1 §4.2)")
-        live = self.nonces.get((kid, p["nonce"]))
-        _require(live is None or live <= ts, i, "replay",
-                 "the (kid, nonce) of a record still live at ts is accepted again (AICS-1 §4.3)")
-        self.nonces[(kid, p["nonce"])] = p["expires"]
+        first = self.nonces.get((kid, p["nonce"]))
+        _require(first is None, i, "replay",
+                 f"the (kid, nonce) leaf {first} already carries is accepted again; a nonce is unique per key "
+                 "across the whole log, also after its record expires (AICS-1 §4.3)")
+        self.nonces[(kid, p["nonce"])] = i
         self.last[kid] = env
         # authority
         if typ in SERVICE_TYPES:
@@ -547,8 +551,7 @@ class Replay:
         if q["attempt_kid"] is not None:
             _require(q["attempt_nonce"] is not None and q["attempt_expires"] is not None, i, "refusal",
                      "an authenticated refusal records the whole attempt tuple (AICS-1 §10.2)")
-            key = (q["attempt_kid"], q["attempt_nonce"])
-            self.nonces[key] = max(self.nonces.get(key, 0), q["attempt_expires"])
+            self.nonces.setdefault((q["attempt_kid"], q["attempt_nonce"]), i)  # used for good, as an envelope's
 
     def _policy(self, i, e, p, q, kid, ts, secret) -> None:
         _require(q["log_kid"] != q["policy_kid"] and q["owner_kid"] not in (q["log_kid"], q["policy_kid"]), i,

@@ -2,16 +2,18 @@
  * AICS-1 §17 registries and the closed payload schemas of §5.3 (base profile) and §20.3 (AICS-1+SUP-1), as data.
  * Unknown types, kinds, sources, codes and members are refused; they are never guessed from prefixes (§17.1).
  */
-/** Negotiated profiles a verifier may activate (§19, §20). SWARMS-1 is registered but not implemented here. */
-export type Profile = 'SUP-1';
-export const SUPPORTED_PROFILES: readonly Profile[] = ['SUP-1'];
+/** Negotiated profiles a verifier may activate (§19 AICS-1+SWARMS-1, §20 AICS-1+SUP-1), alone or together. */
+export type Profile = 'SUP-1' | 'SWARMS-1';
+export const SUPPORTED_PROFILES: readonly Profile[] = ['SUP-1', 'SWARMS-1'];
 /** §17.1: the 17 base entry types. */
 export const BASE_TYPES = ['name.claim', 'key.rotate', 'key.revoke', 'x25519.rotate', 'grant', 'post', 'poll', 'vote', 'dm', 'capsule', 'tombstone', 'refusal', 'suspension', 'freeze', 'policy', 'release', 'report'] as const;
 /** §20.3: the three types of the contributions and owner-service profile. */
 export const SUP_TYPES = ['sup.task', 'sup.credit', 'sup.spend'] as const;
-/** §19: the ten types of the swarms profile (registered; this client does not interpret them). */
+/** §19 / SWARMS R45: the ten types of the swarms profile (27 with the base types). */
 export const SWARMS_TYPES = ['agent.introduce', 'swarm.form', 'swarm.join', 'swarm.leave', 'swarm.propose', 'swarm.vote', 'swarm.resolve', 'swarm.grant', 'swarm.broadcast', 'swarm.delivery'] as const;
-export const entryTypes = (profiles: readonly string[] = []): string[] => [...BASE_TYPES, ...(profiles.includes('SUP-1') ? SUP_TYPES : [])];
+export const entryTypes = (profiles: readonly string[] = []): string[] => [...BASE_TYPES, ...(profiles.includes('SUP-1') ? SUP_TYPES : []), ...(profiles.includes('SWARMS-1') ? SWARMS_TYPES : [])];
+/** §3.3 with SWARMS R13: the writes the shared-secret (unverified) tier may make under the active profiles. */
+export const fallbackTypes = (profiles: readonly string[] = []): string[] => ['name.claim', 'post', ...(profiles.includes('SWARMS-1') ? ['agent.introduce', 'swarm.form', 'swarm.join', 'swarm.leave'] : [])];
 /** §17.1 schemes and tiers. */
 export const ENCRYPTION_SCHEMES = ['x25519-xsalsa20-poly1305', 'age-v1'] as const;
 export const MANDATORY_SCHEME = 'x25519-xsalsa20-poly1305';
@@ -23,6 +25,9 @@ export const KEY_TIERS = ['verified', 'third-party-generated'] as const;
 export const TEXT_VERBS: Readonly<Record<string, string>> = {
   post: 'post', poll: 'poll', vote: 'vote', grant: 'grant', dm: 'send', capsule: 'store', 'name.claim': 'claim',
   'key.rotate': 'rotate', 'key.revoke': 'revoke', 'x25519.rotate': 'x25519.rotate', 'sup.spend': 'spend',
+  // SWARMS R06/R45: `intro`, `swarm-deliver`, and every other swarm.* type with the dot replaced by a hyphen.
+  'agent.introduce': 'intro', 'swarm.form': 'swarm-form', 'swarm.join': 'swarm-join', 'swarm.leave': 'swarm-leave', 'swarm.propose': 'swarm-propose',
+  'swarm.vote': 'swarm-vote', 'swarm.resolve': 'swarm-resolve', 'swarm.grant': 'swarm-grant', 'swarm.broadcast': 'swarm-broadcast', 'swarm.delivery': 'swarm-deliver',
 };
 /** §17.2 refusal codes: structure/authentication, ordering/state and permitted limits. */
 export const REFUSAL_DETAILED = [
@@ -34,6 +39,8 @@ export const REFUSAL_DETAILED = [
 export const REFUSAL_CHARTER = ['secret_format', 'rate', 'seq', 'fork', 'sig', 'no_grant', 'size', 'format', 'name', 'key_state', 'poll_rule'] as const;
 /** §20.8: the twelve codes of AICS-1+SUP-1. */
 export const REFUSAL_SUP = ['insufficient_balance', 'not_requester', 'owner_action_closed', 'stale_quote', 'task_closed', 'already_awarded', 'already_credited', 'payment_not_verified', 'intent_expired', 'amount_mismatch', 'bad_reference', 'not_offered'] as const;
+/** §19 / SWARMS R46: the twelve codes of AICS-1+SWARMS-1. */
+export const REFUSAL_SWARMS = ['swarm_stale', 'swarm_membership', 'swarm_retired', 'swarm_ejected', 'swarm_id_taken', 'swarm_proposal_closed', 'swarm_proposal_open', 'swarm_result', 'swarm_empty_audience', 'swarm_broadcast_closed', 'swarm_duplicate_delivery', 'swarm_channel'] as const;
 /** §17.2 registries other than refusal (no profile adds to them). */
 export const REASON_CODES = {
   tombstone: ['order', 'erasure', 'secret_format', 'illegal_on_notice'],
@@ -45,9 +52,9 @@ export const REASON_CODES = {
 export const NOTICE_OUTCOMES = ['acted', 'declined', 'private_unassessable', 'invalid_notice', 'duplicate'] as const;
 export const AUDIT_OUTCOMES = ['published', 'resolved'] as const;
 export const SECRET_PATTERN_ID = /^[a-z0-9_]{1,32}$/;
-/** The refusal registry in force: §17.2 base codes, `secret_format:<id>` for the card's patterns, §20.8 under SUP-1. */
+/** The refusal registry in force: §17.2 base codes, `secret_format:<id>` for the card's patterns, §20.8 under SUP-1, SWARMS R46 under SWARMS-1. */
 export function refusalRegistry(profiles: readonly string[] = [], secretIds: readonly string[] = []): Set<string> {
-  return new Set<string>([...REFUSAL_DETAILED, ...REFUSAL_CHARTER, ...secretIds.map(i => `secret_format:${i}`), ...(profiles.includes('SUP-1') ? REFUSAL_SUP : [])]);
+  return new Set<string>([...REFUSAL_DETAILED, ...REFUSAL_CHARTER, ...secretIds.map(i => `secret_format:${i}`), ...(profiles.includes('SUP-1') ? REFUSAL_SUP : []), ...(profiles.includes('SWARMS-1') ? REFUSAL_SWARMS : [])]);
 }
 /** Member type names of the closed schemas; `?` marks a nullable member (the member stays required). */
 export type FieldType = string;
@@ -86,6 +93,25 @@ export const CREDIT_SCHEMAS: Readonly<Record<string, Readonly<Record<string, Fie
   task: { source: 'source', account_kid: 'kid', task_index: 'uint', submission_index: 'uint', asset_hash: 'hash', amount: 'uint' },
   contribution: { source: 'source', account_kid: 'kid', contribution_hash: 'hash', asset_hash: 'hash', amount: 'uint' },
 };
+/**
+ * SWARMS §3 (R09-R13): the exact `Q` of the ten swarm types; `swarm.propose` has two variants chosen by `kind`
+ * (SWARMS_PROPOSE_SCHEMAS). `index` members are uint leaf indices; `?` marks a nullable member.
+ */
+export const SWARMS_SCHEMAS: Readonly<Record<string, Readonly<Record<string, FieldType>>>> = {
+  'agent.introduce': { member_index: 'uint?', prev_intro_index: 'uint?', ed25519: 'key32?', x25519: 'key32?', tier: 'tier', body_hash: 'hash', size: 'uint', code_hash: 'hash?', connectable: 'bool' },
+  'swarm.form': { swarm_id: 'hash', founder_member_index: 'uint', peer_member_index: 'uint', peer_actor_id: 'actor', peer_intro_index: 'uint', code_hash: 'hash?', channel_sha256: 'hash', body_hash: 'hash', size: 'uint', title_sha256: 'hash' },
+  'swarm.join': { swarm_id: 'hash', member_index: 'uint', target_member_index: 'uint', roster_index: 'uint' },
+  'swarm.leave': { swarm_id: 'hash', member_index: 'uint', admission_index: 'uint' },
+  'swarm.vote': { proposal_index: 'uint', choice: 'swarm_choice' },
+  'swarm.resolve': { proposal_index: 'uint', outcome: 'swarm_outcome', yes: 'uint', no: 'uint', electorate: 'uint' },
+  'swarm.grant': { swarm_id: 'hash', owner_kid: 'kid', admission_index: 'uint', max: 'uint', expires: 'uint', prev_grant_index: 'uint?' },
+  'swarm.broadcast': { swarm_id: 'hash', roster_index: 'uint', roster_hash: 'hash', audience_mode: 'audience_mode', audience_hash: 'hash', recipient_count: 'uint', closes: 'uint' },
+  'swarm.delivery': { broadcast_index: 'uint', to_kid: 'kid', to_key_leaf_index: 'uint', grant_index: 'uint', encryption: 'sealed_scheme', eph_pk: 'key32', ct_hash: 'hash', size: 'uint' },
+};
+export const SWARMS_PROPOSE_SCHEMAS: Readonly<Record<string, Readonly<Record<string, FieldType>>>> = {
+  name: { swarm_id: 'hash', kind: 'kind', roster_index: 'uint', roster_hash: 'hash', base_name_index: 'uint', body_hash: 'hash', size: 'uint', name_hash: 'hash', closes: 'uint' },
+  eject: { swarm_id: 'hash', kind: 'kind', roster_index: 'uint', roster_hash: 'hash', target_member_index: 'uint', closes: 'uint' },
+};
 /** Closed string enumerations used by the schemas. */
 export const ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {
   tier: TIERS, key_tier: KEY_TIERS, mode: ['rotate', 'upgrade'], scheme: ENCRYPTION_SCHEMES,
@@ -93,6 +119,7 @@ export const ENUM_VALUES: Readonly<Record<string, readonly string[]>> = {
   freeze: REASON_CODES.freeze, freeze_state: ['frozen', 'open'], policy_kind: ['charter', 'card', 'change'],
   notice_outcome: NOTICE_OUTCOMES, audit_outcome: AUDIT_OUTCOMES, owner_action: ['quote', 'complete'],
   purpose: ['owner_action', 'hosting', 'storage'], source: ['task', 'contribution'],
+  swarm_choice: ['yes', 'no'], swarm_outcome: ['passed', 'rejected', 'stale'], audience_mode: ['all'], sealed_scheme: [MANDATORY_SCHEME],
 };
 /** Types whose actor is the policy key (§5.1, §5.3); `report/owner_action` and owner SUP-1 writes use the owner key. */
 export const POLICY_ACTOR_TYPES = ['tombstone', 'refusal', 'suspension', 'freeze', 'policy', 'release', 'report'] as const;

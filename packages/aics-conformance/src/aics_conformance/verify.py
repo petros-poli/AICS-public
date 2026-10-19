@@ -104,8 +104,10 @@ class History:
         require(p['created']<=ts+30 and p['created']>=ts-300 and p['created']<p['expires']<=p['created']+300 and ts<p['expires'],'acceptance-time freshness')
         prior=self.last.get(kid)
         require(p['seq']==(prior['protected']['seq']+1 if prior else 0) and p['prev']==(H(J(prior)) if prior else None),'sender sequence/predecessor')
-        require((kid,p['nonce']) not in self.nonces or self.nonces[kid,p['nonce']]<=ts,'reused nonce')
-        self.nonces[kid,p['nonce']]=p['expires']; self.last[kid]=env
+        # §4.3 as amended (DECISIONS row 26): a (kid, nonce) any earlier leaf carries, as an envelope or as a
+        # refusal's attempt tuple, is a replay however long ago its record expired
+        require((kid,p['nonce']) not in self.nonces,'reused nonce')
+        self.nonces[kid,p['nonce']]=i; self.last[kid]=env
         service={'refusal','tombstone','policy','release','suspension','freeze','report'}
         if typ in service:
             expected=self.trust['owner_kid'] if typ=='report' and q['kind']=='owner_action' else self.trust['policy_kid']
@@ -168,7 +170,7 @@ class History:
         elif typ=='refusal':
             if q['attempt_kid'] is not None:
                 require(q['attempt_nonce'] is not None and q['attempt_expires'] is not None,'partial authenticated tuple')
-                self.nonces[q['attempt_kid'],q['attempt_nonce']]=q['attempt_expires']
+                self.nonces.setdefault((q['attempt_kid'],q['attempt_nonce']),i)
         elif typ=='policy':
             require(q['log_kid']!=q['policy_kid'] and q['owner_kid'] not in (q['log_kid'],q['policy_kid']),'service key separation')
             require(q['policy_kid']==self.trust['policy_kid'] and q['owner_kid']==self.trust['owner_kid'],'policy key substitution')

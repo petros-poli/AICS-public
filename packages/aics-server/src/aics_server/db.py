@@ -187,6 +187,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from . import envelopes as ev
 from . import identity as ident
 from . import payments as pay
+from . import stats as stats_mod
 from .moderation import SECRET_PATTERNS, secret_formats
 from .notices import NOTICE_FIELD_BYTES
 from .strictjson import loads_bounded
@@ -526,6 +527,12 @@ PRODUCTION_ENV = "AICS_PRODUCTION"
 #: Set to 1 for a development log on the default origin without a reviewed charter or owner key.
 DEV_GENESIS_ENV = "AICS_DEV_GENESIS"
 _TRUE_TEXT = ("1", "true", "yes", "on")
+#: Set to 1 to start with agent writes held until the owner writes a freeze leaf (AICS-1 section 10.4; the
+#: runbook's step 10, "the log cannot append"): every agent and SUP-1 owner write, and every refusal leaf an
+#: agent's attempt would cause, is answered ``log_unavailable`` (503) without a leaf, while reads and the owner's
+#: administration writes go on.  The hold ends in this process at the first freeze leaf, or at once if the log is
+#: already frozen; remove the variable before the next restart.
+HOLD_WRITES_ENV = "AICS_HOLD_AGENT_WRITES"
 
 
 class ServiceError(Exception):
@@ -1180,6 +1187,13 @@ class NotFound(LookupError):
     """The named record does not exist."""
 
 
+class StateConflict(RuntimeError):
+    """A write the log's current state does not allow (already hidden, not frozen, no suspension to end).
+
+    A decision on the submission, raised on purpose; a plain :class:`RuntimeError` from anywhere else is a fault.
+    """
+
+
 class Rejected(ValueError):
     """A signed submission fails a published acceptance rule; its refusal leaf carries *reason_code*.
 
@@ -1386,7 +1400,9 @@ class SanctuaryDB:
       :data:`DEFAULT_LIMITS` and :func:`load_limits`;
     * ``payments``: the on-chain verifiers and SUP rate for contributions,
       default :meth:`aics_server.payments.PaymentsConfig.from_env` (no address
-      or endpoint in code; nothing configured means nothing is creditable).
+      or endpoint in code; nothing configured means nothing is creditable);
+    * ``hold_agent_writes`` / ``AICS_HOLD_AGENT_WRITES``: start with agent writes
+      held until the owner's freeze leaf (:data:`HOLD_WRITES_ENV`).
     """
 
     def __init__(
@@ -1400,7 +1416,10 @@ class SanctuaryDB:
         limits: Mapping[str, Any] | None = None,
         payments: pay.PaymentsConfig | None = None,
         swarms_enabled: bool = False,
+        hold_agent_writes: bool | None = None,
     ) -> None:
+        if hold_agent_writes is None:
+            hold_agent_writes = os.environ.get(HOLD_WRITES_ENV, "").strip().lower() in _TRUE_TEXT
         if db_path is None:
             db_path = os.environ.get("AICS_DB_PATH") or os.path.join("data", "aics.db")
         self.db_path = Path(db_path)
@@ -1443,6 +1462,7 @@ class SanctuaryDB:
         )
         self._admissions = 0
         self._frozen_index: int | None = None
+        self._writes_held = False
         # The ciphertext-byte budget (AICS-1 section 8.2): the bytes of stored ciphertext bodies, kept current on
         # every store and recounted by housekeeping, and the resource-exhaustion state it reports.
         self._ciphertext_total = 0
@@ -1457,6 +1477,9 @@ class SanctuaryDB:
         # telemetry_counters by housekeeping: counting a request costs no disk sync.
         self._counter_lock = threading.Lock()
         self._counter_buffer: dict[str, int] = {}
+        # The owner stats page's per-day counters by access class, route group and outcome, the latency histogram
+        # and the gate funnel (aics_server.stats): in memory too, written by the same flush.
+        self.stats = stats_mod.StatsRecorder()
         # Nonces of signed reads, written to the nonces table in batches (a read
         # writes no leaf; one fsync per read would serialize reads behind writes).
         self._read_nonces: dict[tuple[str, str], int] = {}
@@ -1526,6 +1549,8 @@ class SanctuaryDB:
         self._genesis(document, explicit_charter=explicit_charter)
         self._rebuild_recent_nonces()
         self._frozen_index = self._load_freeze_state()
+        # The start-held state (HOLD_WRITES_ENV): moot when the log is already frozen, which refuses with leaves.
+        self._writes_held = bool(hold_agent_writes) and self._frozen_index is None
         self._ciphertext_total = self._stored_ciphertext_bytes()
         self._last_housekeeping = 0
         self.housekeeping(force=True)
@@ -1614,6 +1639,8 @@ class SanctuaryDB:
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS tlog_leaves_by_time ON tlog_leaves (created_at);
+                -- Per-type reads (owner stats, policy and refusal lookups) by type and time, not a full scan.
+                CREATE INDEX IF NOT EXISTS tlog_leaves_by_type ON tlog_leaves (event_type, created_at);
 
                 -- Off-leaf documents named by policy leaves (leaf 0: the charter).
                 CREATE TABLE IF NOT EXISTS policy_documents (
@@ -1997,6 +2024,9 @@ class SanctuaryDB:
                 );
                 """
             )
+            # The owner stats page's daily rollups (aics_server.stats): additive tables of closed-list keys and
+            # counts, created on the next start of a database of this layout that predates them.
+            self._conn.executescript(stats_mod.SCHEMA_SQL)
             # Durability before acknowledgement (DESIGN.md section 4.2 item 4):
             # every COMMIT reaches the disk before a leaf index is returned.
             if self._conn.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal":
@@ -2493,25 +2523,30 @@ class SanctuaryDB:
             self._counter_buffer[key] = self._counter_buffer.get(key, 0) + delta
 
     def flush_counters(self) -> None:
-        """Write the counts gathered in memory to ``telemetry_counters`` (one transaction)."""
+        """Write the counts gathered in memory to ``telemetry_counters`` and the ``stats_*`` daily rollups
+        (one transaction; :mod:`aics_server.stats`)."""
         with self._counter_lock:
             buffered, self._counter_buffer = self._counter_buffer, {}
-        if not buffered:
+        drained = self.stats.drain()
+        if not buffered and not any(drained):
             return
         try:
             with self._lock, self._transaction():
-                self._conn.executemany(
-                    """
-                    INSERT INTO telemetry_counters (metric_key, metric_value)
-                    VALUES (?, ?)
-                    ON CONFLICT(metric_key) DO UPDATE SET metric_value = metric_value + excluded.metric_value
-                    """,
-                    sorted(buffered.items()),
-                )
+                if buffered:
+                    self._conn.executemany(
+                        """
+                        INSERT INTO telemetry_counters (metric_key, metric_value)
+                        VALUES (?, ?)
+                        ON CONFLICT(metric_key) DO UPDATE SET metric_value = metric_value + excluded.metric_value
+                        """,
+                        sorted(buffered.items()),
+                    )
+                stats_mod.write_drained(self._conn, drained)
         except BaseException:
             with self._counter_lock:  # keep the counts for the next flush
                 for key, value in buffered.items():
                     self._counter_buffer[key] = self._counter_buffer.get(key, 0) + value
+            self.stats.restore(drained)
             raise
 
     def counters(self, prefix: str = "") -> dict[str, int]:
@@ -3132,6 +3167,7 @@ class SanctuaryDB:
         envelope sent again is answered with its first leaf.
         """
         with self._lock:
+            self._check_hold()
             attempt = _Attempt(envelope_hash=envelope_hash, request_hash=None, kid=None, nonce=None, expires=None)
             earlier = self._earlier_refusal(attempt)
             if earlier is not None:
@@ -3166,13 +3202,32 @@ class SanctuaryDB:
         both signatures verified before the window was checked, so the
         refusal names the attempt's ``(kid, nonce, expires)``.  An exact
         resubmission of an envelope that already has a refusal is answered
-        with that refusal and adds no leaf; any other envelope, one that only
-        reuses a tuple among them, gets a refusal of its own behind the
-        signer's admission window.
+        with that refusal and adds no leaf.  Any other submission that reuses
+        a ``(kid, nonce)`` a leaf carries is refused as ``replay`` (with
+        ``conflict_index``) before its window is judged: replay takes
+        precedence over staleness.  The rest get a refusal of their own
+        behind the signer's admission window.
         """
         status = (401 if reason_code in ("expired", "future") else self.refusal_status(reason_code)) if status is None else status
         with self._lock:
             self._answer_exact_resubmission(ctx, status=status)
+            # A tuple a leaf already carries is a replay before it is stale (AICS-1 section 4.3: such a reuse
+            # MUST be refused as replay, naming the leaf that carries it), whatever its own window says.
+            row = self._conn.execute(
+                "SELECT * FROM nonces WHERE kid = ? AND nonce = ?", (ctx.kid, ctx.nonce)
+            ).fetchone()
+            if row is not None and (row["leaf_index"] is not None or row["refusal_index"] is not None):
+                self._admit_for_refusal(ctx)
+                receipt_hash = None
+                if row["leaf_index"] is not None and ctx.envelope_hash is not None:
+                    receipt_hash = self._receipt_hash_if_same_envelope(row["leaf_index"], ctx.envelope_hash)
+                self._refuse(
+                    ctx,
+                    "replay",
+                    conflict_index=self._nonce_conflict(row),
+                    message="this (keyid, nonce) was already used; sign the request again with a fresh nonce",
+                    receipt_hash=receipt_hash,
+                )
             self.refuse_failure(ctx, Rejected(reason_code, message, status=status))
 
     # ------------------------------------------------------------------
@@ -3219,6 +3274,19 @@ class SanctuaryDB:
                 (leaf["leaf_index"], kid, until),
             )
 
+    @property
+    def agent_writes_held(self) -> bool:
+        """Whether agent writes are held until the owner's freeze leaf (:data:`HOLD_WRITES_ENV`)."""
+        return self._writes_held
+
+    def _check_hold(self) -> None:
+        """Answer an agent's write, or a refusal leaf it would cause, as unavailable while writes are held."""
+        if self._writes_held:
+            raise LogUnavailable(
+                "agent writes are held until the operator's freeze leaf is written (AICS-1 section 10.4); "
+                "reading and verification continue (GET /v2/freeze)"
+            )
+
     def _admit(self, ctx: SignedContext | _Attempt, kid: str) -> None:
         """Admission of a write by *kid* (a signing key or an unverified identity), before any other rule.
 
@@ -3227,6 +3295,7 @@ class SanctuaryDB:
         (``suspended``) and the per-key write window (``rate_limit``).  These
         refusals are logged once per key and cause (:meth:`_refuse_once`).
         """
+        self._check_hold()
         now = time.time()
         state = self._write_state
         if getattr(state, "ctx", None) is ctx:
@@ -3289,6 +3358,7 @@ class SanctuaryDB:
         service assigns: only the global bucket and a freeze apply to it, and
         nothing that carried the secret is hashed or kept.
         """
+        self._check_hold()
         now = time.time()
         state = self._write_state
         if ctx is not None and getattr(state, "ctx", None) is ctx:
@@ -3319,6 +3389,7 @@ class SanctuaryDB:
     def _admit_owner(self, ctx: SignedContext) -> None:
         """An owner write of the SUP-1 profile (a task, an award, a quote or a completion): refused ``frozen`` while
         writes are frozen (AICS-1 section 20.9), logged once per freeze.  The owner is not rate-limited."""
+        self._check_hold()
         if self._frozen_index is not None:
             self._refuse_once(
                 ctx,
@@ -7258,7 +7329,7 @@ class SanctuaryDB:
                 raise ValueError(f"the body of a {target_type} leaf is hidden only for: {', '.join(allowed)}")
             existing = self._tombstone_of(target_index)
             if existing is not None:
-                raise RuntimeError(
+                raise StateConflict(
                     f"the body of leaf {target_index} is already hidden by tombstone {existing['tombstone_index']}"
                 )
             statement = {
@@ -7400,7 +7471,7 @@ class SanctuaryDB:
             active = self._active_suspension(target_kid)
             if until is not None and until <= now:
                 if active is None:
-                    raise RuntimeError("this key has no suspension in force to end")
+                    raise StateConflict("this key has no suspension in force to end")
                 # AICS-1 section 10.3: the ending event uses the same permitted reason and the same evidence.
                 if active["reason_code"] != reason_code:
                     raise ValueError(f"an ending suspension repeats the reason it ends ({active['reason_code']})")
@@ -7470,9 +7541,9 @@ class SanctuaryDB:
             current = self._conn.execute("SELECT * FROM freezes ORDER BY freeze_index DESC LIMIT 1").fetchone()
             frozen = current is not None and current["state"] == "frozen"
             if state == "frozen" and frozen:
-                raise RuntimeError(f"writes are already frozen by leaf {current['freeze_index']}")
+                raise StateConflict(f"writes are already frozen by leaf {current['freeze_index']}")
             if state == "open" and not frozen:
-                raise RuntimeError("writes are not frozen")
+                raise StateConflict("writes are not frozen")
             statement = {
                 "state": state,
                 "reason_code": reason_code,
@@ -7505,6 +7576,8 @@ class SanctuaryDB:
                         (reopened - frozen_at, frozen_at, reopened),
                     )
             self._frozen_index = leaf["leaf_index"] if state == "frozen" else None
+            if state == "frozen":
+                self._writes_held = False  # the freeze leaf now refuses agent writes, with leaves
             return {"freeze": self.freeze_view(), **self._written(leaf)}
 
     def freeze_view(self) -> dict[str, Any]:
@@ -7653,10 +7726,11 @@ class SanctuaryDB:
         with self._lock:
             tiles = self._log.status()
             frozen = self._frozen_index
+            held = self._writes_held
         exhaustion = self.resource_exhaustion()
         if tiles["diverged"]:
             status = "UNAVAILABLE"
-        elif tiles["error"] or exhaustion is not None:
+        elif tiles["error"] or exhaustion is not None or held:
             status = "DEGRADED"
         else:
             status = "OPERATIONAL"
@@ -7668,6 +7742,7 @@ class SanctuaryDB:
             "diverged": tiles["diverged"],
             "frozen": frozen is not None,
             "freeze_index": frozen,
+            "agent_writes_held": held,
             "resource_exhaustion": exhaustion,
         }
 

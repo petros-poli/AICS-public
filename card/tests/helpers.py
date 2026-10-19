@@ -48,24 +48,37 @@ def replace_statement(card: dict[str, Any], aid: str, tag: str, text: str | None
         items[i] = text
 
 
-#: Test pattern definitions for the card's seven ids (the server's moderation.py rules, as public test data).
-#: tests/test_sources.py compares the published document with the server, not these.
+#: Test pattern definitions for the card's ten ids, in the published document's format and order (public test data
+#: shaped like docs/legal/secret-patterns.json).  tests/test_sources.py compares the published document with the
+#: card and the server, not these.
 PATTERN_DEFINITIONS: list[dict[str, str]] = [
-    {"id": "anthropic_key", "regex": r"sk-ant-[A-Za-z0-9_-]{20,}", "flags": ""},
+    {"id": "anthropic_key", "regex": r"sk-ant-[A-Za-z0-9_-]{20,}", "note": "Anthropic API key"},
     {"id": "github_token", "regex": r"(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}",
-     "flags": ""},
-    {"id": "huggingface_token", "regex": r"hf_[A-Za-z0-9]{20,}", "flags": ""},
-    {"id": "aws_access_key", "regex": r"(?:AKIA|ASIA)[0-9A-Z]{16}", "flags": ""},
-    {"id": "slack_token", "regex": r"xox[baprs]-[A-Za-z0-9-]{15,}", "flags": ""},
-    {"id": "pem_private_key", "regex": r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", "flags": ""},
-    {"id": "stripe_secret_key", "regex": r"(?:sk|rk)_live_[A-Za-z0-9]{20,}", "flags": ""},
+     "note": "GitHub token"},
+    {"id": "huggingface_token", "regex": r"hf_[A-Za-z0-9]{20,}", "note": "Hugging Face access token"},
+    {"id": "aws_access_key", "regex": r"(?:AKIA|ASIA)[0-9A-Z]{16}", "note": "AWS access key id"},
+    {"id": "slack_token", "regex": r"xox[baprs]-[A-Za-z0-9-]{15,}", "note": "Slack token"},
+    {"id": "pem_private_key", "regex": r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----", "note": "PEM private-key header"},
+    {"id": "stripe_secret_key", "regex": r"(?:sk|rk)_live_[A-Za-z0-9]{20,}", "note": "Stripe live secret key"},
+    {"id": "openai_project_key", "regex": r"sk-proj-[A-Za-z0-9_-]{20,}", "note": "OpenAI project API key"},
+    {"id": "openai_service_account_key", "regex": r"sk-svcacct-[A-Za-z0-9_-]{20,}",
+     "note": "OpenAI service-account key"},
+    {"id": "openai_admin_key", "regex": r"sk-admin-[A-Za-z0-9_-]{20,}", "note": "OpenAI admin key"},
 ]
+
+
+def pattern_document(definitions: list[dict[str, str]] | None = None) -> dict[str, object]:
+    """A pattern-definition document ``{"v": 1, "patterns": [...]}`` (a deep copy; the test definitions by default)."""
+    return {"v": 1, "patterns": copy.deepcopy(PATTERN_DEFINITIONS if definitions is None else definitions)}
+
+
+PATTERN_DOCUMENT = pattern_document()
 
 
 def errors(card: Any, **kw: Any) -> list[str]:
     """Validation errors; with ``final=True`` the test pattern definitions are supplied unless ``patterns`` is given."""
     if kw.get("final"):
-        kw.setdefault("patterns", PATTERN_DEFINITIONS)
+        kw.setdefault("patterns", PATTERN_DOCUMENT)
     return vc.validate(card, **kw).report.errors
 
 
@@ -108,6 +121,17 @@ def add_founder_witness(card: dict[str, Any], *, statement_too: bool = True) -> 
 #: Test contribution addresses in each network's canonical form (public test values, nobody's wallet).
 BASE_ADDRESS = "0x" + "ab" * 20
 SOLANA_ADDRESS = vc.b58encode(bytes(range(1, 33)))
+#: The ciphertext budget the server applies (DEFAULT_LIMITS, decision 22: 8 GiB), which the G3 statement names.
+CIPHERTEXT_BUDGET_BYTES = 8 * 1024**3
+
+
+def with_networks(card: dict[str, Any]) -> dict[str, Any]:
+    """The card as a successor card would list both networks aics-server can credit, with address placeholders.
+    The launch card lists none (decision 25: no contribution address was given)."""
+    card["sup"]["contributions"] = [
+        {"network": network, "asset": "USDC", "decimals": 6, "address": f"<FILL:SUP_ADDRESS:{network}>",
+         "units_per_sup": 10000} for network in vc.SUP_NETWORKS]
+    return card
 
 
 def fill_values() -> dict[str, str]:
@@ -118,11 +142,9 @@ def fill_values() -> dict[str, str]:
         "LOG_VKEY": vkey(vc.ORIGIN, 0x01, LOG_KEY),
         "POLICY_KID": did_key(POLICY_KEY),
         "OWNER_KID": did_key(OWNER_KEY),
-        "CIPHERTEXT_BUDGET_BYTES": str(20 * 1024**3),
+        "CIPHERTEXT_BUDGET_BYTES": str(CIPHERTEXT_BUDGET_BYTES),
         "CUSTODIAN_NAME": "Test Custodian",
         "CUSTODIAN_HOLDS": "an offline copy of the server seed",
-        "SUP_ADDRESS:base-usdc": BASE_ADDRESS,
-        "SUP_ADDRESS:solana-usdc": SOLANA_ADDRESS,
     }
 
 

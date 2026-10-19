@@ -147,7 +147,7 @@ usage: aics-tlog [-h] [--version]
 ```
 
 The log key is always given by the caller: `--vkey-file` (a local file
-obtained out of band, i.e. the DNS TXT record, the `aics` PyPI package or the
+obtained out of band, i.e. the DNS TXT record, the `aics-cli` PyPI package or the
 public README) or `--log-key`. A key file that is a URL, or that lies inside a
 tile directory being verified, is refused. A key file may hold several keys,
 one per line, labelled `log <vkey>` / `policy <vkey>`.

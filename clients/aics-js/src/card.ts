@@ -1,5 +1,6 @@
 /**
- * AICS-1 §13 assurance card: the exact §13.1 schema (base `AICS-1`, or `AICS-1+SUP-1` with its §20.9 `sup` member),
+ * AICS-1 §13 assurance card: the exact §13.1 schema (base `AICS-1`, `AICS-1+SUP-1` with its §20.9 `sup` member,
+ * `AICS-1+SWARMS-1` with its SWARMS R47 `swarms` member, or `AICS-1+SWARMS-1+SUP-1` with both),
  * the §13.2 JWS over JCS signed by the pinned policy key, and the §14.5 step 2 validity window. The card's text is the
  * operator's own statement: a valid signature proves who said it, not that the stated properties hold.
  */
@@ -7,9 +8,10 @@ import { b64u, decodeU64, hexH, isHex64, isUint, utf8 } from './bytes.js';
 import { canonicalText, canonicalize, hasMembers, isObject, parseCanonical, parseJson, type Json, type JsonObject } from './canonical.js';
 import { parseDidKey, verify } from './keys.js';
 import { parseVkey } from './note.js';
-import { MANDATORY_SCHEME, REASON_CODES, REFUSAL_CHARTER, REFUSAL_DETAILED, REFUSAL_SUP, SECRET_PATTERN_ID, TIERS, supAssetDescriptor } from './registry.js';
+import { MANDATORY_SCHEME, REASON_CODES, REFUSAL_CHARTER, REFUSAL_DETAILED, REFUSAL_SUP, REFUSAL_SWARMS, SECRET_PATTERN_ID, TIERS, supAssetDescriptor } from './registry.js';
+import { SWARMS_SPEC_VERSION, swarmsCardMemberProblems } from './swarms.js';
 export const CARD_VERSION = '0.2-draft';
-export const CARD_SPECS: Readonly<Record<string, readonly string[]>> = { 'AICS-1': [], 'AICS-1+SUP-1': ['SUP-1'] };
+export const CARD_SPECS: Readonly<Record<string, readonly string[]>> = { 'AICS-1': [], 'AICS-1+SUP-1': ['SUP-1'], 'AICS-1+SWARMS-1': ['SWARMS-1'], 'AICS-1+SWARMS-1+SUP-1': ['SWARMS-1', 'SUP-1'] };
 export const SPEC_VERSIONS = { 'tlog-tiles': '1.0.0', 'tlog-checkpoint': '1.1.0', 'signed-note': '1.1.0', 'tlog-cosignature': '1.1.0', 'tlog-witness': '1.1.0', 'a2a-card': '1.0.0' } as const;
 export const CARD_MEMBERS = ['spec', 'version', 'origin', 'issued_at', 'expires', 'policy_parent_index', 'log_vkey', 'policy_kid', 'owner_kid', 'tile_prefixes', 'api_base', 'gate', 'proxy', 'witness_policy', 'max_checkpoint_age', 'mmd_seconds', 'policy_notice_seconds', 'limits', 'retention', 'schemes', 'tiers', 'reason_codes', 'secret_patterns', 'policies', 'assurances', 'spec_versions', 'signatures'] as const;
 const FIXED_LIMITS = { public_body_bytes: 32768, ciphertext_bytes: 65536, envelope_window_seconds: 300, future_skew_seconds: 30, session_idle_seconds: 900 } as const;
@@ -67,11 +69,12 @@ class Problems {
 }
 /** Problems with `card` against the exact §13.1 schema of its advertised profile (empty: valid). */
 export function cardProblems(card: Json): string[] {
-  const s = new Problems(), members = isObject(card) && card.spec === 'AICS-1+SUP-1' ? [...CARD_MEMBERS, 'sup'] : [...CARD_MEMBERS];
+  const s = new Problems(), declared = isObject(card) && typeof card.spec === 'string' ? CARD_SPECS[card.spec] ?? [] : [];
+  const members = [...CARD_MEMBERS, ...(declared.includes('SUP-1') ? ['sup'] : []), ...(declared.includes('SWARMS-1') ? ['swarms'] : [])];
   if (!s.obj(card, '$', members)) return s.list;
   s.characters(card, '$');
-  const profiles = typeof card.spec === 'string' ? CARD_SPECS[card.spec] : undefined;
-  if (!profiles) s.bad('$.spec', `must be one of ${Object.keys(CARD_SPECS).join(', ')} (a base-only or SUP-1 verifier refuses other profiles)`);
+  const profiles = typeof card.spec === 'string' ? CARD_SPECS[card.spec] : undefined, swarms = !!profiles?.includes('SWARMS-1');
+  if (!profiles) s.bad('$.spec', `must be one of ${Object.keys(CARD_SPECS).join(', ')} (this verifier refuses other profiles)`);
   s.string(card.version, '$.version', CARD_VERSION); s.string(card.origin, '$.origin');
   if (s.uint(card.issued_at, '$.issued_at') && s.uint(card.expires, '$.expires') && !((card.issued_at as number) < (card.expires as number))) s.bad('$', 'issued_at must be before expires');
   if (card.policy_parent_index !== null) s.uint(card.policy_parent_index, '$.policy_parent_index');
@@ -115,10 +118,13 @@ export function cardProblems(card: Json): string[] {
   if (s.obj(lim, '$.limits', [...Object.keys(FIXED_LIMITS), 'writes', 'registrations', 'preidentity', 'flood_suspension_seconds'])) {
     for (const [k, v] of Object.entries(FIXED_LIMITS)) s.uint(lim[k], `$.limits.${k}`, { equals: v });
     for (const k of ['writes', 'registrations', 'preidentity']) s.countLimit(lim[k], `$.limits.${k}`);
+    const w = lim.writes as JsonObject;
+    if (swarms && isObject(w) && isUint(w.count) && isUint(w.interval_seconds) && w.interval_seconds > 0 && (w.interval_seconds > 3600 || w.count * Math.floor(86400 / w.interval_seconds) < 1000)) s.bad('$.limits.writes', 'SWARMS R36: at least 1000 writes per key per 24 hours in windows of at most 3600 s');
     s.uint(lim.flood_suspension_seconds, '$.limits.flood_suspension_seconds', { positive: true });
   }
   const ret = card.retention;
-  if (s.obj(ret, '$.retention', ['dm_seconds', 'capsule_max_seconds', 'ciphertext_budget_bytes', 'eviction'])) {
+  if (s.obj(ret, '$.retention', ['dm_seconds', 'capsule_max_seconds', 'ciphertext_budget_bytes', 'eviction', ...(swarms ? ['swarm_delivery_seconds'] : [])])) {
+    if (swarms) s.uint(ret.swarm_delivery_seconds, '$.retention.swarm_delivery_seconds', { minimum: 7776000 });
     s.uint(ret.dm_seconds, '$.retention.dm_seconds', { minimum: 7776000 }); s.uint(ret.capsule_max_seconds, '$.retention.capsule_max_seconds', { minimum: 7776000 });
     s.uint(ret.ciphertext_budget_bytes, '$.retention.ciphertext_budget_bytes', { positive: true });
     if (ret.eviction !== 'oldest-ts-index') s.bad('$.retention.eviction', "must be 'oldest-ts-index'");
@@ -133,7 +139,7 @@ export function cardProblems(card: Json): string[] {
     if (new Set(ids).size !== ids.length) s.bad('$.secret_patterns', 'ids must be unique');
   }
   const expected: Record<string, Set<string>> = {
-    refusal: new Set([...REFUSAL_DETAILED, ...REFUSAL_CHARTER, ...ids.map(i => `secret_format:${i}`), ...(profiles?.includes('SUP-1') ? REFUSAL_SUP : [])]),
+    refusal: new Set([...REFUSAL_DETAILED, ...REFUSAL_CHARTER, ...ids.map(i => `secret_format:${i}`), ...(profiles?.includes('SUP-1') ? REFUSAL_SUP : []), ...(swarms ? REFUSAL_SWARMS : [])]),
     ...Object.fromEntries(Object.entries(REASON_CODES).map(([k, v]) => [k, new Set<string>(v)])),
   };
   const rc = card.reason_codes;
@@ -156,7 +162,9 @@ export function cardProblems(card: Json): string[] {
     });
     const bad = ASSURANCES.filter(x => seen.filter(y => y === x).length !== 1); if (bad.length || seen.length !== ASSURANCES.length) s.bad('$.assurances', `needs exactly one assurance for each of G1-G10 and N1-N5 (bad: ${bad.join(', ') || 'extra ids'})`);
   }
-  if (canonicalText(card.spec_versions ?? null) !== canonicalText(SPEC_VERSIONS)) s.bad('$.spec_versions', `must be ${canonicalText(SPEC_VERSIONS)}`);
+  const versions = swarms ? { ...SPEC_VERSIONS, swarms: SWARMS_SPEC_VERSION } : SPEC_VERSIONS;
+  if (canonicalText(card.spec_versions ?? null) !== canonicalText(versions)) s.bad('$.spec_versions', `must be ${canonicalText(versions)}`);
+  if (swarms) for (const p of swarmsCardMemberProblems(card.swarms)) s.list.push(p);
   if (!Array.isArray(card.signatures) || !card.signatures.length) s.bad('$.signatures', 'must be a non-empty array');
   if (profiles?.includes('SUP-1')) supProblems(card.sup, card.origin, s);
   return s.list;

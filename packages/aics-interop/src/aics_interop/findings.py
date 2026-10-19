@@ -156,8 +156,8 @@ FINDINGS: dict[str, Finding] = {f.id: f for f in [
         needle='leeway: bool = True',
         status="retired",
         note=("verify_line() defaults to leeway=False: only UTF8(session) || LF || UTF8(line) verifies, and "
-              "leeway=True is an explicit opt-out for tools outside the protocol. The aics CLI's verify-line still "
-              "opts in unless --strict: F26")),
+              "leeway=True is an explicit opt-out for tools outside the protocol. The aics CLI's verify-line follows "
+              "the same default (F26 retired)")),
     Finding(
         "F08", "aics-tlog", "packages/aics-tlog/src/aics_tlog/checkpoint.py", 288,
         "AICS-1 §6.2 parsers ... reject duplicate lines for a recognized (name,key_id) ... and ignore unknown keys, "
@@ -449,7 +449,12 @@ FINDINGS: dict[str, Finding] = {f.id: f for f in [
         "aics verify-line without --strict exits 2 for a signature over the §11.3 bytes plus 0x0a",
         "exit 0 (form raw); only 'aics verify-line --strict' refuses it",
         "strictness",
-        needle="leeway = not args.strict"),
+        needle="leeway = not args.strict",
+        status="retired",
+        note=("aics verify-line verifies exactly UTF8(session) || LF || UTF8(line) by default, as aics-identity and "
+              "aics-conformance do: a signature over the bytes plus 0x0a, or over the stripped line, exits 2. The "
+              "wider forms are accepted only with the explicit --leeway flag (for files written outside the "
+              "protocol); --strict stays accepted as the default it now names")),
     Finding(
         "F27", "aics-server", "packages/aics-server/src/aics_server/card.py", 534,
         "AICS-1 §13.1 retention {dm_seconds:uint, capsule_max_seconds:uint, ciphertext_budget_bytes:uint, eviction}; "

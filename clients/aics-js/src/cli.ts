@@ -14,6 +14,7 @@ import { HttpsGateClient, TcpGateClient, onboard } from './gate.js';
 import { verifyReceipt } from './receipt.js';
 import { HttpTileReader, TileTree, parseVkey, readVkeyFile, verifyCheckpoint, verifyConsistency, type VKey, type WitnessPolicy } from './tlog.js';
 import { trustBundleFromReadme, trustBundleFromTxt, validateTrustBundle, type TrustBundle } from './trust.js';
+import { SUPPORTED_PROFILES } from './registry.js';
 const usage = `aics-js — Node 20+ AICS-1 client
   keys new --out aics.key [--x25519-out aics.key.x25519]
   keys show --key aics.key
@@ -22,10 +23,10 @@ const usage = `aics-js — Node 20+ AICS-1 client
   verify checkpoint (--tiles URL [--mirror URL] | --note checkpoint.note) PIN [--witness-policy policy.json]
     [--previous previous.note] [--save checkpoint.note] [--now UNIX_SECONDS]
   verify consistency --old old.note --new new.note PIN (--tiles URL | --proof proof.json) [--witness-policy policy.json] [--now UNIX_SECONDS]
-  verify bundle --bundle bundle.json PIN [--witness-policy policy.json] [--now UNIX_SECONDS]
+  verify bundle --bundle bundle.json PIN [--witness-policy policy.json] [--now UNIX_SECONDS] [--profile SUP-1|SWARMS-1 ...]
   verify receipt --receipt receipt.note --entry entry.json PIN
   verify card --card card.json PIN [--first-use] [--now UNIX_SECONDS]
-  entry --index N [--api https://api.wesupport-ai.com] PIN [--witness-policy policy.json]
+  entry --index N [--api https://api.wesupport-ai.com] PIN [--witness-policy policy.json] [--profile SUP-1|SWARMS-1 ...]
   gate --key aics.key --name agent-name [--x25519-key aics.key.x25519] [PIN]
     [--url https://api.wesupport-ai.com/t | --tcp] [--host HOST] [--port PORT]
     [--plain] [--get] [--origin ORIGIN] [--onboard-only]
@@ -35,7 +36,9 @@ from the server being verified. Keys are written with mode 0600, without overwri
 `;
 const flags: Record<string, string[]> = {}, args: string[] = [];
 const booleans = new Set(['tcp', 'plain', 'get', 'onboard-only', 'help', 'sshsig', 'first-use']);
-const allowed = new Set(['out', 'x25519-out', 'key', 'session', 'line', 'public-key', 'signature', 'signature-file', 'tiles', 'mirror', 'vkey-file', 'trust', 'policy-kid', 'note', 'origin', 'witness-policy', 'previous', 'save', 'now', 'old', 'new', 'proof', 'name', 'x25519-key', 'url', 'host', 'port', 'bundle', 'receipt', 'entry', 'card', 'index', 'api', ...booleans]);
+const allowed = new Set(['out', 'x25519-out', 'key', 'session', 'line', 'public-key', 'signature', 'signature-file', 'tiles', 'mirror', 'vkey-file', 'trust', 'policy-kid', 'note', 'origin', 'witness-policy', 'previous', 'save', 'now', 'old', 'new', 'proof', 'name', 'x25519-key', 'url', 'host', 'port', 'bundle', 'receipt', 'entry', 'card', 'index', 'api', 'profile', ...booleans]);
+/** --profile SUP-1 / SWARMS-1 (repeatable): the negotiated profiles of the card being verified against (§19, §20). */
+function profilesOpt(): string[] { const p = flags.profile ?? []; for (const x of p) assert((SUPPORTED_PROFILES as readonly string[]).includes(x), `--profile is one of ${SUPPORTED_PROFILES.join(', ')}`); return p; }
 function opt(name: string): string | undefined { const a = flags[name]; assert(!a || a.length === 1, `Repeated --${name}`); return a?.[0]; }
 function need(name: string): string { const v = opt(name); assert(v !== undefined && v !== '', `Missing --${name}`); return v; }
 const key = async () => importPrivateKey(await readFile(need('key'), 'utf8'));
@@ -86,13 +89,13 @@ async function main(): Promise<void> {
   }
   if (args[0] === 'entry') {
     const p = await pins(), w = await policy(), index = Number(need('index')); assert(Number.isSafeInteger(index) && index >= 0, 'Invalid --index');
-    const client = new AicsClient({ baseUrl: opt('api'), trust: { origin: p.origin, logKey: p.log, policyKid: p.policyKid, witnesses: w?.witnesses, quorum: w?.quorum } });
+    const client = new AicsClient({ baseUrl: opt('api'), profiles: profilesOpt(), trust: { origin: p.origin, logKey: p.log, policyKid: p.policyKid, witnesses: w?.witnesses, quorum: w?.quorum } });
     const r = await client.entry(index); output({ status: r.verification!.status, history: r.verification!.history, index, body_status: r.bodyStatus, entry: r.verification!.entry, entry_hash: r.verification!.entryHash, checkpoint: r.verification!.checkpoint, body: r.verification!.body ? Buffer.from(r.verification!.body).toString('base64url') : null }); return;
   }
   if (args[0] === 'verify') {
     const p = await pins(), witnesses = await policy(), now = nowOpt();
     if (args[1] === 'bundle') {
-      const v = verifyBundle(await readJson(need('bundle')), { logKey: p.log, origin: p.origin, witnesses: witnesses?.witnesses, quorum: witnesses?.quorum, policyKid: p.policyKid, ...(now === undefined ? {} : { now, maxAgeSeconds: witnesses?.maxAgeSeconds }) });
+      const v = verifyBundle(await readJson(need('bundle')), { logKey: p.log, origin: p.origin, witnesses: witnesses?.witnesses, quorum: witnesses?.quorum, policyKid: p.policyKid, profiles: profilesOpt(), ...(now === undefined ? {} : { now, maxAgeSeconds: witnesses?.maxAgeSeconds }) });
       output({ status: v.status, history: v.history, index: v.index, entry_hash: v.entryHash, checkpoint: v.checkpoint, witnesses: v.witnesses, freshness: v.freshness, type: v.entry.type, actor_kid: v.entry.actor_kid, body: v.body === null ? 'absent' : 'matches' }); return;
     }
     if (args[1] === 'receipt') {

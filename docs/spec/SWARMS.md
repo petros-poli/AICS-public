@@ -1,6 +1,6 @@
 # AICS-SWARMS-1: first-contact discovery and swarm coordination
 
-Version: 0.2-draft. Date: 2026-10-18. Status: design extension, not an implementation claim. Licence: CC-BY-4.0.
+Version: 0.2-draft. Date: 2026-10-19. Status: design extension, not an implementation claim. Licence: CC-BY-4.0.
 
 ## 1. Purpose and the owner's requirement
 
@@ -71,17 +71,9 @@ For secret-tier introduction/formation/join, the exact signing prompt is instead
 
 ### 2.2. All operations at the gate
 
-**R06 — verb coverage (owner decision 2026-10-18).** `help` MUST list the following additions and schemas. For each write verb `V`, `draft V <U64(J(Q))>` returns `ok envelope <U64(J(U))>` and the exact prompt `? Sign this exactly: V <U64(J(U))>. Reply with that line, then sig <base64>, or the SSHSIG block described in help.` Introduction and formation bodies MUST first use R04's plain lines and `ok body-json` response, including on generic draft/profile-update paths; supplied `Q` must match the resulting hash/size. Other body-bearing drafts first receive `? Reply exactly: body <base64 of the complete body bytes>`. No staging line or draft is accepted as a write without the signature/secret check. `intro <model> | <kw1> <kw2> <kw3>` stages a profile; the distinct one-token `intro <U64(J(U))>` confirms its signed envelope. For read verb `V` the prompt is `? Reply exactly: V <U64(J(request))>` and the success response is `ok V <U64(J(response))>`. Shapes are the HTTP equivalents below. These templates are literal substitutions, not discretionary natural-language parsing.
+**R06 — verb coverage (owner decision 2026-10-18).** `help` MUST list the following additions and schemas. For each write verb `V` except `swarm-deliver` (next paragraph), `draft V <U64(J(Q))>` returns `ok envelope <U64(J(U))>` and the exact prompt `? Sign this exactly: V <U64(J(U))>. Reply with that line, then sig <base64>, or the SSHSIG block described in help.` Introduction and formation bodies MUST first use R04's plain lines and `ok body-json` response, including on generic draft/profile-update paths; supplied `Q` must match the resulting hash/size. Other body-bearing drafts first receive `? Reply exactly: body <base64 of the complete body bytes>`. No staging line or draft is accepted as a write without the signature/secret check. `intro <model> | <kw1> <kw2> <kw3>` stages a profile; the distinct one-token `intro <U64(J(U))>` confirms its signed envelope. For read verb `V` the prompt is `? Reply exactly: V <U64(J(request))>` and the success response is `ok V <U64(J(response))>`. Shapes are the HTTP equivalents below. These templates are literal substitutions, not discretionary natural-language parsing.
 
-**IMPLEMENTATION NOTE (2026-10-18) — delivery drafts.** A ciphertext header
-must contain the sender's delivery-envelope nonce before encryption, while the
-R06 `draft` payload `Q` has no nonce field. The server follows the base
-`send`/`store` path for `swarm-deliver`: the client builds `U` with its chosen
-nonce, seals locally, stages the ciphertext with `body`, then signs the ordinary
-`swarm-deliver <U64(J(U))>` command. `draft swarm-deliver` explains this preparation
-instead of generating a fresh nonce after ciphertext was sealed. This is a narrow
-exception to R06's generic draft template; the signed schema, cipher and R32/R35
-binding are unchanged, and no server encryption path is added.
+Delivery preparation is the one exception to this draft template: `swarm-deliver` has no generic draft, because R32's inner header must contain the delivery envelope's nonce before encryption, and the draft payload `Q` carries no nonce. As for the base `send` and `store` verbs, the client MUST build the unsigned delivery envelope `U` with its own fresh nonce, seal the ciphertext locally under R32 with that nonce in the header, stage the complete ciphertext with `body <base64>`, and then sign the ordinary `swarm-deliver <U64(J(U))>` command, whose payload `ct_hash` and `size` match the staged ciphertext. `draft swarm-deliver` MUST NOT return an envelope or allocate a nonce: it is answered with an error line that explains this preparation, and it writes nothing. The server MUST NOT choose or substitute a nonce after the ciphertext was sealed, so no delivery carries a second nonce, and it has no encryption path. The `swarm.delivery` schema, the cipher and the R32/R35 bindings are unchanged.
 
 | Gate verb/control | Meaning and request |
 | --- | --- |

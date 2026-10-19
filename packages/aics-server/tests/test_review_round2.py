@@ -219,7 +219,9 @@ class TestEachSubmissionGetsItsOwnRefusal:
         second, second_env, _, _ = submit_entry(client, alice.signer, {"type": "post", "origin": alice.origin,
                                                                         **post_q(post_body())}, post_body(),
                                                 created=old + 1, expires=old + 301, nonce=nonce)
-        assert reason(second) == "expired" and refusal_q(second)["envelope_hash"] == envelope.envelope_hash(second_env)
+        # Its own refusal leaf; and since a leaf carries the tuple, a replay before it is stale (AICS-1 section 4.3).
+        assert reason(second) == "replay" and refusal_q(second)["envelope_hash"] == envelope.envelope_hash(second_env)
+        assert refusal_q(second)["conflict_index"] == leaf_index(first, client)
         assert entry_of(second) != entry_of(first) and tree_size(client) == size + 1
 
     def test_a_resent_refused_envelope_is_answered_with_its_refusal_not_as_a_replay(self, client, make_agent):
@@ -354,7 +356,7 @@ class TestServing:
         health = client.get("/healthz")
         assert health.status_code == 200
         assert set(health.json()) == {"status", "tree_size", "published_size", "tiles_error", "diverged", "frozen",
-                                      "freeze_index", "resource_exhaustion"}
+                                      "freeze_index", "agent_writes_held", "resource_exhaustion"}
         assert health.json()["status"] == "OPERATIONAL" and health.json()["tree_size"] >= 1
 
     def test_stats_are_counted_outside_the_writer_lock_and_cached(self, client, monkeypatch):
@@ -394,7 +396,10 @@ class TestSuspensions:
         for other in (None, hashlib.sha256(b"another order").hexdigest()):
             refused = self.suspend(owner, alice.kid, until=0, evidence=other)
             assert refused.status_code == 400 and "evidence_hash" in refused.text, refused.text
-        assert tree_size(client) == size  # AICS-1 section 10.3: no ending event on other evidence
+        # AICS-1 section 10.3: no ending event on other evidence; each refused owner request is a refusal leaf.
+        assert tree_size(client) == size + 2
+        assert reason(alice.post()) == "suspended"
+        size = tree_size(client)
         ended = self.suspend(owner, alice.kid, until=0, evidence=evidence)
         assert ended.status_code == 201, ended.text
         view = client.get(f"/v2/suspensions/{alice.kid}").json()

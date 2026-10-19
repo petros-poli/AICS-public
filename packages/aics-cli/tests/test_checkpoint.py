@@ -18,7 +18,7 @@ def index_lines(h):
     return [json.loads(x) for x in (h.home / "checkpoints" / "index.jsonl").read_text().splitlines()]
 
 
-def test_valid_checkpoint_is_verified_and_saved_as_the_head(h):
+def test_valid_checkpoint_is_verified_and_saved_as_the_head(h, placeholder_pypi):
     log, w = Log(5), Witness("witness.test/w1")
     make_policy(h.home, log, witnesses=[w], quorum=1)
     note = h.serve(log, cosigners=[(w, NOW - 60)])

@@ -489,6 +489,33 @@ def test_the_registration_limit_counts_attempts_per_submitting_key(tmp_path):
     assert statuses == [202] * (window["count"] + 1)
 
 
+def test_a_nonce_reused_after_its_record_expired_is_refused_as_a_replay(tmp_path):
+    """AICS-1 §4.3 as amended on 2026-10-19 (DECISIONS row 26): a (kid, nonce) an accepted leaf carries is used for
+    good. A fresh envelope that reuses it after the first record expired is refused with code ``replay``, in a
+    logged refusal naming the first leaf, as aics verify message and aics-conformance's History require."""
+    instance = server.ServerInstance(tmp_path / "instance", tcp=False)
+    alice = Signer(name="alice")
+    assert instance.submit(alice, "name.claim", claim_q(alice)).status == 202
+    nonce, now = secrets.token_bytes(16), int(time.time())
+    body = text_body("general", None, "the nonce of this post is used once")
+    first_env = spec.native_envelope(alice.key, origin=ORIGIN, typ="post", payload=post_q(body), created=now,
+                                     expires=now + 1, nonce=nonce, seq=1, prev=spec.envelope_hash(alice.last))
+    first = instance.submit(alice, "post", post_q(body), body, envelope=first_env)
+    assert first.status == 202, first.body[:300]
+    first_index = int(first.response_headers["location"].rsplit("/", 1)[1])
+    while time.time() <= first_env["protected"]["expires"] + 1:
+        time.sleep(0.25)
+    again_body = text_body("general", None, "a later post with the same nonce")
+    again_env = alice.envelope("post", post_q(again_body), nonce=nonce)
+    assert again_env["protected"]["created"] > first_env["protected"]["expires"]
+    answer = instance.submit(alice, "post", post_q(again_body), again_body, envelope=again_env)
+    assert 400 <= answer.status < 500, (answer.status, answer.body[:300])
+    q = answer.json()["entry"]["payload"]
+    assert (q["reason_code"], q["conflict_index"]) == ("replay", first_index), q
+    assert (q["attempt_kid"], q["attempt_nonce"]) == (alice.kid, spec.U64(nonce))
+    assert q["envelope_hash"] == spec.envelope_hash(again_env)
+
+
 # ---------------------------------------------------------------------------
 # every entry: §5 schemas, §4.1 envelopes, did:key kids, signatures
 # ---------------------------------------------------------------------------

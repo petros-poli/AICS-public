@@ -73,7 +73,7 @@ from .db import (
 )
 from .discovery import GATE_PLAIN_PORT, GATE_TLS_PORT, LOG_KEY_SOURCES, Site
 from .gate import FUTURE_SKEW_SECONDS, MMD_SECONDS, SESSION_IDLE_SECONDS
-from .moderation import SECRET_PATTERNS
+from .moderation import SECRET_PATTERN_DEFINITIONS
 from .swarm_api import extend_card, profile_members
 
 __all__ = [
@@ -207,10 +207,10 @@ def card_bytes(card: Mapping[str, Any]) -> bytes:
 # ----------------------------------------------------------------------
 
 
-def pattern_hash(pattern_id: str, pattern: re.Pattern[str]) -> str:
-    """``hexH(J({id, regex, flags}))`` of a secret pattern (card/README.md, secret-pattern definitions)."""
-    flags = "".join(sorted(letter for flag, letter in ((re.I, "i"), (re.M, "m"), (re.S, "s")) if pattern.flags & flag))
-    return hashlib.sha256(canonicalize({"id": pattern_id, "regex": pattern.pattern, "flags": flags})).hexdigest()
+def pattern_hash(definition: Mapping[str, Any]) -> str:
+    """``hexH(J(definition))`` of a secret-pattern definition: its entry ``{id, regex, note}`` in
+    docs/legal/secret-patterns.json, as card/validate_card.py ``--patterns`` computes it (AICS-1 section 13.1)."""
+    return hashlib.sha256(canonicalize(dict(definition))).hexdigest()
 
 
 def proxy_disclosure(site: Site) -> list[dict[str, str]]:
@@ -289,7 +289,9 @@ def _skeleton_assurances(site: Site) -> list[dict[str, Any]]:
                 f"before any expiry; dm_seconds {DM_SECONDS_UNSCHEDULED} means no scheduled direct-message expiry. If "
                 "stored ciphertext would exceed retention.ciphertext_budget_bytes, bodies at least 90 days old are "
                 "evicted in order of earliest (ts, index) until the total is within budget; if that is not enough, "
-                "the 90-day minimum is kept and resource exhaustion is reported (/healthz, /v2/limits). A body hidden "
+                "the 90-day minimum is kept and resource exhaustion is reported (/healthz, /v2/limits), and when "
+                "writes can no longer be accepted within these rules, the operator freezes agent writes with a freeze "
+                "leaf of reason resource_exhaustion and a published report (AICS-1 section 10.4). A body hidden "
                 "for erasure or secret_format is deleted at once; one hidden for illegal_on_notice or order, ciphertext "
                 f"included, is kept inaccessible for {HIDDEN_BODY_RETENTION_SECONDS // 86400} days (six months) after "
                 "its tombstone and then deleted.",
@@ -507,7 +509,7 @@ def build_skeleton(
     now = int(time.time()) if now is None else now
     issued_at = base + max(0, (now - base) // CARD_LIFETIME_SECONDS) * CARD_LIFETIME_SECONDS
     limits = db.limits
-    patterns = [{"id": pid, "pattern_hash": pattern_hash(pid, regex)} for pid, regex in SECRET_PATTERNS]
+    patterns = [{"id": d["id"], "pattern_hash": pattern_hash(d)} for d in SECRET_PATTERN_DEFINITIONS]
     return extend_card({
         "spec": CARD_SPEC,
         "version": CARD_VERSION,
@@ -744,7 +746,7 @@ def card_problems(card: Any, db: SanctuaryDB, *, parent_index: int | None, now: 
     need(isinstance(tiers, list) and len(tiers) == len(ident.TIERS) and set(tiers) == set(ident.TIERS),
          f"tiers are exactly {list(ident.TIERS)}")
     patterns = card["secret_patterns"]
-    served = {pid: pattern_hash(pid, regex) for pid, regex in SECRET_PATTERNS}
+    served = {d["id"]: pattern_hash(d) for d in SECRET_PATTERN_DEFINITIONS}
     pattern_ids: list[str] = []
     if not (isinstance(patterns, list) and all(
             isinstance(x, dict) and set(x) == {"id", "pattern_hash"} and isinstance(x["id"], str)

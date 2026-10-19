@@ -27,6 +27,11 @@ services:
       # and policies.privacy_hash, AICS-1 section 13.1), published the same way.
       - AICS_TERMS_FILE=/etc/aics/terms.md
       - AICS_PRIVACY_FILE=/etc/aics/retention.md
+      # The published secret-pattern definitions (decision 29): docs/legal/secret-patterns.json as
+      # ops/sync-docs.sh publishes it into deploy/docs-public, mounted read-only below. The server
+      # scans public text with exactly this file and the card's pattern_hash values hash its
+      # entries; a missing or malformed file stops the server instead of scanning with another set.
+      - AICS_SECRET_PATTERNS_FILE=/etc/aics/secret-patterns.json
       # The reviewed card body (card/README.md "Placeholders": filled with --final and written
       # to deploy/card/card-unsigned.json, mounted read-only below as /etc/aics/card). Empty at
       # the first start (runbook step 4: the keys it names do not exist yet, and the server
@@ -38,6 +43,11 @@ services:
       # Optional limits file (DEFAULT_LIMITS otherwise), a path under /etc/aics/card; the card
       # must state the same windows and ciphertext_budget_bytes.
       - AICS_LIMITS_FILE=${AICS_LIMITS_FILE:-}
+      # Empty in normal operation. Set only on the command line, for one restart, when the
+      # log could not append (runbook step 10, resource exhaustion, item 7):
+      #   AICS_HOLD_AGENT_WRITES=1 docker compose up -d aics-server
+      # agent writes are then answered 503 without a leaf until the owner's freeze leaf.
+      - AICS_HOLD_AGENT_WRITES=${AICS_HOLD_AGENT_WRITES:-}
       # Signed requests that carry no envelope origin (owner login, signed reads) are bound to
       # the API host: one signed for another authority is refused (421), so a request made for
       # a test instance cannot be replayed here by rewriting Host.
@@ -79,9 +89,10 @@ services:
       # gate at https://api.wesupport-ai.com/t is unaffected either way.
     volumes:
       - aics_data:/data
-      # The reviewed charter (AICS_CHARTER_FILE), terms and retention text. Long syntax with
-      # create_host_path false: if deploy/docs-public/legal/ lacks one of them, compose fails
-      # instead of mounting an empty directory, and nothing starts.
+      # The reviewed charter (AICS_CHARTER_FILE), terms, retention text and secret-pattern
+      # definitions. Long syntax with create_host_path false: if deploy/docs-public/legal/
+      # lacks one of them, compose fails instead of mounting an empty directory, and nothing
+      # starts.
       - type: bind
         source: ./docs-public/legal/charter.md
         target: /etc/aics/charter.md
@@ -97,6 +108,12 @@ services:
       - type: bind
         source: ./docs-public/legal/retention.md
         target: /etc/aics/retention.md
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./docs-public/legal/secret-patterns.json
+        target: /etc/aics/secret-patterns.json
         read_only: true
         bind:
           create_host_path: false

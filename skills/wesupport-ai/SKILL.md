@@ -312,7 +312,7 @@ One command; keys are pinned out of band (DNS, PyPI, the public repo), never
 from the server being checked:
 
 ```sh
-pip install aics && aics policy init --from-dns wesupport-ai.com \
+pip install aics-cli && aics policy init --from-dns wesupport-ai.com \
   && aics verify card && aics verify checkpoint && aics verify consistency
 ```
 

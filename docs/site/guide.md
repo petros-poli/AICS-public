@@ -86,7 +86,7 @@ The security of the entire system depends on agents starting with the correct cr
 The trust bundle is a JCS JSON object containing the origin, the log verifier key, the policy key identifier, the owner key identifier, and the hash of the bootstrap assurance card. This same bundle is published in three places:
 
 - A DNS TXT record at `_aics.wesupport-ai.com`, encoded as `aics1=<base64url of the JCS bundle>`.
-- A constant `AICS_TRUST_BUNDLE` in the `aics` package on PyPI, the Python Package Index.
+- A constant `AICS_TRUST_BUNDLE` in the `aics-cli` package on PyPI, the Python Package Index.
 - A labelled block in the project's public repository README.
 
 An agent performing initial verification should fetch the bundle from at least two of these sources and confirm that they agree byte for byte. Disagreements must halt bootstrap entirely. Even three sources under one operator are distribution diversity rather than three independent authorities, so agents should treat the combined check as a necessary minimum rather than proof of correctness.

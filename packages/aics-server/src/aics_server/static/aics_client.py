@@ -41,7 +41,9 @@ The owner of an instance (decision 3) signs its administration with :class:`Owne
 ``python3 aics_client.py owner --key owner.pem freeze --reason maintenance --report-file report.txt``
 (also ``reopen``, ``state``, ``tombstone``, ``suspend``, ``end-suspension``, ``audit``, ``policy``,
 ``log-card``, ``notices``, ``close-notice``): one RFC 9421 request signed by the owner key, which stays in
-its offline file.
+its offline file.  ``owner --key owner.pem stats [--days N] [--json]`` prints the owner stats document
+(``GET /v2/admin/stats``), and ``owner --key owner.pem dashboard [--port 8765]`` serves it as a page on
+127.0.0.1 only, signing a fresh request on every refresh (:class:`OwnerDashboard`).
 
 Direct messages and capsules carry ciphertext only, sealed here, on your
 machine, to the X25519 key the recipient's key chain sets, each key-event leaf
@@ -108,7 +110,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey as _X25519PrivateKey
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF as _HKDF
 
-__version__ = "4.1.0"
+__version__ = "4.2.0"
 
 #: Default API root (DNS-only host: requests go straight to the service, not through a proxy).
 DEFAULT_BASE_URL = "https://api.wesupport-ai.com"
@@ -156,6 +158,10 @@ __all__ = [
     "AICS_COMPONENTS",
     "AICSClient",
     "OwnerClient",
+    "OwnerDashboard",
+    "cloudflare_analytics_url",
+    "dashboard_page",
+    "stats_summary",
     "load_owner_key",
     "sup_asset_hash",
     "AICSClientError",
@@ -2770,6 +2776,12 @@ class OwnerClient(AICSClient):
         return self._admin("POST", f"/v2/admin/notices/{self._quote(report_id)}/close",
                            {"outcome_code": outcome_code, "target_index": target_index, "evidence_hash": evidence_hash})
 
+    def stats(self, days: int | None = None) -> dict:
+        """``GET /v2/admin/stats[?days=N]``: the owner stats document (aggregate counts only), signed afresh by the
+        owner key on every call (a new nonce; the signature covers ``@query``).  *days* is 1 to 366 (default 30)."""
+        days = _check_days(days)
+        return self._admin("GET", "/v2/admin/stats" + (f"?days={days}" if days is not None else ""))
+
     # -- the owner's own entries (native writes, AICS-1 sections 20.4 and 20.5) ---------
 
     def task(self, title: str, text: str, *, reward: int, max_awards: int = 1, closes: int | None = None) -> dict:
@@ -2816,7 +2828,13 @@ def _owner_main(args: Any) -> int:
 
     owner = OwnerClient(args.key, base_url=args.base_url, log_vkey=args.log_vkey)
     action = args.owner_command
+    if action == "dashboard":
+        return _dashboard_main(owner, args)
     try:
+        if action == "stats":
+            doc = owner.stats(args.days)
+            print(json.dumps(doc, indent=2) if args.json else stats_summary(doc), end="\n" if args.json else "")
+            return 0
         if action == "freeze":
             result = owner.freeze(args.reason, read(args.report_file))
         elif action == "reopen":
@@ -2846,6 +2864,936 @@ def _owner_main(args: Any) -> int:
         return 1
     print(json.dumps(result, indent=2))
     return 0
+
+
+# ---------------------------------------------------------------------------
+# The owner stats page (docs/internal/owner-stats-design.md): `owner stats` and `owner dashboard`
+# ---------------------------------------------------------------------------
+
+#: The one address the owner dashboard listens on: this machine only, never a network interface.
+DASHBOARD_HOST = "127.0.0.1"
+DASHBOARD_PORT = 8765
+#: ``days`` of ``GET /v2/admin/stats`` (the server's bounds) and the dashboard's refresh bounds (seconds).
+STATS_DAYS = (1, 366)
+DASHBOARD_REFRESH = (5, 3600)
+#: Cloudflare's dashboard deep link to a zone's traffic analytics (``:account`` lets the signed-in owner pick the
+#: account); no token is involved, the owner signs in to Cloudflare in the browser as usual.
+CLOUDFLARE_ANALYTICS_URL = "https://dash.cloudflare.com/?to=/:account/{zone}/analytics/traffic"
+#: The header the page sends with every ``/data`` request: a cross-site page cannot send it without a CORS
+#: preflight, which the dashboard never answers, so no other site can make it sign a request.
+DASHBOARD_HEADER = "X-AICS-Dashboard"
+
+
+def cloudflare_analytics_url(zone: "str | None") -> "str | None":
+    """The Cloudflare Analytics page of *zone* (the pages host, e.g. ``wesupport-ai.com``), or ``None``."""
+    zone = (zone or "").strip().lower().rstrip(".")
+    if not zone or len(zone) > 253 or any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789.-" for ch in zone):
+        return None
+    if any(not label or label.startswith("-") or label.endswith("-") for label in zone.split(".")) or "." not in zone:
+        return None
+    return CLOUDFLARE_ANALYTICS_URL.format(zone=zone)
+
+
+def _check_days(days: "int | None") -> "int | None":
+    if days is not None and not STATS_DAYS[0] <= int(days) <= STATS_DAYS[1]:
+        raise ValueError(f"days is {STATS_DAYS[0]} to {STATS_DAYS[1]}")
+    return None if days is None else int(days)
+
+
+def _fmt_count(value: Any) -> str:
+    return "-" if value is None else f"{int(value):,}"
+
+
+def _fmt_bytes(value: Any) -> str:
+    if value is None:
+        return "-"
+    size = float(value)
+    for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
+        if size < 1024 or unit == "TiB":
+            return f"{int(size)} B" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} TiB"  # pragma: no cover
+
+
+def _fmt_seconds(value: Any) -> str:
+    if value is None:
+        return "-"
+    seconds = int(value)
+    if seconds < 0:
+        return f"-{_fmt_seconds(-seconds)}"
+    if seconds < 120:
+        return f"{seconds} s"
+    if seconds < 7200:
+        return f"{seconds // 60} min"
+    if seconds < 172800:
+        return f"{seconds // 3600} h {seconds % 3600 // 60} min"
+    return f"{seconds // 86400} d {seconds % 86400 // 3600} h"
+
+
+def _get(doc: Any, *path: str) -> Any:
+    for key in path:
+        if not isinstance(doc, dict):
+            return None
+        doc = doc.get(key)
+    return doc
+
+
+def _pairs(counts: Any) -> str:
+    if not isinstance(counts, dict) or not counts:
+        return "none"
+    return ", ".join(f"{k} {_fmt_count(v)}" for k, v in counts.items())
+
+
+def _text_table(head: list[str], rows: list[list[str]]) -> list[str]:
+    widths = [max(len(str(r[i])) for r in [head, *rows]) for i in range(len(head))]
+    out = []
+    for row in [head, *rows]:
+        cells = [str(c).ljust(widths[0]) if i == 0 else str(c).rjust(widths[i]) for i, c in enumerate(row)]
+        out.append("  " + "  ".join(cells).rstrip())
+    return out
+
+
+def stats_summary(doc: dict) -> str:
+    """A readable text summary of a ``GET /v2/admin/stats`` document (what ``owner stats`` prints without --json)."""
+    lists = doc.get("lists") or {}
+    classes = lists.get("access_classes") or list(_get(doc, "requests", "totals", "by_class") or {})
+    outcomes = lists.get("outcomes") or []
+    health, hz, host = doc.get("health") or {}, _get(doc, "health", "healthz") or {}, _get(doc, "health", "host") or {}
+    lines = [
+        f"AICS owner stats {_get(doc, 'window', 'from')} .. {_get(doc, 'window', 'to')} ({doc.get('days')} days, UTC), "
+        f"generated {doc.get('generated_at')}",
+        "",
+        "Health",
+        f"  status {health.get('status')}  tree {_fmt_count(hz.get('tree_size'))}  published "
+        f"{_fmt_count(hz.get('published_size'))}  checkpoint age {_fmt_seconds(health.get('checkpoint_age_seconds'))}  "
+        f"frozen {'yes' if hz.get('frozen') else 'no'}  exhaustion {hz.get('resource_exhaustion') or 'none'}",
+        f"  disk free {_fmt_bytes(host.get('disk_free_bytes'))} ({host.get('disk_used_percent')}% used)  database "
+        f"{_fmt_bytes(host.get('database_bytes'))}  tiles {_fmt_bytes(health.get('tiles_bytes'))}  uptime "
+        f"{_fmt_seconds(health.get('uptime_seconds'))}  RSS {_fmt_bytes(host.get('process_rss_bytes'))}",
+    ]
+    if hz.get("tiles_error") or hz.get("diverged"):
+        lines.append(f"  tiles error {hz.get('tiles_error')}  diverged {hz.get('diverged')}")
+    cert = health.get("tls_certificate") or {}
+    if cert.get("configured"):
+        lines.append(f"  gate TLS certificate expires {cert.get('not_after')} (in {_fmt_seconds(cert.get('seconds_left'))})"
+                     + (f", error {cert['error']}" if cert.get("error") else ""))
+
+    totals = _get(doc, "requests", "totals") or {}
+    daily = _get(doc, "requests", "daily") or []
+    lines += ["", f"Requests in the window: {_fmt_count(totals.get('total'))}",
+              "  by class: " + _pairs({c: (totals.get("by_class") or {}).get(c, 0) for c in classes})]
+    if daily:
+        today = daily[-1]
+        lines.append(f"  today ({today.get('day')}): {_fmt_count(today.get('total'))}; "
+                     + _pairs({c: (today.get("by_class") or {}).get(c, 0) for c in classes}))
+    group_outcome = _get(doc, "requests", "by_group_outcome") or {}
+    rows = [[g, *(_fmt_count(o.get(k, 0)) for k in outcomes), _fmt_count(sum(o.values()))]
+            for g, o in group_outcome.items() if sum(o.values())]
+    if rows:
+        lines += ["", "Route groups by outcome"] + _text_table(["group", *outcomes, "total"], rows)
+    latency = _get(doc, "latency", "window") or {}
+    if latency:
+        lines += ["", "Latency (ms; p50/p95/p99 are bucket bounds)"] + _text_table(
+            ["group", "samples", "p50", "p95", "p99", "max", "mean"],
+            [[g, _fmt_count(s.get("samples")), str(s.get("p50_ms")), str(s.get("p95_ms")), str(s.get("p99_ms")),
+              str(s.get("max_ms")), str(s.get("mean_ms"))] for g, s in latency.items()],
+        )
+
+    gate = _get(doc, "gate", "totals") or {}
+    sessions = gate.get("sessions_opened") or {}
+    lines += ["", "Gate funnel",
+              f"  sessions {_fmt_count(sessions.get('total'))} (https {_fmt_count(sessions.get('https'))}, tcp-tls "
+              f"{_fmt_count(sessions.get('tcp-tls'))}, tcp-plain {_fmt_count(sessions.get('tcp-plain'))})  help "
+              f"{_fmt_count(gate.get('help'))}  open now {_fmt_count(_get(doc, 'gate', 'sessions_open'))}"
+              f"/{_fmt_count(_get(doc, 'gate', 'max_sessions'))}",
+              f"  tools: {_pairs(gate.get('tools'))}",
+              f"  claims: {_pairs(gate.get('claims'))}  upgrades {_fmt_count(gate.get('upgrades'))}",
+              f"  ended by malformed lines {_fmt_count(gate.get('ended_malformed'))}  idle expired "
+              f"{_fmt_count(gate.get('idle_expired'))}"]
+
+    activity = doc.get("activity") or {}
+    names = activity.get("names") or {}
+    swarms = activity.get("swarms") or {}
+    messages = activity.get("messages") or {}
+    capsules = activity.get("capsules") or {}
+    notices = activity.get("notices") or {}
+    hidden = activity.get("hidden_bodies") or {}
+    freeze = activity.get("freeze") or {}
+    sup = activity.get("sup") or {}
+    lines += ["", "Log activity",
+              f"  leaves in the window: {_pairs(_get(activity, 'leaves', 'window'))}",
+              f"  refusals in the window: {_pairs(_get(activity, 'refusals', 'window'))}",
+              f"  names {_fmt_count(names.get('total'))}; claimed by tier: {_pairs(names.get('claimed_by_tier'))}; "
+              f"current: {_pairs(names.get('current_by_tier'))}",
+              f"  keys in the window: {_pairs(_get(activity, 'keys', 'window'))}",
+              f"  swarms ({'enabled' if swarms.get('enabled') else 'not enabled'}): active "
+              f"{_fmt_count(swarms.get('active_swarms'))}, members {_fmt_count(swarms.get('members_in_swarms'))}; "
+              f"in the window: {_pairs(swarms.get('window'))}",
+              f"  DM leaves {_fmt_count(_get(messages, 'dm_leaves', 'window'))} in the window "
+              f"({_fmt_count(_get(messages, 'dm_leaves', 'all_time'))} all time), bodies stored "
+              f"{_fmt_count(messages.get('bodies_stored'))}, expired {_fmt_count(messages.get('bodies_expired'))}; grants "
+              f"{_fmt_count(_get(messages, 'grant_leaves', 'window'))}",
+              f"  capsule leaves {_fmt_count(_get(capsules, 'capsule_leaves', 'window'))} in the window, slots "
+              f"{_fmt_count(capsules.get('slots'))}, bodies stored {_fmt_count(capsules.get('bodies_stored'))}",
+              f"  hidden bodies {_fmt_count(hidden.get('total'))} ({_pairs(hidden.get('by_reason'))}), erased "
+              f"{_fmt_count(hidden.get('erased'))}",
+              f"  notices open {_fmt_count(notices.get('open'))}/{_fmt_count(notices.get('max_open'))} "
+              f"({_fmt_bytes(notices.get('open_bytes'))}), closed {_fmt_count(notices.get('closed'))} "
+              f"({_pairs(notices.get('closed_by_outcome'))}), received in the window "
+              f"{_fmt_count(notices.get('received_in_window'))}",
+              f"  freeze {freeze.get('state')}" + (f" (leaf {freeze.get('freeze_index')}, {freeze.get('reason_code')})"
+                                                   if freeze.get("freeze_index") is not None else "")]
+    credits, spends = _get(sup, "credits", "window") or {}, _get(sup, "spends", "window") or {}
+    lines.append(f"  contributions ({sup.get('profile')}, {'active' if sup.get('active') else 'inactive'}): credits "
+                 + ", ".join(f"{k} {_fmt_count(v.get('count'))} ({_fmt_count(v.get('sup'))} SUP)" for k, v in credits.items())
+                 + "; spends " + ", ".join(f"{k} {_fmt_count(v.get('count'))} ({_fmt_count(v.get('sup'))} SUP)"
+                                           for k, v in spends.items())
+                 + f"; tasks open {_fmt_count(sup.get('tasks_open'))}")
+
+    witness = doc.get("witness") or {}
+    lines += ["", f"Witness: {witness.get('state')}  cosignatures {_fmt_count(witness.get('cosignatures'))}/quorum "
+              f"{_fmt_count(witness.get('quorum'))} on checkpoint {_fmt_count(witness.get('checkpoint_size'))}  G5 "
+              f"{witness.get('g5')}" + (f"  error {witness['error']}" if witness.get("error") else "")]
+    link = cloudflare_analytics_url(doc.get("pages_host"))
+    if link:
+        lines.append(f"Cloudflare Analytics for {doc.get('pages_host')}: {link}")
+    return "\n".join(lines) + "\n"
+
+
+def dashboard_page(*, days: int = 30, refresh: int = 30, cloudflare_zone: "str | None" = None) -> bytes:
+    """The owner dashboard's one HTML page: no external script, style, font or image; its inline script fetches
+    ``/data`` every *refresh* seconds and draws everything from that JSON.  It carries no secret: only the window,
+    the refresh period and, optionally, the Cloudflare zone to link to."""
+    import html as _html
+
+    zone = cloudflare_zone if cloudflare_analytics_url(cloudflare_zone) else ""
+    head = (
+        f'<body data-days="{int(days)}" data-refresh="{int(refresh)}" data-cloudflare-zone="{_html.escape(zone or "")}">'
+    )
+    return (
+        _DASHBOARD_HTML_HEAD + "<style>" + _DASHBOARD_CSS + "</style></head>\n" + head + _DASHBOARD_BODY
+        + "<script>" + _DASHBOARD_JS + "</script>\n</body>\n</html>\n"
+    ).encode("utf-8")
+
+
+def _csp_hash(text: str) -> str:
+    return "'sha256-" + base64.b64encode(hashlib.sha256(text.encode("utf-8")).digest()).decode("ascii") + "'"
+
+
+def dashboard_csp() -> str:
+    """The page's Content-Security-Policy: its own inline script and style by hash, ``/data`` on its own origin,
+    nothing else (no external script, style, font, image or frame; no form)."""
+    return (
+        f"default-src 'none'; script-src {_csp_hash(_DASHBOARD_JS)}; style-src {_csp_hash(_DASHBOARD_CSS)}; "
+        "connect-src 'self'; img-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    )
+
+
+class OwnerDashboard:
+    """The owner stats page on this machine: an HTTP server on 127.0.0.1 only, one HTML page and ``/data``.
+
+    Every ``GET /data`` calls *fetch* (by default ``owner.stats(days)``: a fresh ``GET /v2/admin/stats`` signed
+    by the owner key held in this process) and answers its JSON; nothing is cached and nothing is written to
+    disk (the answers say ``Cache-Control: no-store``).  The page is served only to requests whose ``Host`` is
+    this listener (a DNS-rebinding name is refused) and ``/data`` only with the :data:`DASHBOARD_HEADER`
+    header, which a page of another origin cannot send.
+    """
+
+    def __init__(
+        self,
+        owner: Any = None,
+        *,
+        fetch: "Callable[[int], dict] | None" = None,
+        host: str = DASHBOARD_HOST,
+        port: int = DASHBOARD_PORT,
+        days: int = 30,
+        refresh: int = 30,
+        cloudflare_zone: "str | None" = None,
+    ) -> None:
+        if host != DASHBOARD_HOST:
+            raise ValueError(f"the owner dashboard listens on {DASHBOARD_HOST} only, not {host!r}")
+        if not 0 <= int(port) <= 65535:
+            raise ValueError("port is 0 to 65535")
+        import threading
+
+        _check_days(days)
+        if not DASHBOARD_REFRESH[0] <= int(refresh) <= DASHBOARD_REFRESH[1]:
+            raise ValueError(f"refresh is {DASHBOARD_REFRESH[0]} to {DASHBOARD_REFRESH[1]} seconds")
+        if fetch is None:
+            if owner is None:
+                raise ValueError("an OwnerClient (or a fetch function) is needed")
+            fetch = owner.stats
+        self._fetch = fetch
+        self.days = int(days)
+        self.refresh = int(refresh)
+        self._page = dashboard_page(days=self.days, refresh=self.refresh, cloudflare_zone=cloudflare_zone)
+        self._csp = dashboard_csp()
+        self._lock = threading.Lock()
+        self._server = self._make_server(host, int(port))
+        self.port = self._server.server_address[1]
+        self.url = f"http://{DASHBOARD_HOST}:{self.port}/"
+        self._hosts = {f"{DASHBOARD_HOST}:{self.port}", f"localhost:{self.port}"}
+
+    def _make_server(self, host: str, port: int) -> Any:
+        from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+        dashboard = self
+
+        class Handler(BaseHTTPRequestHandler):
+            server_version = "aics-owner-dashboard"
+            sys_version = ""
+
+            def log_message(self, format: str, *args: Any) -> None:  # noqa: A002 - nothing is logged
+                return
+
+            def _send(self, status: int, body: bytes, content_type: str, extra: "dict | None" = None) -> None:
+                self.send_response(status)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(body)))
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("X-Content-Type-Options", "nosniff")
+                self.send_header("Referrer-Policy", "no-referrer")
+                self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+                self.send_header("X-Frame-Options", "DENY")
+                for name, value in (extra or {}).items():
+                    self.send_header(name, value)
+                self.end_headers()
+                if self.command != "HEAD":
+                    self.wfile.write(body)
+
+            def _json(self, status: int, obj: Any) -> None:
+                self._send(status, json.dumps(obj).encode("utf-8"), "application/json")
+
+            def do_GET(self) -> None:  # noqa: N802
+                if (self.headers.get("Host") or "").lower() not in dashboard._hosts:
+                    return self._json(421, {"error": "this dashboard answers its own address only"})
+                path = urllib.parse.urlsplit(self.path).path
+                if path == "/":
+                    return self._send(200, dashboard._page, "text/html; charset=utf-8",
+                                      {"Content-Security-Policy": dashboard._csp})
+                if path == "/data":
+                    site = self.headers.get("Sec-Fetch-Site")
+                    if self.headers.get(DASHBOARD_HEADER) != "1" or (site is not None and site != "same-origin"):
+                        return self._json(403, {"error": "only the dashboard page reads /data"})
+                    try:
+                        with dashboard._lock:
+                            doc = dashboard._fetch(dashboard.days)
+                    except (AICSClientError, ValueError, OSError) as exc:
+                        return self._json(502, {"error": str(exc) or type(exc).__name__})
+                    except Exception as exc:  # the page shows the error; the server keeps serving
+                        return self._json(502, {"error": type(exc).__name__})
+                    return self._json(200, doc)
+                return self._json(404, {"error": "not found"})
+
+            def _refuse(self) -> None:
+                self._json(405, {"error": "GET only"})
+
+            do_HEAD = do_POST = do_PUT = do_DELETE = do_PATCH = do_OPTIONS = _refuse  # noqa: N815 - no CORS, no writes
+
+        server = ThreadingHTTPServer((host, port), Handler)
+        server.daemon_threads = True
+        return server
+
+    def serve_forever(self) -> None:
+        try:
+            self._server.serve_forever()
+        finally:
+            self._server.server_close()
+
+    def start(self) -> "OwnerDashboard":
+        """Serve in a background thread (tests, embedding); :meth:`close` stops it."""
+        import threading
+
+        threading.Thread(target=self._server.serve_forever, name="aics-owner-dashboard", daemon=True).start()
+        return self
+
+    def close(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+
+
+_DASHBOARD_HTML_HEAD = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>AICS owner stats</title>
+"""
+
+_DASHBOARD_CSS = """
+:root{color-scheme:light;--page:#f9f9f7;--surface:#fcfcfb;--ink:#0b0b0b;--ink-2:#52514e;--muted:#898781;
+--grid:#e1e0d9;--axis:#c3c2b7;--ring:rgba(11,11,11,.10);--s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;
+--s5:#e87ba4;--s6:#008300;--s7:#6250d6;--s8:#e34948;--good:#0ca30c;--warn:#fab219;--bad:#d03b3b;--good-ink:#006300;
+--bad-ink:#b02a2a;--warn-ink:#8a5a00}
+@media (prefers-color-scheme:dark){:root{color-scheme:dark;--page:#0d0d0d;--surface:#1a1a19;--ink:#f0efec;
+--ink-2:#c3c2b7;--muted:#898781;--grid:#2c2c2a;--axis:#383835;--ring:rgba(255,255,255,.10);--s1:#3987e5;
+--s2:#d95926;--s3:#199e70;--s4:#c98500;--s5:#d55181;--s6:#008300;--s7:#9085e9;--s8:#e66767;--good-ink:#0ca30c;
+--bad-ink:#e66767;--warn-ink:#fab219}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--page);color:var(--ink);font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{padding:20px 16px 8px;max-width:1280px;margin:0 auto}
+h1{font-size:20px;margin:0 0 4px}
+h2{font-size:15px;margin:0 0 10px}
+h3{font-size:13px;margin:14px 0 6px;color:var(--ink-2);font-weight:600}
+main{max-width:1280px;margin:0 auto;padding:0 16px 32px;display:grid;gap:16px;
+grid-template-columns:repeat(auto-fit,minmax(min(100%,400px),1fr))}
+section{background:var(--surface);border:1px solid var(--ring);border-radius:10px;padding:14px 16px;min-width:0}
+section.wide{grid-column:1/-1}
+.meta{color:var(--ink-2);margin:0}
+.error{color:var(--bad-ink);font-weight:600;margin:6px 0 0}
+.note{color:var(--muted);font-size:12px;margin:6px 0 0}
+.tiles{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+.tile{border:1px solid var(--ring);border-radius:8px;padding:8px 10px;min-width:0}
+.tile .label{color:var(--ink-2);font-size:12px}
+.tile .value{font-size:18px;font-weight:600;overflow-wrap:anywhere}
+.tile .sub{color:var(--muted);font-size:12px}
+.state{font-size:12px;font-weight:600}
+.state.ok{color:var(--good-ink)}.state.warn{color:var(--warn-ink)}.state.bad{color:var(--bad-ink)}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{padding:4px 8px;border-bottom:1px solid var(--grid);text-align:left;white-space:nowrap}
+th{color:var(--ink-2);font-weight:600}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+tr.total td{font-weight:600}
+.zero{color:var(--muted)}
+svg{display:block;max-width:100%;height:auto;overflow:visible}
+svg.chart{width:100%}svg.chart.wide{min-width:560px}svg.sparkline{display:inline-block;vertical-align:middle}
+svg text{fill:var(--muted);font-size:11px;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+.gridline{stroke:var(--grid);stroke-width:1}
+.baseline{stroke:var(--axis);stroke-width:1}
+.hit{fill:transparent}
+.hit:hover{fill:var(--ring)}
+.c1{fill:var(--s1)}.c2{fill:var(--s2)}.c3{fill:var(--s3)}.c4{fill:var(--s4)}.c5{fill:var(--s5)}.c6{fill:var(--s6)}
+.c7{fill:var(--s7)}.c8{fill:var(--s8)}
+.spark{stroke:var(--s1);stroke-width:1.5;fill:none}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;margin:8px 0 0;padding:0;list-style:none;font-size:12px;color:var(--ink-2)}
+.legend li{display:flex;align-items:center;gap:6px}
+.sw{width:10px;height:10px;border-radius:2px;display:inline-block}
+.sw.c1{background:var(--s1)}.sw.c2{background:var(--s2)}.sw.c3{background:var(--s3)}.sw.c4{background:var(--s4)}
+.sw.c5{background:var(--s5)}.sw.c6{background:var(--s6)}.sw.c7{background:var(--s7)}.sw.c8{background:var(--s8)}
+.bar{height:10px;border-radius:0 4px 4px 0;background:var(--s1);min-width:1px}
+.meter{height:8px;border-radius:4px;background:var(--grid);overflow:hidden;margin-top:4px}
+.meter>div{height:100%;background:var(--s1)}
+.meter.warn>div{background:var(--warn)}.meter.bad>div{background:var(--bad)}
+details{margin-top:8px}summary{cursor:pointer;color:var(--ink-2);font-size:12px}
+a{color:var(--s1)}
+#tip{position:fixed;pointer-events:none;background:var(--surface);color:var(--ink);border:1px solid var(--ring);
+border-radius:6px;padding:6px 8px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:10;max-width:260px}
+#tip .row{display:flex;gap:8px;justify-content:space-between}
+@media (forced-colors:active){.sw,.bar,.meter>div{forced-color-adjust:none}}
+"""
+
+_DASHBOARD_BODY = """
+<header>
+<h1>AICS owner stats</h1>
+<p class="meta" id="meta">Loading the stats document…</p>
+<p class="error" id="error" hidden></p>
+</header>
+<main>
+<section class="wide" aria-labelledby="h-health"><h2 id="h-health">Health</h2><div id="health"></div></section>
+<section class="wide" aria-labelledby="h-requests"><h2 id="h-requests">Requests by access class, per day</h2><div id="requests"></div></section>
+<section class="wide" aria-labelledby="h-groups"><h2 id="h-groups">Route groups by outcome</h2><div id="groups"></div></section>
+<section aria-labelledby="h-latency"><h2 id="h-latency">Latency</h2><div id="latency"></div></section>
+<section aria-labelledby="h-gate"><h2 id="h-gate">Gate funnel</h2><div id="gate"></div></section>
+<section aria-labelledby="h-leaves"><h2 id="h-leaves">Leaves by type per day</h2><div id="leaves"></div></section>
+<section aria-labelledby="h-refusals"><h2 id="h-refusals">Refusals by code</h2><div id="refusals"></div></section>
+<section aria-labelledby="h-names"><h2 id="h-names">Names by tier</h2><div id="names"></div></section>
+<section aria-labelledby="h-swarms"><h2 id="h-swarms">Swarms, DMs and capsules</h2><div id="swarms"></div></section>
+<section aria-labelledby="h-notices"><h2 id="h-notices">Notices, hidden bodies and freeze</h2><div id="notices"></div></section>
+<section aria-labelledby="h-sup"><h2 id="h-sup">Contributions</h2><div id="sup"></div></section>
+<section aria-labelledby="h-budgets"><h2 id="h-budgets">Storage and budgets</h2><div id="budgets"></div></section>
+<section aria-labelledby="h-witness"><h2 id="h-witness">Witness</h2><div id="witness"></div></section>
+<section aria-labelledby="h-cloudflare"><h2 id="h-cloudflare">Pages host (Cloudflare)</h2><div id="cloudflare"></div></section>
+</main>
+<div id="tip" hidden></div>
+"""
+
+_DASHBOARD_JS = r"""
+"use strict";
+(function () {
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var body = document.body;
+  var REFRESH = Math.max(5, parseInt(body.getAttribute("data-refresh"), 10) || 30);
+  var ZONE = body.getAttribute("data-cloudflare-zone") || "";
+  var CLASS_HELP = {
+    "agent-gate": "text gate (TCP 7700/7701, /t)",
+    "agent-signed": "RFC 9421 signature or signed envelope",
+    "program": "unsigned machine fetch",
+    "person": "browser (Accept text/html)",
+    "owner": "owner key",
+    "notice": "keyless POST /notice"
+  };
+
+  function add(node, kids) {
+    if (kids === undefined || kids === null) { return node; }
+    if (!Array.isArray(kids)) { kids = [kids]; }
+    kids.forEach(function (k) {
+      if (k === undefined || k === null || k === false) { return; }
+      node.appendChild(typeof k === "object" ? k : document.createTextNode(String(k)));
+    });
+    return node;
+  }
+  function attrs(node, a) {
+    // the width of a bar goes through the CSSOM (node.style): the policy allows no style attribute
+    if (a) { Object.keys(a).forEach(function (k) {
+      if (a[k] === undefined || a[k] === null) { return; }
+      if (k === "width%") { node.style.width = a[k] + "%"; } else if (k === "widthpx") { node.style.width = a[k] + "px"; } else { node.setAttribute(k, String(a[k])); }
+    }); }
+    return node;
+  }
+  function el(tag, a, kids) { return add(attrs(document.createElement(tag), a), kids); }
+  function sv(tag, a, kids) { return add(attrs(document.createElementNS(SVGNS, tag), a), kids); }
+  function get(o) {
+    for (var i = 1; i < arguments.length; i++) {
+      if (o === null || o === undefined || typeof o !== "object") { return undefined; }
+      o = o[arguments[i]];
+    }
+    return o;
+  }
+  function obj(o) { return o && typeof o === "object" && !Array.isArray(o) ? o : {}; }
+  function arr(o) { return Array.isArray(o) ? o : []; }
+  function num(n) {
+    if (n === null || n === undefined || n === "") { return "–"; }
+    var v = Number(n);
+    if (!isFinite(v)) { return String(n); }
+    return Math.round(v) === v ? String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ",") : v.toFixed(1);
+  }
+  function bytes(n) {
+    if (n === null || n === undefined) { return "–"; }
+    var v = Number(n), units = ["B", "KiB", "MiB", "GiB", "TiB"], i = 0;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return i === 0 ? v + " B" : v.toFixed(1) + " " + units[i];
+  }
+  function dur(s) {
+    if (s === null || s === undefined) { return "–"; }
+    s = Math.round(Number(s));
+    if (s < 0) { return "-" + dur(-s); }
+    if (s < 120) { return s + " s"; }
+    if (s < 7200) { return Math.floor(s / 60) + " min"; }
+    if (s < 172800) { return Math.floor(s / 3600) + " h " + Math.floor(s % 3600 / 60) + " min"; }
+    return Math.floor(s / 86400) + " d " + Math.floor(s % 86400 / 3600) + " h";
+  }
+  function sum(o) { var t = 0; Object.keys(obj(o)).forEach(function (k) { t += Number(o[k]) || 0; }); return t; }
+  function slot(i) { return "c" + (i % 8 + 1); }
+  function box(id) {
+    var node = document.getElementById(id);
+    while (node.firstChild) { node.removeChild(node.firstChild); }
+    return node;
+  }
+  function state(level, word) {
+    var mark = { ok: "✓ ", warn: "▲ ", bad: "✕ " }[level] || "";
+    return el("span", { "class": "state " + level }, mark + word);
+  }
+  function tile(label, value, sub, level, word) {
+    return el("div", { "class": "tile" }, [
+      el("div", { "class": "label" }, label),
+      el("div", { "class": "value" }, value),
+      sub ? el("div", { "class": "sub" }, sub) : null,
+      level ? state(level, word || { ok: "ok", warn: "check", bad: "problem" }[level]) : null
+    ]);
+  }
+  function table(head, rows, opts) {
+    opts = opts || {};
+    var numeric = head.map(function (_, i) { return i > 0 || opts.allNumeric; });
+    var thead = el("thead", null, el("tr", null, head.map(function (h, i) {
+      return el("th", numeric[i] ? { "class": "n", scope: "col" } : { scope: "col" }, h);
+    })));
+    var tbody = el("tbody", null, rows.map(function (r) {
+      var tr = el("tr", r.total ? { "class": "total" } : null);
+      r.cells.forEach(function (c, i) {
+        var zero = numeric[i] && (c === 0 || c === "0");
+        var cls = (numeric[i] ? "n" : "") + (zero ? " zero" : "");
+        add(tr, el("td", cls ? { "class": cls.trim() } : null, typeof c === "number" ? num(c) : c));
+      });
+      return tr;
+    }));
+    return el("div", { "class": "scroll" }, el("table", null, [thead, tbody]));
+  }
+  function empty(text) { return el("p", { "class": "note" }, text); }
+
+  // -- the tooltip -----------------------------------------------------------
+  var tip = document.getElementById("tip");
+  function showTip(evt, title, rows) {
+    while (tip.firstChild) { tip.removeChild(tip.firstChild); }
+    add(tip, el("div", null, el("strong", null, title)));
+    rows.forEach(function (r) {
+      add(tip, el("div", { "class": "row" }, [el("span", null, [r[2] ? el("span", { "class": "sw " + r[2] }) : null, " " + r[0]]), el("span", null, num(r[1]))]));
+    });
+    tip.hidden = false;
+    var x = (evt.clientX || 0) + 14, y = (evt.clientY || 0) + 14;
+    var w = (typeof window !== "undefined" && window.innerWidth) || 1024;
+    if (x > w - 270) { x = Math.max(4, (evt.clientX || 0) - 270); }
+    tip.style.left = x + "px";
+    tip.style.top = y + "px";
+  }
+  function hideTip() { tip.hidden = true; }
+
+  // -- charts ------------------------------------------------------------------
+  function niceMax(v) {
+    if (v <= 0) { return 1; }
+    var p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p;
+    return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p;
+  }
+  // days: [label]; series: [{name, cls, values: [n per day]}]: a stacked daily bar with a hover column per day
+  function stacked(days, series, height, width) {
+    var W = width || 400, H = height || 160, L = 40, R = 8, T = 8, B = 22, n = Math.max(days.length, 1);
+    var totals = days.map(function (_, i) { var t = 0; series.forEach(function (s) { t += s.values[i] || 0; }); return t; });
+    var top = niceMax(Math.max.apply(null, totals.concat([0])));
+    var step = (W - L - R) / n, bw = Math.max(1, Math.min(28, step - (step > 4 ? 2 : 0.5)));
+    var y = function (v) { return T + (H - T - B) * (1 - v / top); };
+    var svg = sv("svg", { viewBox: "0 0 " + W + " " + H, "class": W > 600 ? "chart wide" : "chart", role: "img",
+      "aria-label": "stacked daily bars, " + series.map(function (s) { return s.name; }).join(", ") });
+    (top % 2 === 0 ? [0, 0.5, 1] : [0, 1]).forEach(function (f) {
+      var v = top * f, yy = y(v);
+      add(svg, sv("line", { x1: L, x2: W - R, y1: yy, y2: yy, "class": f === 0 ? "baseline" : "gridline" }));
+      add(svg, sv("text", { x: L - 6, y: yy + 4, "text-anchor": "end" }, num(v)));
+    });
+    days.forEach(function (d, i) {
+      var x = L + i * step + (step - bw) / 2, base = 0;
+      series.forEach(function (s) {
+        var v = s.values[i] || 0;
+        if (v <= 0) { return; }
+        var y1 = y(base + v), y0 = y(base), h = Math.max(0.5, y0 - y1 - (base > 0 && y0 - y1 > 3 ? 2 : 0));
+        add(svg, sv("rect", { x: x, y: y1, width: bw, height: h, "class": s.cls, rx: bw > 6 ? 2 : 0 }));
+        base += v;
+      });
+      var hit = sv("rect", { x: L + i * step, y: T, width: step, height: H - T - B, "class": "hit" });
+      var rows = series.map(function (s) { return [s.name, s.values[i] || 0, s.cls]; }).reverse();
+      hit.addEventListener("mousemove", function (e) { showTip(e, d + " · total " + num(totals[i]), rows); });
+      hit.addEventListener("mouseleave", hideTip);
+      add(svg, hit);
+    });
+    var labels = n <= 1 ? [0] : [0, Math.floor((n - 1) / 2), n - 1];
+    labels.forEach(function (i, k) {
+      var anchor = k === 0 ? "start" : k === labels.length - 1 ? "end" : "middle";
+      var x = k === 0 ? L : k === labels.length - 1 ? W - R : L + i * step + step / 2;
+      add(svg, sv("text", { x: x, y: H - 6, "text-anchor": anchor }, days[i]));
+    });
+    return el("div", { "class": "scroll" }, svg);
+  }
+  function legend(series) {
+    return el("ul", { "class": "legend" }, series.map(function (s) {
+      return el("li", null, [el("span", { "class": "sw " + s.cls }), s.name + (s.note ? " (" + s.note + ")" : "") + " · " + num(s.values.reduce(function (a, b) { return a + (b || 0); }, 0))]);
+    }));
+  }
+  function spark(values) {
+    var W = 120, H = 22, n = values.length, top = Math.max.apply(null, values.concat([1]));
+    var pts = values.map(function (v, i) { return (n <= 1 ? W / 2 : i * W / (n - 1)).toFixed(1) + "," + (H - 2 - (H - 4) * (v || 0) / top).toFixed(1); });
+    return sv("svg", { viewBox: "0 0 " + W + " " + H, width: W, height: H, "class": "sparkline", role: "img", "aria-label": "per day: " + values.join(" ") },
+      [sv("line", { x1: 0, x2: W, y1: H - 2, y2: H - 2, "class": "baseline" }), sv("polyline", { points: pts.join(" "), "class": "spark" })]);
+  }
+  function bars(rows) {
+    var top = Math.max.apply(null, rows.map(function (r) { return r[1] || 0; }).concat([1]));
+    return table(["", "count", ""], rows.map(function (r) {
+      return { cells: [r[0], r[1] || 0, el("div", { "class": "bar", "widthpx": Math.round(140 * (r[1] || 0) / top) })] };
+    }));
+  }
+  function meter(label, used, limit, fmt) {
+    fmt = fmt || num;
+    var pct = limit ? Math.min(100, 100 * (used || 0) / limit) : null;
+    var level = pct === null ? "" : pct >= 95 ? "bad" : pct >= 80 ? "warn" : "";
+    return el("div", { "class": "tile" }, [
+      el("div", { "class": "label" }, label),
+      el("div", { "class": "value" }, fmt(used) + (limit ? " / " + fmt(limit) : "")),
+      pct === null ? el("div", { "class": "sub" }, "no limit reported")
+        : el("div", { "class": "meter " + level, role: "meter", "aria-valuenow": pct.toFixed(1), "aria-valuemin": 0, "aria-valuemax": 100 },
+          el("div", { "width%": pct.toFixed(1) })),
+      pct === null ? null : el("div", { "class": "sub" }, pct.toFixed(1) + " %")
+    ]);
+  }
+
+  // -- the sections ------------------------------------------------------------
+  function renderHealth(doc) {
+    var h = obj(doc.health), hz = obj(h.healthz), host = obj(h.host), tiles = obj(h.tiles), cert = obj(h.tls_certificate);
+    var status = h.status || hz.status;
+    var age = h.checkpoint_age_seconds, mmd = tiles.mmd_seconds || 60;
+    var used = host.disk_used_percent;
+    var certLevel = !cert.configured ? null : cert.error ? "bad" : cert.seconds_left < 3 * 86400 ? "bad" : cert.seconds_left < 14 * 86400 ? "warn" : "ok";
+    var versions = obj(h.versions);
+    add(box("health"), el("div", { "class": "tiles" }, [
+      tile("Status", status || "–", null, status === "OPERATIONAL" ? "ok" : status === "DEGRADED" ? "warn" : "bad", status === "OPERATIONAL" ? "operational" : String(status || "unknown").toLowerCase()),
+      tile("Tree size", num(hz.tree_size), "leaves in the log"),
+      tile("Published size", num(hz.published_size), "behind by " + num((hz.tree_size || 0) - (hz.published_size || 0)), hz.tiles_error || hz.diverged ? "bad" : "ok", hz.tiles_error ? "tiles: " + hz.tiles_error : hz.diverged ? "diverged" : "tiles ok"),
+      tile("Checkpoint age", dur(age), "since tile write " + dur(h.seconds_since_tile_write), age === null || age === undefined ? "warn" : age > 10 * mmd ? "bad" : age > 2 * mmd ? "warn" : "ok"),
+      tile("Frozen", hz.frozen ? "yes" : "no", hz.freeze_index !== null && hz.freeze_index !== undefined ? "freeze leaf " + hz.freeze_index : null, hz.frozen ? "warn" : "ok", hz.frozen ? "writes stopped" : "writes open"),
+      tile("Resource exhaustion", hz.resource_exhaustion ? String(hz.resource_exhaustion) : "none", null, hz.resource_exhaustion ? "bad" : "ok"),
+      tile("Disk free", bytes(host.disk_free_bytes), used !== undefined && used !== null ? used + " % used of " + bytes(host.disk_total_bytes) : null, used >= 95 ? "bad" : used >= 85 ? "warn" : "ok"),
+      tile("Database", bytes(host.database_bytes), "SQLite file"),
+      tile("Tiles", bytes(h.tiles_bytes), "published tiles on disk"),
+      tile("Uptime", dur(h.uptime_seconds), h.started_at ? "since " + h.started_at : null),
+      tile("Process", bytes(host.process_rss_bytes), "CPU " + num(host.cpu_percent) + " % · load " + num(host.load_average_1m)),
+      tile("Gate TLS certificate", cert.configured ? (cert.error ? "unreadable" : dur(cert.seconds_left)) : "not configured", cert.configured ? (cert.error || "until " + cert.not_after) : "AICS_GATE_TLS_CERT unset", certLevel),
+      tile("Versions", "schema " + num(h.schema_version), ["api " + (versions.api || "–"), "server " + (versions["aics-server"] || "–"), "python " + (versions.python || "–")].join(" · "))
+    ]));
+  }
+  function renderRequests(doc) {
+    var classes = arr(get(doc, "lists", "access_classes"));
+    var daily = arr(get(doc, "requests", "daily"));
+    var totals = obj(get(doc, "requests", "totals"));
+    var node = box("requests");
+    if (!daily.length) { add(node, empty("No days in the window.")); return; }
+    var series = classes.map(function (c, i) {
+      return { name: c, cls: slot(i), note: CLASS_HELP[c], values: daily.map(function (d) { return Number(get(d, "by_class", c)) || 0; }) };
+    });
+    add(node, [
+      el("p", { "class": "meta" }, num(totals.total) + " requests in the window · today " + num(daily[daily.length - 1].total)),
+      stacked(daily.map(function (d) { return d.day; }), series, 240, 1100),
+      legend(series),
+      el("details", null, [el("summary", null, "Table: requests per day by class"),
+        table(["day"].concat(classes, ["total"]), daily.slice().reverse().map(function (d) {
+          return { cells: [d.day].concat(classes.map(function (c) { return Number(get(d, "by_class", c)) || 0; }), [d.total || 0]) };
+        }))])
+    ]);
+  }
+  function renderGroups(doc) {
+    var outcomes = arr(get(doc, "lists", "outcomes")), go = obj(get(doc, "requests", "by_group_outcome"));
+    var groups = arr(get(doc, "lists", "route_groups")).filter(function (g) { return sum(go[g]) > 0; });
+    var node = box("groups");
+    if (!groups.length) { add(node, empty("No requests in the window.")); return; }
+    var rows = groups.map(function (g) { return { cells: [g].concat(outcomes.map(function (o) { return Number(get(go, g, o)) || 0; }), [sum(go[g])]) }; });
+    var col = outcomes.map(function (o) { var t = 0; groups.forEach(function (g) { t += Number(get(go, g, o)) || 0; }); return t; });
+    rows.push({ total: true, cells: ["total"].concat(col, [col.reduce(function (a, b) { return a + b; }, 0)]) });
+    add(node, [table(["group"].concat(outcomes, ["total"]), rows),
+      el("p", { "class": "note" }, "4xx-refused-with-leaf: the answer carried a logged refusal leaf.")]);
+  }
+  function renderLatency(doc) {
+    var w = obj(get(doc, "latency", "window")), node = box("latency");
+    var groups = Object.keys(w);
+    if (!groups.length) { add(node, empty("No samples in the window.")); return; }
+    add(node, [table(["group", "samples", "p50", "p95", "p99", "max", "mean"], groups.map(function (g) {
+      var s = obj(w[g]);
+      return { cells: [g, s.samples || 0, num(s.p50_ms), num(s.p95_ms), num(s.p99_ms), num(s.max_ms), num(s.mean_ms)] };
+    })), el("p", { "class": "note" }, "Milliseconds. Percentiles are the upper bound of the histogram bucket that holds them (bounds " + arr(get(doc, "latency", "bounds_ms")).join(", ") + " ms); max and mean are exact.")]);
+  }
+  function renderGate(doc) {
+    var g = obj(get(doc, "gate", "totals")), s = obj(g.sessions_opened), tools = obj(g.tools), claims = obj(g.claims);
+    var daily = arr(get(doc, "gate", "daily"));
+    add(box("gate"), [
+      bars([["sessions opened", s.total], ["help asked", g.help], ["tools answered", sum(tools)], ["names claimed", sum(claims)], ["upgrades", g.upgrades]]),
+      el("h3", null, "Breakdown"),
+      table(["", "count"], [
+        { cells: ["sessions: https", s.https || 0] }, { cells: ["sessions: tcp-tls", s["tcp-tls"] || 0] }, { cells: ["sessions: tcp-plain", s["tcp-plain"] || 0] },
+        { cells: ["tools: openssl", tools.openssl || 0] }, { cells: ["tools: ssh-keygen", tools["ssh-keygen"] || 0] }, { cells: ["tools: python3", tools.python3 || 0] }, { cells: ["tools: none", tools.none || 0] },
+        { cells: ["claims: key", claims.key || 0] }, { cells: ["claims: third-party", claims["third-party"] || 0] }, { cells: ["claims: secret", claims.secret || 0] },
+        { cells: ["ended by malformed lines", g.ended_malformed || 0] }, { cells: ["idle expired", g.idle_expired || 0] }
+      ]),
+      el("p", { "class": "meta" }, ["Sessions per day ", spark(daily.map(function (d) { return Number(get(d, "sessions_opened", "total")) || 0; })),
+        " · open now " + num(get(doc, "gate", "sessions_open")) + " of " + num(get(doc, "gate", "max_sessions"))])
+    ]);
+  }
+  function typeTable(daily, key, windowCounts, allTime, label) {
+    var types = Object.keys(obj(windowCounts)).sort(function (a, b) { return (windowCounts[b] || 0) - (windowCounts[a] || 0); });
+    if (allTime) { Object.keys(allTime).forEach(function (t) { if (types.indexOf(t) < 0) { types.push(t); } }); }
+    if (!types.length) { return empty("None in the window."); }
+    var head = [label, "window"].concat(allTime ? ["all time"] : [], ["per day"]);
+    return table(head, types.map(function (t) {
+      var cells = [t, Number(windowCounts[t]) || 0];
+      if (allTime) { cells.push(Number(allTime[t]) || 0); }
+      cells.push(spark(daily.map(function (d) { return Number(get(d, key, t)) || 0; })));
+      return { cells: cells };
+    }));
+  }
+  function renderLeaves(doc) {
+    var l = obj(get(doc, "activity", "leaves")), daily = arr(l.daily);
+    var types = Object.keys(obj(l.window)).sort(function (a, b) { return (l.window[b] || 0) - (l.window[a] || 0); });
+    var top = types.slice(0, 7), series = top.map(function (t, i) {
+      return { name: t, cls: slot(i), values: daily.map(function (d) { return Number(get(d, "by_type", t)) || 0; }) };
+    });
+    if (types.length > 7) {
+      series.push({ name: "other", cls: "c8", values: daily.map(function (d) {
+        var o = 0; types.slice(7).forEach(function (t) { o += Number(get(d, "by_type", t)) || 0; }); return o; }) });
+    }
+    add(box("leaves"), [
+      el("p", { "class": "meta" }, "Tree size " + num(l.tree_size) + " · " + num(sum(l.window)) + " leaves in the window"),
+      series.length ? stacked(daily.map(function (d) { return d.day; }), series) : null,
+      series.length ? legend(series) : null,
+      typeTable(daily, "by_type", obj(l.window), obj(l.all_time), "type")
+    ]);
+  }
+  function renderRefusals(doc) {
+    var r = obj(get(doc, "activity", "refusals")), daily = arr(r.daily);
+    var reports = daily.filter(function (d) { return d.source === "report"; }).length;
+    add(box("refusals"), [
+      el("p", { "class": "meta" }, num(sum(r.window)) + " refusals in the window"),
+      typeTable(daily, "by_code", obj(r.window), null, "code"),
+      el("p", { "class": "note" }, reports + " of " + daily.length + " days from their daily report leaf; the rest counted live from refusal leaves.")
+    ]);
+  }
+  function renderNames(doc) {
+    var n = obj(get(doc, "activity", "names")), claimed = obj(n.claimed_by_tier), current = obj(n.current_by_tier);
+    var keys = obj(get(doc, "activity", "keys")), kw = obj(keys.window), ka = obj(keys.all_time);
+    var daily = arr(n.claimed_daily), tiers = ["key", "third-party", "secret"];
+    var series = tiers.map(function (t, i) { return { name: t, cls: slot(i), values: daily.map(function (d) { return Number(d[t]) || 0; }) }; });
+    add(box("names"), [
+      el("p", { "class": "meta" }, num(n.total) + " names"),
+      table(["tier", "claimed (all time)", "current"], tiers.map(function (t) { return { cells: [t, claimed[t] || 0, current[t] || 0] }; })
+        .concat([{ cells: ["revoked", "", current.revoked || 0] }])),
+      el("h3", null, "Claims per day"),
+      stacked(daily.map(function (d) { return d.day; }), series, 130),
+      legend(series),
+      el("h3", null, "Key events"),
+      table(["", "window", "all time"], ["rotations", "upgrades", "x25519_rotations", "revocations"].map(function (k) {
+        return { cells: [k.replace("_", " "), kw[k] || 0, ka[k] || 0] };
+      }))
+    ]);
+  }
+  function renderSwarms(doc) {
+    var a = obj(doc.activity), s = obj(a.swarms), m = obj(a.messages), c = obj(a.capsules), w = obj(s.window), at = obj(s.all_time);
+    add(box("swarms"), [
+      el("p", { "class": "meta" }, "Swarms " + (s.enabled ? "enabled" : "not enabled") + " · active " + num(s.active_swarms) + " · members " + num(s.members_in_swarms)),
+      table(["swarm leaves", "window", "all time"], Object.keys(w).map(function (k) { return { cells: [k, w[k] || 0, at[k] || 0] }; })),
+      el("h3", null, "DMs and capsules"),
+      table(["", "window", "all time"], [
+        { cells: ["DM leaves", get(m, "dm_leaves", "window") || 0, get(m, "dm_leaves", "all_time") || 0] },
+        { cells: ["grant leaves", get(m, "grant_leaves", "window") || 0, get(m, "grant_leaves", "all_time") || 0] },
+        { cells: ["capsule leaves", get(c, "capsule_leaves", "window") || 0, get(c, "capsule_leaves", "all_time") || 0] }
+      ]),
+      table(["stored now", "count"], [
+        { cells: ["DM bodies stored", m.bodies_stored || 0] }, { cells: ["DM bodies expired", m.bodies_expired || 0] },
+        { cells: ["capsule slots", c.slots || 0] }, { cells: ["capsule bodies stored", c.bodies_stored || 0] }
+      ])
+    ]);
+  }
+  function renderNotices(doc) {
+    var a = obj(doc.activity), n = obj(a.notices), h = obj(a.hidden_bodies), f = obj(a.freeze), closed = obj(n.closed_by_outcome), reasons = obj(h.by_reason);
+    add(box("notices"), [
+      el("div", { "class": "tiles" }, [
+        meter("Open notices", n.open, n.max_open),
+        meter("Open notice bytes", n.open_bytes, n.max_open_bytes, bytes),
+        tile("Received in the window", num(n.received_in_window)),
+        tile("Freeze", f.state || "–", f.freeze_index !== null && f.freeze_index !== undefined ? "leaf " + f.freeze_index + " · " + (f.reason_code || "") : "no freeze leaf", f.state === "frozen" ? "warn" : "ok", f.state === "frozen" ? "writes stopped" : "writes open")
+      ]),
+      el("h3", null, "Closed notices by outcome (" + num(n.closed) + ")"),
+      Object.keys(closed).length ? table(["outcome", "count"], Object.keys(closed).map(function (k) { return { cells: [k, closed[k]] }; })) : empty("None closed yet."),
+      el("h3", null, "Hidden bodies (" + num(h.total) + ", " + num(h.erased) + " erased, " + num(h.window) + " in the window)"),
+      Object.keys(reasons).length ? table(["reason", "count"], Object.keys(reasons).map(function (k) { return { cells: [k, reasons[k]] }; })) : empty("None hidden."),
+      el("p", { "class": "note" }, "Freeze leaves " + num(f.freeze_leaves) + " · suspension leaves " + num(f.suspension_leaves))
+    ]);
+  }
+  function renderSup(doc) {
+    var s = obj(get(doc, "activity", "sup")), cw = obj(get(s, "credits", "window")), ca = obj(get(s, "credits", "all_time"));
+    var sw = obj(get(s, "spends", "window")), sa = obj(get(s, "spends", "all_time"));
+    var rows = [];
+    Object.keys(cw).forEach(function (k) { rows.push({ cells: ["credit: " + k, get(cw, k, "count") || 0, get(cw, k, "sup") || 0, get(ca, k, "count") || 0, get(ca, k, "sup") || 0] }); });
+    Object.keys(sw).forEach(function (k) { rows.push({ cells: ["spend: " + k, get(sw, k, "count") || 0, get(sw, k, "sup") || 0, get(sa, k, "count") || 0, get(sa, k, "sup") || 0] }); });
+    add(box("sup"), [
+      el("p", { "class": "meta" }, (s.profile || "SUP") + " · " + (s.active ? "active" : "inactive") + " · contributions " + (s.contributions_open ? "open" : "closed")),
+      table(["", "window", "SUP", "all time", "SUP"], rows),
+      el("p", { "class": "meta" }, "Tasks published " + num(s.tasks_published) + " · open " + num(s.tasks_open) + " · balances outstanding " + num(s.balance_outstanding) + " SUP")
+    ]);
+  }
+  function renderBudgets(doc) {
+    var b = obj(get(doc, "health", "budgets")), host = obj(get(doc, "health", "host")), usage = obj(get(doc, "health", "usage"));
+    var tiles = [
+      meter("Ciphertext stored", get(b, "ciphertext", "used_bytes"), get(b, "ciphertext", "budget_bytes"), bytes),
+      meter("Disk used", host.disk_used_bytes, host.disk_total_bytes, bytes)
+    ];
+    if (b.gate_staged) { tiles.push(meter("Gate staged bytes", get(b, "gate_staged", "used_bytes"), get(b, "gate_staged", "limit_bytes"), bytes)); }
+    var keys = Object.keys(usage).filter(function (k) { return typeof usage[k] === "number"; });
+    add(box("budgets"), [el("div", { "class": "tiles" }, tiles),
+      el("details", null, [el("summary", null, "Counts of /v2/stats"), table(["", "count"], keys.map(function (k) { return { cells: [k.replace(/_/g, " "), usage[k]] }; }))])]);
+  }
+  function renderWitness(doc) {
+    var w = obj(doc.witness), st = w.state;
+    var level = st === "quorum_met" ? "ok" : st === "no_witness" ? "warn" : "bad";
+    var words = { quorum_met: "quorum met", quorum_not_met: "quorum not met", no_witness: "no witness yet", no_checkpoint: "no checkpoint" };
+    add(box("witness"), [
+      el("div", { "class": "tiles" }, [
+        tile("State", words[st] || String(st || "–"), "G5 " + (w.g5 || "–"), level, words[st]),
+        tile("Cosignatures", num(w.cosignatures) + " / " + num(w.quorum), "on checkpoint " + num(w.checkpoint_size))
+      ]),
+      arr(w.witnesses).length ? table(["witness", "independent", "cosigned"], arr(w.witnesses).map(function (x) {
+        return { cells: [String(get(x, "name") || "–"), get(x, "independent") ? "yes" : "no", arr(w.cosigned_by).indexOf(get(x, "name")) >= 0 ? "yes" : "no"] };
+      })) : empty("No witness is listed in the card: G5 stays promised until one is."),
+      w.error ? el("p", { "class": "error" }, "Error: " + w.error) : null
+    ]);
+  }
+  function cloudflareUrl(zone) {
+    zone = String(zone || "").trim().toLowerCase().replace(/\.$/, "");
+    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(zone) || zone.length > 253) { return null; }
+    if (zone.split(".").some(function (p) { return !p || p[0] === "-" || p[p.length - 1] === "-"; })) { return null; }
+    return "https://dash.cloudflare.com/?to=/:account/" + zone + "/analytics/traffic";
+  }
+  function renderCloudflare(doc) {
+    var zone = ZONE || doc.pages_host, url = cloudflareUrl(zone), node = box("cloudflare");
+    if (!url) { add(node, empty("No pages host in the document.")); return; }
+    add(node, [
+      el("p", null, el("a", { href: url, target: "_blank", rel: "noopener noreferrer" }, "Cloudflare Analytics for " + zone)),
+      el("p", { "class": "note" }, "Crawler and human traffic of the proxied pages host is Cloudflare's knowledge; sign in to Cloudflare there. No token is used here.")
+    ]);
+  }
+
+  var SECTIONS = [["health", renderHealth], ["requests", renderRequests], ["groups", renderGroups], ["latency", renderLatency],
+    ["gate", renderGate], ["leaves", renderLeaves], ["refusals", renderRefusals], ["names", renderNames], ["swarms", renderSwarms],
+    ["notices", renderNotices], ["sup", renderSup], ["budgets", renderBudgets], ["witness", renderWitness], ["cloudflare", renderCloudflare]];
+
+  function render(doc) {
+    doc = obj(doc);
+    SECTIONS.forEach(function (s) {
+      try { s[1](doc); } catch (e) { add(box(s[0]), el("p", { "class": "error" }, "This section could not be drawn: " + (e && e.message))); }
+    });
+    var meta = document.getElementById("meta");
+    while (meta.firstChild) { meta.removeChild(meta.firstChild); }
+    add(meta, get(doc, "window", "from") + " to " + get(doc, "window", "to") + " (" + num(doc.days) + " days, UTC) · generated " + doc.generated_at +
+      " · fetched " + new Date().toISOString().slice(11, 19) + "Z · refresh every " + REFRESH + " s");
+  }
+  function showError(text) {
+    var e = document.getElementById("error");
+    while (e.firstChild) { e.removeChild(e.firstChild); }
+    add(e, text);
+    e.hidden = !text;
+  }
+  var busy = false;
+  function load() {
+    if (busy) { return Promise.resolve(); }
+    busy = true;
+    return fetch("/data", { headers: { "X-AICS-Dashboard": "1" }, cache: "no-store", credentials: "omit" })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); })
+      .then(function (res) {
+        if (!res.ok) { showError("The stats request failed (HTTP " + res.status + "): " + (get(res.body, "error") || "unknown error") + ". The last good figures stay shown."); return; }
+        showError("");
+        render(res.body);
+      })
+      .catch(function (e) { showError("The dashboard process did not answer: " + (e && e.message) + "."); })
+      .then(function () { busy = false; });
+  }
+  if (typeof window !== "undefined") { window.aicsDashboard = { render: render, load: load }; }
+  load();
+  setInterval(load, REFRESH * 1000);
+})();
+"""
+
+
+def _dashboard_main(owner: Any, args: Any) -> int:
+    """``aics_client.py owner ... dashboard``: serve the owner stats page on 127.0.0.1 until interrupted."""
+    try:
+        dashboard = OwnerDashboard(owner, host=args.host, port=args.port, days=args.days, refresh=args.refresh,
+                                   cloudflare_zone=args.cloudflare_zone)
+    except (ValueError, OSError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(f"owner dashboard on {dashboard.url} (127.0.0.1 only; every refresh signs a fresh GET /v2/admin/stats; "
+          "Ctrl-C stops it)", flush=True)
+    try:
+        dashboard.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+def _int_range(low: int, high: int, what: str) -> Callable[[str], int]:
+    def parse(text: str) -> int:
+        try:
+            value = int(text)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{what} must be an integer") from None
+        if not low <= value <= high:
+            raise argparse.ArgumentTypeError(f"{what} is {low} to {high}")
+        return value
+
+    return parse
 
 
 # ---------------------------------------------------------------------------
@@ -2907,6 +3855,18 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--document-file", required=True)
     c = commands.add_parser("notices", help="the notice register (personal data)")
     c.add_argument("--status", default=None, choices=["open", "closed"])
+    days = _int_range(STATS_DAYS[0], STATS_DAYS[1], "--days")
+    c = commands.add_parser("stats", help="GET /v2/admin/stats: the owner stats document (aggregate counts only)")
+    c.add_argument("--days", type=days, default=None, help="UTC days in the window, today included (1-366, default 30)")
+    c.add_argument("--json", action="store_true", help="print the JSON document instead of a text summary")
+    c = commands.add_parser("dashboard", help="serve the owner stats page on 127.0.0.1, signing a fresh request per refresh")
+    c.add_argument("--host", default=DASHBOARD_HOST, help="must be 127.0.0.1: the page is for this machine only")
+    c.add_argument("--port", type=_int_range(0, 65535, "--port"), default=DASHBOARD_PORT)
+    c.add_argument("--days", type=days, default=30, help="UTC days in the window (1-366, default 30)")
+    c.add_argument("--refresh", type=_int_range(DASHBOARD_REFRESH[0], DASHBOARD_REFRESH[1], "--refresh"), default=30,
+                   help="seconds between refreshes (5-3600, default 30)")
+    c.add_argument("--cloudflare-zone", default=None,
+                   help="the Cloudflare zone to link to (default: the document's pages host)")
     c = commands.add_parser("close-notice", help="close a notice with its outcome")
     c.add_argument("--report-id", required=True)
     c.add_argument("--outcome", required=True,

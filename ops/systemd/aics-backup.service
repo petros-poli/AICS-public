@@ -1,12 +1,25 @@
-# One-shot service unit for ops/backup.sh. Install on the VPS:
+# One-shot service unit for ops/backup.sh. Install on the VPS (ops/README.md,
+# "Installing the backup timer"):
+#   install -d -m 0700 -o root -g root /var/backups/aics
 #   cp ops/systemd/aics-backup.{service,timer} /etc/systemd/system/
 #   systemctl daemon-reload && systemctl enable --now aics-backup.timer
 # Paths assume the checkout lives at /opt/wesupport-ai (deploy-vps.sh's target).
 # Runs as root because it drives docker compose (the docker socket); the script
-# itself is an allowlist (db + tiles only) and never touches the seed.
+# itself is an allowlist (db + tiles only) and never touches the seed or
+# deploy/.env.
+#
+# Mode: with no rclone config at /root/.config/rclone/rclone.conf (the R2 and B2
+# buckets do not exist yet) the script writes LOCAL backups only, to
+# /var/backups/aics, and warns that they are not off-box. Once the config
+# exists, it uploads to the remotes "r2 b2" and keeps the local copy too.
+# Overrides (AICS_BACKUP_REMOTES, AICS_BACKUP_KEEP_DAYS, AICS_BACKUP_LOCAL_DIR=
+# to stop keeping local copies, AICS_BACKUP_MIN_FREE_MB,
+# AICS_BACKUP_REQUIRE_REMOTES=1) go in /etc/default/aics-backup, one VAR=value
+# per line. If you move AICS_BACKUP_LOCAL_DIR, change ReadWritePaths= and the
+# ExecStartPre= line below to the same path.
 
 [Unit]
-Description=AICS nightly off-box backup (SQLite + tiles; never the seed)
+Description=AICS nightly backup (SQLite + tiles; never the seed)
 Documentation=file:///opt/wesupport-ai/ops/README.md
 After=docker.service network-online.target
 Wants=network-online.target
@@ -15,20 +28,29 @@ ConditionPathIsExecutable=/opt/wesupport-ai/ops/backup.sh
 [Service]
 Type=oneshot
 User=root
+Environment=AICS_BACKUP_LOCAL_DIR=/var/backups/aics
+Environment=AICS_BACKUP_KEEP_DAYS=30
+EnvironmentFile=-/etc/default/aics-backup
+# "+" runs this outside the sandbox, so the directory exists before
+# ReadWritePaths= below is applied to ExecStart.
+ExecStartPre=+/usr/bin/install -d -m 0700 -o root -g root /var/backups/aics
 ExecStart=/opt/wesupport-ai/ops/backup.sh
 # Be a polite citizen on a 2-vCPU box that also serves the log.
 Nice=10
 IOSchedulingClass=best-effort
 IOSchedulingPriority=7
 # Hardening; none of these block docker (socket in /run) or rclone. ProtectSystem=strict
-# makes /run read-only too, so the script's lock lives in the unit's own runtime
-# directory, /run/aics-backup (RUNTIME_DIRECTORY), which systemd creates writable.
+# makes /run and /var read-only too, so the script's lock lives in the unit's own
+# runtime directory, /run/aics-backup (RUNTIME_DIRECTORY), which systemd creates
+# writable, and the local backups need ReadWritePaths=.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=read-only
 ProtectSystem=strict
+ReadWritePaths=/var/backups/aics
 RuntimeDirectory=aics-backup
 RuntimeDirectoryMode=0700
+UMask=0077
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true

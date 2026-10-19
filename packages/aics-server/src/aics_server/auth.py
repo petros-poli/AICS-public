@@ -47,7 +47,12 @@ section 20.6 (``@query`` is covered as well when a read has a query).  Their
 ``(kid, nonce, expires)`` is the signed tuple, ``expires`` exactly as signed.
 A read's nonce is remembered in memory and written in batches; an
 administration write's and a contribution request's are recorded durably
-before they act.
+before they act.  Once authenticated, a contribution claim outside its
+validity window, a claim that fails its rules, and an administration write
+whose fields or state fail validation are decisions on a signed submission:
+each is a ``refusal`` leaf naming the signer's ``(kid, nonce, expires)``
+(section 10.2; for the administration, ``attempt_kid`` is the owner kid).  A
+request that does not authenticate stays an HTTP error with no leaf.
 """
 
 from __future__ import annotations
@@ -68,6 +73,7 @@ from aics_identity import sf
 
 from . import envelopes as ev
 from . import identity as ident
+from . import stats
 from .db import Refusal, Rejected, SanctuaryDB, SignedContext, decode_u64
 from .strictjson import loads_bounded
 
@@ -116,6 +122,7 @@ def _error(status: int, error: str, message: str, headers: dict[str, str] | None
 
 
 def refusal_exception(exc: Refusal) -> HTTPException:
+    stats.mark_refusal(exc)
     headers = {"Retry-After": str(exc.retry_after)} if exc.retry_after else None
     return HTTPException(status_code=exc.status, detail=exc.detail(), headers=headers)
 
@@ -261,12 +268,22 @@ def _check_signature_window(parts: RequestParts, t: int) -> None:
 
 
 def verify_http_signature(
-    parts: RequestParts, resolve_key: Callable[[str], Any], t: int
+    parts: RequestParts, resolve_key: Callable[[str], Any], t: int, *, clock: bool = True
 ) -> http_sig.VerifiedSignature:
-    """Verify the RFC 9421 signature of a signed request without an envelope under the AICS profile at *t*."""
+    """Verify the RFC 9421 signature of a signed request without an envelope under the AICS profile at *t*.
+
+    With ``clock=False`` the AICS-1 section 4.3 window is left to the caller: the
+    signature is verified with no clock or window bound at all (``created`` and
+    ``expires`` must still parse), so that a caller whose authenticated attempts
+    are logged (a contribution claim, section 20.6) can refuse one outside its
+    window with a leaf naming its tuple (section 10.2), as ``POST /v2/entries`` does.
+    """
     _require_signature_headers(parts)
-    _check_signature_window(parts, t)
+    if clock:
+        _check_signature_window(parts, t)
     policy = dict(http_sig.AICS_VERIFY_POLICY)
+    if not clock:
+        policy.update(max_age=None, max_lifetime=None)
     required = tuple(policy.pop("required_components"))
     if parts.has_query:
         # A signed read with a query (this server's extension; AICS-1 section 12.1 native writes carry none) also
@@ -281,8 +298,9 @@ def verify_http_signature(
             parts.body,
             resolve_key=resolve_key,
             required_components=required,
-            max_clock_skew=CLOCK_SKEW_SECONDS,
+            max_clock_skew=CLOCK_SKEW_SECONDS if clock else _NO_CLOCK,
             now=t,
+            freshness=clock,
             **policy,
         )
     except http_sig.MalformedSignature as exc:
@@ -300,6 +318,8 @@ def verify_http_signature(
         )
     if not keys.is_did_key(sig.keyid):
         raise _error(401, "malformed_signature", "keyid must be your did:key (AICS-1 section 3.1)")
+    if not clock:
+        return sig
     try:
         # AICS-1 section 4.3 at t, exactly, on what the library parsed (its request policy is wider at expiry).
         ev.check_fresh({"created": sig.created, "expires": sig.expires}, t)
@@ -324,6 +344,7 @@ class EntryRefused(Exception):
     """A logged refusal of a ``POST /v2/entries`` submission: answered with its entry and receipt (a 4xx)."""
 
     def __init__(self, refusal: Refusal) -> None:
+        stats.mark_refusal(refusal)
         super().__init__(refusal.message)
         self.refusal = refusal
 
@@ -552,6 +573,7 @@ class Authenticator:
                 raise self._unauthenticated(
                     env, "bad_signature", f"the RFC 9421 signature does not authenticate this envelope: {exc}"
                 ) from None
+            stats.mark_signed("owner" if role == "owner" else "agent-signed")
             try:
                 checked = ev.verify_native_signature(env, origin=self.db.origin, resolve_key=lambda kid: public)
             except ev.EnvelopeRejected as exc:
@@ -603,6 +625,7 @@ class Authenticator:
             t = int(time.time())
             parts = await self._read(request)
             sig = verify_http_signature(parts, self.db.signing_key_for, t)
+            stats.mark_signed("agent-signed")
             ctx = self._context(parts, sig, self.db.signing_key_for(sig.keyid), t=t, role="agent")
             try:
                 self.db.consume_nonce(ctx, service=True)
@@ -627,9 +650,23 @@ class Authenticator:
         async def dependency(request: Request) -> SignedContext:
             t = int(time.time())
             parts = await self._read(request)
-            sig = verify_http_signature(parts, self.db.signing_key_for, t)
+            # The validity window is checked after the signature verified (below): an authenticated claim outside
+            # it is a logged refusal naming its tuple (AICS-1 sections 4.3, 10.2 and 20.6), as for POST /v2/entries.
+            sig = verify_http_signature(parts, self.db.signing_key_for, t, clock=False)
+            stats.mark_signed("agent-signed")
             ctx = self._context(parts, sig, self.db.signing_key_for(sig.keyid), t=t, role="agent")
             ctx = replace(ctx, request_hash=self.db.contribution_claim_hash(parts.body))
+            try:
+                ev.check_fresh({"created": sig.created, "expires": sig.expires}, t)
+            except ev.EnvelopeRejected as exc:
+                # expired or future at t, or malformed: a window that is not created < expires <= created + 300.
+                code = exc.code if exc.code in ("expired", "future") else "malformed"
+                hint = "resynchronize your clock and sign again" if code != "malformed" else "sign a new request"
+                message = f"signature window: {exc.message}; {hint} (AICS-1 section 4.3)"
+                try:
+                    self.db.refuse_stale(ctx, code, message)
+                except Refusal as refusal:
+                    raise refusal_exception(refusal) from None
             self._consume(ctx, log_refusal=True)
             remember_signed_write(request, ctx)
             problem = service_request_problem(parts, ctx.fields)
@@ -649,6 +686,7 @@ class Authenticator:
             t = int(time.time())
             parts = await self._read(request)
             sig = verify_http_signature(parts, self.db.signing_key_for, t)
+            stats.mark_signed("agent-signed")
             ctx = self._context(parts, sig, self.db.signing_key_for(sig.keyid), t=t, role="agent", obj={})
             self._consume(ctx, log_refusal=False)
             return ctx
@@ -680,6 +718,7 @@ class Authenticator:
             t = int(time.time())
             parts = await self._read(request)
             sig = self._owner_signature(parts, t)
+            stats.mark_signed("owner")
             ctx = self._context(parts, sig, self.db.owner_public_key, t=t, role="owner")
             if request.method in ("GET", "HEAD"):
                 self._consume(ctx, log_refusal=False)  # a read of the notice register: batched like signed reads
@@ -691,6 +730,9 @@ class Authenticator:
                     self.db.consume_nonce(ctx, service=True)
                 except Refusal as exc:
                     raise refusal_exception(exc) from None
+                # Authenticated, its nonce spent: a request field that then fails validation is a decision on the
+                # owner's submission, a refusal leaf naming the owner's tuple (AICS-1 section 10.2), not a bare 422.
+                remember_signed_write(request, ctx)
             return ctx
 
         return dependency

@@ -121,6 +121,7 @@ class FakeServer:
             reason_code=reason,conflict_index=conflict,receipt_hash=None)
         if reason=='replay' and conflict is not None: q['receipt_hash']=H(self.receipt(self.entries[conflict]))
         e=self.admin('refusal',q)
+        if authenticated: self.nonces.setdefault((p['kid'],p['nonce']),(p['expires'],len(self.entries)-1))  # the refusal backs it
         if 'retain_secret' in self.faults and body: self.bodies[H(body)]=body
         return Response(403,J(dict(entry=e,receipt_note=U(self.receipt(e)))),{})
 
@@ -151,7 +152,7 @@ class FakeServer:
                 if 'bearer' not in self.faults: return no('bad_signature',authenticated=False)
         if p['created']<self.now-300 or p['expires']<=self.now:
             if 'accept_stale' not in self.faults: return no('expired')
-        if (kid,p['nonce']) in self.nonces and self.nonces[kid,p['nonce']][0]>self.now:
+        if (kid,p['nonce']) in self.nonces:  # §4.3 as amended (DECISIONS row 26): used once, for good
             if 'accept_replay' not in self.faults: return no('replay',conflict=self.nonces[kid,p['nonce']][1])
         if typ=='name.claim':
             if q['name_norm'] in self.names:

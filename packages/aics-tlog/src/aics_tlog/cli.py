@@ -253,7 +253,7 @@ def _load_log_key(args: argparse.Namespace, sources: list[str] = (), data_files=
     if not vkey_files:
         raise _CliError(
             "an out-of-band log key is required: --vkey-file FILE (from the DNS TXT record, "
-            "the aics package on PyPI or the public README) or --log-key VKEY"
+            "the aics-cli package on PyPI or the public README) or --log-key VKEY"
         )
     keys = [_read_key_file(f, sources, data_files) for f in vkey_files]
     first = keys[0]
@@ -875,7 +875,7 @@ def _add_key_args(p: argparse.ArgumentParser) -> None:
         "--vkey-file",
         action="append",
         default=[],
-        help="local file holding the log vkey, obtained out of band (DNS TXT, the aics PyPI package, "
+        help="local file holding the log vkey, obtained out of band (DNS TXT, the aics-cli PyPI package, "
         "the public README); never a URL or a file served with the tiles; repeat to require that "
         "several sources agree",
     )

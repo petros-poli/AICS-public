@@ -1,6 +1,12 @@
 """Shared fixtures: a local log built with aics-tlog, witnesses, keys from
 aics-identity, an AICS-1 assurance card and trust bundle, a fake HTTP
-fetcher and a fake DNS resolver."""
+fetcher and a fake DNS resolver.
+
+The suite runs against the trust bundle this package really ships
+(``aics_cli.published_keys``: wesupport-ai.com, checked in
+test_published_keys.py); for the fake ``log.test`` domain it is "published for
+wesupport-ai.com (...), not log.test".  A test whose assertions are about the
+package before that release asks for ``placeholder_pypi``."""
 
 from __future__ import annotations
 
@@ -308,3 +314,14 @@ class Harness:
 @pytest.fixture
 def h(tmp_path: Path) -> Harness:
     return Harness(home=tmp_path / "aics-home", fetcher=FakeFetcher(), dns=FakeDNS(), clock=[NOW])
+
+
+@pytest.fixture
+def placeholder_pypi(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The aics package before the production-key release: no AICS_TRUST_BUNDLE constant, reported as
+    "placeholder" and never counted as a source."""
+    from aics_cli import published_keys as pk
+
+    monkeypatch.setattr(pk, "PLACEHOLDER", True)
+    monkeypatch.setattr(pk, "AICS_TRUST_BUNDLE", None)
+    monkeypatch.setattr(pk, "AICS_TRUST_BUNDLE_SHA256", None)

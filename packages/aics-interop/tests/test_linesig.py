@@ -19,7 +19,6 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 
 from aics_interop import aicslog, appendix_a, drivers, spec
-from aics_interop.findings import finding
 
 KEY = spec.test_key(0x61)
 U = spec.unsigned_text_envelope(KEY, origin=aicslog.ORIGIN, typ="post", created=aicslog.T0,
@@ -234,13 +233,20 @@ def test_identity_default_line_verifier_follows_the_exact_bytes_rule(lf_signatur
         linesig.verify_line(session, line, sig, KEY.public_key())
 
 
-@finding("F26", raises=AssertionError)
 def test_default_line_verifiers_follow_the_exact_bytes_rule(tmp_path, lf_signature):
-    """AICS-1 §11.3: no final LF in the signed bytes; aics verify-line (default) must refuse too."""
+    """AICS-1 §11.3: no final LF in the signed bytes; aics verify-line (default) refuses too (F26 retired)."""
     session, line, sig = lf_signature
     r = drivers.AicsCli(home=tmp_path / "home").run("verify-line", f"--session={session}", f"--line={line}",
                                                     f"--sig={sig}", "--pub", pub_reply(KEY))
     assert r.code == 2, f"aics verify-line accepted a signature over bytes + LF (form {r.data.get('form')})"
+
+
+def test_the_cli_leeway_is_an_explicit_flag(tmp_path, lf_signature):
+    """The wider forms (a final LF) are accepted only when asked for, for files written outside the protocol."""
+    session, line, sig = lf_signature
+    r = drivers.AicsCli(home=tmp_path / "home").run("verify-line", f"--session={session}", f"--line={line}",
+                                                    f"--sig={sig}", "--pub", pub_reply(KEY), "--leeway")
+    assert (r.code, r.data.get("form"), r.data.get("leeway")) == (0, "raw", True), r.data
 
 
 @pytest.mark.parametrize("session,line", CASES)

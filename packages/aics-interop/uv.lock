@@ -9,7 +9,7 @@ overrides = [
 ]
 
 [[package]]
-name = "aics"
+name = "aics-cli"
 version = "0.1.0"
 source = { editable = "../aics-cli" }
 dependencies = [
@@ -83,7 +83,7 @@ name = "aics-interop"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "aics" },
+    { name = "aics-cli" },
     { name = "aics-conformance" },
     { name = "aics-identity" },
     { name = "aics-server" },
@@ -101,7 +101,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "aics", editable = "../aics-cli" },
+    { name = "aics-cli", editable = "../aics-cli" },
     { name = "aics-conformance", editable = "../aics-conformance" },
     { name = "aics-identity", editable = "../aics-identity" },
     { name = "aics-server", editable = "../aics-server" },

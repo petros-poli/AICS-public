@@ -40,7 +40,7 @@ which workflow built it.
    | `aics-tlog` | `pypi-aics-tlog` |
    | `aics-witness` | `pypi-aics-witness` |
    | `aics-conformance` | `pypi-aics-conformance` |
-   | `aics` (`packages/aics-cli`) | `pypi-aics` |
+   | `aics-cli` (`packages/aics-cli`) | `pypi-aics` |
    | `aics-mcp` | `pypi-aics-mcp` |
 
    Distinct environments are necessary for initial project creation: PyPI
@@ -54,7 +54,7 @@ which workflow built it.
 
    Do not configure `aics-server`: it is tested but never built or uploaded by the
    release pipeline. Use `[project].name` from each included `pyproject.toml`,
-   not its directory name: the CLI publishes as `aics`. PyPI documents the publisher identity fields in
+   not its directory name: the CLI distribution is `aics-cli`; its command remains `aics`. PyPI documents the publisher identity fields in
    [Adding a trusted publisher](https://docs.pypi.org/trusted-publishers/adding-a-publisher/).
 4. Leave the **repository** Actions variable `PUBLISH_PYPI` absent for GitHub-only
    releases. Set it to the literal string **`true`** once all included projects
@@ -63,6 +63,15 @@ which workflow built it.
    value skips PyPI; the `prepare` job logs the reason. No API token, signing
    key, password, or long-lived secret is used. GitHub's job token and OIDC tokens
    are short lived. Setting the variable does not rerun completed jobs.
+5. Leave the optional repository variable **`PYPI_ONLY_PROJECT`** empty to publish
+   all six projects. For a correction that needs only one upload, set it to that
+   project's distribution name, such as `aics-cli`. The preparation job validates
+   the name against the six-project list, normalizes case and runs of `-`, `_` or
+   `.` as PyPI does, and freezes the result in its outputs. Unknown names and
+   whitespace are errors. The filter does not enable publishing by itself:
+   `PUBLISH_PYPI` must still be exactly `true`. Every publishing step uses the
+   frozen value, including when a failed publishing job is rerun; changing the
+   repository variable does not change an existing run's selection.
 
 The SLSA workflow uses `private-repository: false` for this public repository.
 Signing publishes repository/workflow identity, source identifiers and artifact
@@ -81,8 +90,9 @@ for this repository before enabling package distribution.
    dependency constraints, and ensure `main` passes CI and Reproducible builds.
    The repository tag identifies a release of the monorepo; package versions come
    from their own `pyproject.toml` and need not match one another or the tag.
-   When publishing to PyPI, **every included package/version must be new**: the
-   workflow publishes all libraries and does not skip existing files. PyPI
+   When publishing to PyPI, **every selected package/version must be new**. By
+   default all six libraries are selected; `PYPI_ONLY_PROJECT` can select one
+   for a correction release. Publishing never skips existing files. PyPI
    disallows reusing a published filename, including after deletion.
 3. Create and push an immutable `v*` tag pointing to the reviewed commit, using
    your normal source-control tool. Prefer names such as `v0.2.0` or `v0.3.0-rc1`
@@ -95,11 +105,37 @@ for this repository before enabling package distribution.
    `aics.intoto.jsonl`; the next job adds distributions, `.sigstore.json` bundles,
    base64 `.sig` signatures and PEM `.crt` certificates, then publishes the draft.
 5. If enabled, approve any required per-project environment deployments and
-   inspect the six trusted publishing jobs. Each job checks that its wheel and
+   inspect the selected trusted publishing jobs. Each selected job checks that its wheel and
    sdist have the expected project metadata, matching versions and verified
    inventory hashes, then uploads only those two files using
    `pypa/gh-action-pypi-publish` and GitHub OIDC. Verify the GitHub Release as
    described below before using its artifacts.
+
+### Publish only the renamed CLI distribution
+
+The Python distribution is `aics-cli`, installed with `pip install aics-cli`.
+The import remains `aics_cli` and the console command remains `aics`. The earlier
+`aics` PyPI project is owned separately; a JSON endpoint returning 404 does not
+prove that a project name is available.
+
+The first `aics-cli` publication is held until production genesis is complete
+and the production trust bundle has been finalized in the release source. The
+distribution rename and publisher configuration alone do not lift that hold.
+
+After that prerequisite, for a reviewed correction release such as `v0.2.1`, configure the `aics-cli`
+publisher with environment `pypi-aics`, set `PUBLISH_PYPI=true` and
+`PYPI_ONLY_PROJECT=aics-cli`, then create a new immutable tag after CI passes.
+The existing `v0.2.0` tag and assets remain unchanged. All six distributions are
+still built, tested, signed and included in the GitHub release, but only the
+CLI's wheel and sdist are uploaded to PyPI. The other five matrix entries skip
+their download, selection and publishing steps, so their existing versions are
+not uploaded again.
+
+Verify the new CLI's PyPI bytes against the correction release's signed
+inventory. Verify the other five existing PyPI versions against the release
+that originally published them; a later rebuild can have different bytes.
+Clear `PYPI_ONLY_PROJECT` before the next release intended to publish all six
+projects, and give every selected package a new unused version.
 
 ### First publication with PyPI's three-pending-publisher limit
 
@@ -112,7 +148,7 @@ for this repository before enabling package distribution.
    The matrix uses `fail-fast: false`, so those failures cannot cancel the
    configured jobs. Confirm that the first three versions are live and that
    their publishers have converted to ordinary publishers.
-3. Register pending publishers for `aics-conformance`, `aics` and `aics-mcp`,
+3. Register pending publishers for `aics-conformance`, `aics-cli` and `aics-mcp`,
    using the newly freed slots and their distinct environments.
 4. Inspect the failed job logs to confirm that **only those three PyPI jobs**
    failed before uploading. Choose **Re-run failed jobs** on the same Release
@@ -143,7 +179,7 @@ Install [GitHub CLI](https://cli.github.com/), Python 3.12+,
 `uv tool install sigstore==4.5.0`) and
 [slsa-verifier](https://github.com/slsa-framework/slsa-verifier#installation).
 Use a current verifier with trust roots compatible with the signing service.
-Authenticate `gh` with access to this repository. From a
+Authenticate `gh` with access to the repository while it is private. From a
 trusted checkout, run:
 
 ```sh

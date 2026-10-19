@@ -28,7 +28,8 @@
 # age could not be determined at all; 5 hourly disk growth above threshold;
 # 6 free disk below floor; 7 disk sample failed (bad AICS_DATA_PATH?);
 # 8 the notice register (notices table) is near or at its cap; 9 the server
-# reports ciphertext resource exhaustion; 10 /v2/limits unreachable or
+# reports ciphertext resource exhaustion (procedure: ops/RUNBOOK-first-deploy.md
+# step 10, "Resource exhaustion": a freeze leaf with reason resource_exhaustion); 10 /v2/limits unreachable or
 # unparseable.
 #
 # Freshness source, in order (see the python below):
@@ -263,8 +264,12 @@ if open_count * 100 >= max_open * pct or open_bytes * 100 >= max_bytes * pct:
     sys.exit(8)
 if exhaustion is not None:
     print(f"FAIL: the server reports resource exhaustion of stored ciphertext (AICS-1 section 8.2): "
-          f"{json.dumps(exhaustion, sort_keys=True)}; nothing is old enough to evict, so decide on more disk or a "
-          "budget change (a policy leaf) now", file=sys.stderr)
+          f"{json.dumps(exhaustion, sort_keys=True)}; nothing is old enough to evict. Follow the written procedure "
+          "in ops/RUNBOOK-first-deploy.md step 10, 'Resource exhaustion' (AICS-1 section 10.4): confirm, freeze "
+          "writes with a freeze leaf (from the laptop: aics_client.py owner --key OWNER_KEY --log-vkey LOG_VKEY "
+          "freeze --reason resource_exhaustion --report-file REPORT), then add storage or wait for eviction and "
+          "reopen with resume and a report of what changed",
+          file=sys.stderr)
     sys.exit(9)
 PY
 fi

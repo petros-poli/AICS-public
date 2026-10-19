@@ -47,9 +47,9 @@
       "sha256": "15530db981beaced67b5ea0b1777c692da9878768d22d232b3a6740e8228e237"
     },
     "linesig.json": {
-      "bytes": 10142,
+      "bytes": 10099,
       "description": "§11.3 line signatures: raw Ed25519 and SSHSIG over session LF command",
-      "sha256": "498d363fba9e1ce2e9c5a1134eafa085b32b66e9efa36aff35ccca2bb2d1c374"
+      "sha256": "7bfc93b660125c12d31092b027ae61e968e95aa847b27523ca40c0196b207526"
     },
     "receipts.json": {
       "bytes": 4147,

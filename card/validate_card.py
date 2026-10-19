@@ -20,8 +20,8 @@ key (section 13.2).  The checks, in order:
 * the ``sup`` member of the contributions and owner-service profile
   (``AICS-1+SUP-1``, section 20.9) and this instance's networks;
 * the secret-pattern definitions (``--patterns``): every ``pattern_hash`` is
-  hexH(J(definition)) of a published ``{id, regex, flags}``, and ``--final``
-  needs the document;
+  hexH(J(definition)) of a published ``{id, regex, note}`` in the document
+  ``{"v":1,"patterns":[...]}``, and ``--final`` needs the document;
 * the instance's required assurance statements (tagged assumptions, see
   ``TAG_HOMES``), whose wording must agree with the structured members;
 * wording: no marketing words, no "cannot" in a promised claim, no bare
@@ -189,13 +189,15 @@ FORBIDDEN_PATTERN_IDS = {
     "jwt_token": "matches arbitrary JWTs",
     "openai_key": "is the unanchored generic sk- prefix",
 }
-#: Section 13.1: a pattern id refers to a retrievable, hash-checked definition.  This instance publishes a JSON array
-#: of definitions with exactly these members (docs/legal/secret-patterns.json, served under /legal/), and a card's
-#: ``pattern_hash`` is hexH(J(definition)).  ``regex`` is Python ``re`` syntax, searched anywhere in the public text;
-#: ``flags`` is a sorted string of distinct ``re`` flag letters.
-PATTERN_DEFINITION_MEMBERS = ("id", "regex", "flags")
-PATTERN_FLAGS = {"i": re.IGNORECASE, "m": re.MULTILINE, "s": re.DOTALL}
-PATTERN_FLAGS_RE = re.compile(r"i?m?s?")
+#: Section 13.1: a pattern id refers to a retrievable, hash-checked definition.  This instance publishes the document
+#: ``{"v": 1, "patterns": [definition, ...]}`` in scan order (docs/legal/secret-patterns.json, served under /legal/;
+#: aics-server's moderation.py scans with exactly that file), each definition with exactly these members, and a card's
+#: ``pattern_hash`` is hexH(J(definition)).  ``regex`` is Python ``re`` syntax without inline flags, searched anywhere
+#: in the public text; ``note`` is one line saying what the format is.
+PATTERN_DOCUMENT_MEMBERS = ("v", "patterns")
+PATTERN_DOCUMENT_VERSION = 1
+PATTERN_DEFINITION_MEMBERS = ("id", "regex", "note")
+PATTERN_DOCUMENT_SHAPE = '{"v":1,"patterns":[{id, regex, note}, ...]}'
 #: Texts no secret format may match: section 10.2 forbids arbitrary JWTs and an unanchored generic ``sk-`` prefix,
 #: and a format that matches empty or ordinary text is a content filter.  Synthetic samples, not credentials.
 FORBIDDEN_PATTERN_SAMPLES = {
@@ -299,7 +301,6 @@ TAG_HOMES = {
     "flood-rule": ("G4",),
     "keyless-limits": ("G4",),
     "deviation-refusal-dedup": ("G4",),
-    "deviation-secret-scan-scope": ("G4",),
     "witness-policy": ("G5",),
     "founder-witness": ("G5",),
     "honest-intersection": ("G5",),
@@ -321,10 +322,9 @@ TAG_HOMES = {
 DEVIATION_PREFIX = "deviation-"
 DEVIATION_WORDS = "Known deviation from"
 #: Words an optional statement must contain when it is present.  A refusal without a leaf breaks charter commitment 7
-#: and the terms ("every refusal is a leaf"), and a wider scan breaks charter commitment 4, not only AICS-1.
+#: and the terms ("every refusal is a leaf"), not only AICS-1.
 OPTIONAL_STATEMENT_PHRASES = {
     "deviation-refusal-dedup": ("charter commitment 7", "terms"),
-    "deviation-secret-scan-scope": ("charter commitment 4", "terms"),
 }
 #: The section 13.3 boundary each G row must state, as words its [boundary] statement contains.
 BOUNDARY_PHRASES = {
@@ -1298,10 +1298,22 @@ def pattern_definition_hash(definition: dict[str, Any]) -> str:
     return hashlib.sha256(jcs(definition)).hexdigest()
 
 
-def definitions_by_id(definitions: Any) -> dict[str, dict[str, Any]]:
+def pattern_definitions(document: Any) -> list[Any] | None:
+    """The definitions of a pattern-definition document ``{"v": 1, "patterns": [...]}``, or None if it has not that
+    shape."""
+    if not isinstance(document, dict) or set(document) != set(PATTERN_DOCUMENT_MEMBERS):
+        return None
+    version, definitions = document["v"], document["patterns"]
+    if type(version) is not int or version != PATTERN_DOCUMENT_VERSION or not isinstance(definitions, list):
+        return None
+    return definitions
+
+
+def definitions_by_id(document: Any) -> dict[str, dict[str, Any]]:
     """The well-formed definitions of a pattern-definition document by id (the first of a repeated id)."""
     out: dict[str, dict[str, Any]] = {}
-    if not isinstance(definitions, list):
+    definitions = pattern_definitions(document)
+    if definitions is None:
         return out
     for d in definitions:
         if isinstance(d, dict) and set(d) == set(PATTERN_DEFINITION_MEMBERS) and isinstance(d["id"], str) \
@@ -1314,7 +1326,7 @@ def definitions_by_id(definitions: Any) -> dict[str, dict[str, Any]]:
     return out
 
 
-def check_patterns(card: dict[str, Any], definitions: Any, rep: Report, *, final: bool) -> bool:
+def check_patterns(card: dict[str, Any], document: Any, rep: Report, *, final: bool) -> bool:
     """Section 13.1: every secret pattern names a retrievable, hash-checked definition; section 10.2 bounds them.
 
     Returns whether the pattern hashes were checked: a definition document was given, or the card lists none.
@@ -1322,23 +1334,26 @@ def check_patterns(card: dict[str, Any], definitions: Any, rep: Report, *, final
     patterns = card.get("secret_patterns")
     entries = [(i, p) for i, p in enumerate(patterns) if isinstance(p, dict) and isinstance(p.get("id"), str)] \
         if isinstance(patterns, list) else []
-    if definitions is None:
+    if document is None:
         if final and entries:
             rep.error("$.secret_patterns", "--final needs the pattern-definition document (--patterns FILE): every "
                                            "pattern_hash must be hexH(J(definition)) of a published definition "
                                            "(AICS-1 section 13.1)")
         return not entries
     where = "--patterns"
-    if not isinstance(definitions, list):
-        rep.error(where, "the pattern-definition document must be a JSON array of {id, regex, flags} objects")
+    definitions = pattern_definitions(document)
+    if definitions is None:
+        rep.error(where, f"the pattern-definition document must be {PATTERN_DOCUMENT_SHAPE}")
         return True
+    if not definitions:
+        rep.error(f"{where}.patterns", "must define at least one pattern")
     seen: set[str] = set()
     for i, d in enumerate(definitions):
-        path = f"{where}[{i}]"
+        path = f"{where}.patterns[{i}]"
         if not isinstance(d, dict) or set(d) != set(PATTERN_DEFINITION_MEMBERS):
-            rep.error(path, "a definition has exactly the members id, regex and flags")
+            rep.error(path, "a definition has exactly the members id, regex and note")
             continue
-        pid, regex, flags = d["id"], d["regex"], d["flags"]
+        pid, regex, note = d["id"], d["regex"], d["note"]
         if not isinstance(pid, str) or not PATTERN_ID.fullmatch(pid):
             rep.error(f"{path}.id", "must match [a-z0-9_]{1,32} (AICS-1 section 13.1)")
             continue
@@ -1349,26 +1364,26 @@ def check_patterns(card: dict[str, Any], definitions: Any, rep: Report, *, final
         if pid in FORBIDDEN_PATTERN_IDS:
             rep.error(f"{path}.id", f"{pid} {FORBIDDEN_PATTERN_IDS[pid]}, which AICS-1 section 10.2 forbids as a "
                                     "secret format")
-        if not isinstance(flags, str) or not PATTERN_FLAGS_RE.fullmatch(flags):
-            rep.error(f"{path}.flags", "must be a sorted string of distinct flag letters from i, m and s")
+        if not isinstance(note, str) or not note.strip() or "\n" in note or "\r" in note:
+            rep.error(f"{path}.note", "must be one non-empty line")
             continue
         if not isinstance(regex, str) or not regex:
             rep.error(f"{path}.regex", "must be a non-empty string")
             continue
-        bits = 0
-        for letter in flags:
-            bits |= PATTERN_FLAGS[letter]
         try:
             jcs(d)
-            compiled = re.compile(regex, bits)
+            compiled = re.compile(regex)
         except (re.error, ValueError) as exc:
             rep.error(f"{path}.regex", f"is not a Python re pattern that JCS can encode: {exc}")
+            continue
+        if compiled.flags & ~re.UNICODE:
+            rep.error(f"{path}.regex", "must not set inline flags: the server compiles it as written")
             continue
         for what, sample in FORBIDDEN_PATTERN_SAMPLES.items():
             if compiled.search(sample):
                 rep.error(f"{path}.regex", f"{pid} matches {what}; a secret format is a high-precision credential "
                                            "format (AICS-1 section 10.2)")
-    known = definitions_by_id(definitions)
+    known = definitions_by_id(document)
     for i, entry in entries:
         pid = entry["id"]
         if pid not in known:
@@ -1382,6 +1397,10 @@ def check_patterns(card: dict[str, Any], definitions: Any, rep: Report, *, final
     for pid in sorted(set(known) - {p["id"] for _, p in entries}):
         rep.error(where, f"defines {pid}, which secret_patterns does not list: the card and the document list the "
                          "same patterns")
+    card_order = [p["id"] for _, p in entries]
+    if set(card_order) == set(known) and card_order != list(known):
+        rep.error("$.secret_patterns", "lists the patterns in the document's scan order (the server refuses a "
+                                       f"match with the first pattern it hits): {', '.join(known)}")
     return True
 
 
@@ -1463,6 +1482,11 @@ def required_statements(card: dict[str, Any], profile: str) -> list[tuple[str, s
     ]
     if _status(card, "G5") != "proven":
         req += [(gid, "split-view", ("G5", "split view"), "AICS-1 sections 6.3 and 14.6") for gid in SPLIT_VIEW_ROWS]
+    retention = card.get("retention")
+    budget = retention.get("ciphertext_budget_bytes") if isinstance(retention, dict) else None
+    if is_uint(budget):
+        # The statement names the budget in bytes, so a filled card cannot state one value and apply another.
+        req.append(("G3", "ciphertext-retention", (f"{budget} bytes",), "AICS-1 sections 8.2 and 13.1"))
     wp = card.get("witness_policy")
     if isinstance(wp, dict) and is_uint(wp.get("quorum")):
         req.append(("G5", "witness-policy", (f"quorum {wp['quorum']}",), "AICS-1 sections 6.3 and 13.1"))
@@ -1740,7 +1764,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--fill-hashes", metavar="ROOT", type=Path,
                     help="replace <FILL:SHA256:path> with the SHA-256 of ROOT/path")
     ap.add_argument("--patterns", metavar="FILE", type=Path,
-                    help="the secret-pattern definition document (a JSON array of {id, regex, flags}): fills "
+                    help="the secret-pattern definition document (" + PATTERN_DOCUMENT_SHAPE + "): fills "
                          "<FILL:SECRET_PATTERN_HASH:id> with hexH(J(definition)) and checks every pattern_hash "
                          "against it; required with --final")
     ap.add_argument("--set", metavar="NAME=VALUE", action="append", default=[],

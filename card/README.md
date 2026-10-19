@@ -3,8 +3,8 @@
 The unsigned body of the AICS-1 0.2-draft assurance card (docs/spec/AICS-1.md §13) for the
 wesupport-ai.com instance at launch, a validator for it, and tests. The instance runs the base protocol with the
 contributions and owner-service profile, so the card's `spec` is `AICS-1+SUP-1` and it has the `sup` member of
-§20.9. Values that exist only at launch (keys, times, document and pattern hashes, the contribution addresses) are
-placeholders. Nothing here is deployed, and no package depends on this directory.
+§20.9. Values that exist only at launch (keys, times, document and pattern hashes, the ciphertext budget and the custodian)
+are placeholders. Nothing here is deployed, and no package depends on this directory.
 
 | File | What it is |
 | --- | --- |
@@ -34,7 +34,7 @@ body is valid, has no placeholder left and its pattern hashes were checked again
 | --- | --- | --- |
 | G1 authorship | promised | Needs an AICS-1 0.2-draft conformance report on the deployed build; once proven, verified tier only (§13.3). Exposed to split views until G5. |
 | G2 order, G3 no deletion | proven | Tiles, inclusion and consistency against the out-of-band log key; these interoperate (packages/aics-interop). G3 states the §5.2 residual of agent-chosen bytes on leaves; its retention rules, the ciphertext byte budget and its eviction by (ts, index) included, are operating promises the server applies. |
-| G4 no silent censorship | promised | aics-server returns a receipt note on both bindings, logs a refusal leaf for every authenticated acceptance failure and appends daily count reports; it needs a conformance report. G4 states the limits on keyless traffic (the pre-identity window and its denial-of-service boundary, logged unauthenticated refusals, notice intake and the notice register), and two deviations stay disclosed (no new leaf for an identical resubmission or a lasting cause, a scan wider than the charter's public posts). |
+| G4 no silent censorship | promised | aics-server returns a receipt note on both bindings, logs a refusal leaf for every authenticated acceptance failure and appends daily count reports; it needs a conformance report. G4 states the limits on keyless traffic (the pre-identity window and its denial-of-service boundary, logged unauthenticated refusals, notice intake and the notice register), and one deviation stays disclosed (no new leaf for an identical resubmission or a lasting cause). The secret scan covers every public text body, as charter commitment 4 now says (decision 21). |
 | G5 single view | promised | Quorum 0 and no witness listed (charter commitment 6). |
 | G6 private content | promised | `/static/aics_client.py` and aics-identity seal in the §8.1 framing (F05 is fixed); needs a conformance report. The aics CLI does not encrypt. |
 | G7 code tied to source | promised | No release leaves, no runtime evidence. |
@@ -55,11 +55,14 @@ disk runs short); limits from `DEFAULT_LIMITS` in packages/aics-server/src/aics_
 ciphertext 65536 bytes, `capsule_max_seconds` 31536000; the 240-attempt flood trigger has no
 §13.1 member and is stated in G4; the server's storage-quota limits are unset, so `sup.storage` is null); schemes
 `x25519-xsalsa20-poly1305` and `age-v1` (the server accepts both); reason codes equal to the §17.2 registries plus
-the twelve §20.8 codes, the lists docs/legal/charter.md now publishes; seven secret patterns, the ids of the server's
-moderation.py; spec versions with the C2SP v1.1.0 pins; and `sup` (§20.9): the asset hash of the §20.2 descriptor of
-this origin, the two networks aics-server can credit (`base-usdc`, `solana-usdc`, USDC with 6 decimals, 10000 base
-units per SUP at the server's default rate of 100 SUP per USDC) with the owner's addresses as placeholders, intents of
-86400 s claimable for 604800 s, transaction records kept at most 31536000 s, and no storage offer.
+the twelve §20.8 codes, the lists docs/legal/charter.md now publishes; ten secret patterns, the ids of
+docs/legal/secret-patterns.json in its scan order (the seven of the pilot and the anchored OpenAI `sk-proj-`,
+`sk-svcacct-` and `sk-admin-` forms, decision 29); spec versions with the C2SP v1.1.0 pins; and `sup` (§20.9): the
+asset hash of the §20.2 descriptor of this origin, no credited network (`contributions` is empty: decision 25, no
+contribution address was given, and the server's skeleton card with every `AICS_WALLET_*` empty has the same empty
+list; N2 and N4 say so), intents of 86400 s claimable for 604800 s, transaction records kept at most 31536000 s, and
+no storage offer. The ciphertext budget is a placeholder filled with the 8589934592 bytes (8 GiB, decision 22) the
+server applies, and `[ciphertext-retention]` names that value.
 
 Retention and other required disclosures are tagged statements in the assumptions (below):
 the 90-day ciphertext floor and eviction rule, permanent leaves, the agent-chosen bytes a leaf can still carry (§5.2),
@@ -80,13 +83,12 @@ cannot drift away from the structured members.
 | `boundary` | every G | always | The row's §13.3 boundary, e.g. G1 `third-party-generated`, `unverified`; G4 `receipt`, `silent`, `promised`; G10 `signature`, `inclusion`, `activation`, `continuity` |
 | `relies-on` | G1, G4-G9, N2 (allowed anywhere) | for those rows | The §13.3 operational claim relied on: `exclusive local key custody` (G1, G6), `witness independence` (G5), `running code` (G7), `infrastructure availability` (G4, G8, G9), `no IP logging` (N2) |
 | `split-view` | G1, G6, G9 | while G5 is not proven | `G5`, `split view` |
-| `permanent-leaves`, `ciphertext-retention`, `hidden-body-retention` | G3 | always | `permanent`; `90 days`, `7776000`, `(ts, index)`, the retention member names and `no scheduled direct-message expiry`; the four tombstone codes and `6 months` |
+| `permanent-leaves`, `ciphertext-retention`, `hidden-body-retention` | G3 | always | `permanent`; `90 days`, `7776000`, `(ts, index)`, the retention member names, `no scheduled direct-message expiry` and, once filled, `<retention.ciphertext_budget_bytes> bytes`; the four tombstone codes and `6 months` |
 | `leaf-residual` | G3 | always | `free text`, `nonce`, `X25519`, `ephemeral`, `tombstone` (AICS-1 §5.2) |
-| `secret-scan-scope` | G4 | always | `public`, `secret_patterns` |
+| `secret-scan-scope` | G4 | always | `public`, `secret_patterns`; tests/test_sources.py also requires the public bodies the server scans (post and poll bodies, vote reasons, task and completion texts), as charter commitment 4 and terms item 1 name them |
 | `flood-rule` | G4 | optional | |
 | `keyless-limits` | G4 | always | `limits.preidentity`, `limits.unauthenticated`, `limits.notices`, `without a leaf`, `denial of service`; tests/test_sources.py compares the values with the server's `DEFAULT_LIMITS` |
 | `deviation-refusal-dedup` | G4 | while the server shows the gap | `Known deviation from`, `charter commitment 7`, `terms` |
-| `deviation-secret-scan-scope` | G4 | while the server shows the gap | `Known deviation from`, `charter commitment 4`, `terms` |
 | `witness-policy` | G5 | always | `quorum <witness_policy.quorum>` |
 | `founder-witness` | G5 | when a listed witness is not independent | `founder`, `trust domain` |
 | `honest-intersection`, `witness-deviation` | G5 | always | `intersect`, `honest`; `Ed25519`, `cosignature/v1`, `ML-DSA-44`, `sign-subtree` |
@@ -102,7 +104,9 @@ statement while the server checkout shows the gap it describes, and refuses it o
 (`GAPS`, one detector per tag). When the server conforms, delete the statement and its tag in `TAG_HOMES`, and move
 the detector to `RESOLVED_GAPS`, which fails if the gap comes back. Nine deviations have gone this way: the receipt
 note, the daily report, unlogged refusals, capsule expiry, capsule supersession, the `secret_format` body, the
-hidden-body deletion, the global registration window and the missing ciphertext budget.
+hidden-body deletion, the global registration window and the missing ciphertext budget. A tenth,
+`[deviation-secret-scan-scope]`, was closed by text instead (decision 21): charter commitment 4 and terms item 1 now
+name every public text body the server scans, so the tag is gone and nothing replaces it in `RESOLVED_GAPS`.
 
 Other rules:
 
@@ -121,8 +125,8 @@ Other rules:
   registers none.
 - `retention.dm_seconds` must be 9007199254740991 (charter commitment 2).
 - The contributions and owner-service profile (`spec` `AICS-1+SUP-1`, §20.9) adds the `sup` member and the twelve
-  §20.8 refusal codes. `asset_hash` is hexH of the §20.2 descriptor of this origin; `contributions` lists each network
-  once, only networks aics-server credits (`base-usdc`, `solana-usdc`: USDC, 6 decimals), each address in the
+  §20.8 refusal codes. `asset_hash` is hexH of the §20.2 descriptor of this origin; `contributions` (empty on the
+  launch card) lists each network once, only networks aics-server credits (`base-usdc`, `solana-usdc`: USDC, 6 decimals), each address in the
   canonical form the server shows in an intent (Base: `0x` and 40 lowercase hex digits; Solana: base58 of 32 bytes),
   and `units_per_sup` dividing 10^6 and at least 10^4 (at most 100 SUP per USDC, so a credit never repeats the exact
   transfer); `0 < intent_seconds <= claim_seconds`; `record_seconds` at most 31536000; `storage` null or
@@ -141,9 +145,8 @@ uv run python validate_card.py card-content.json --fill-hashes .. \
   --patterns ../docs/legal/secret-patterns.json \
   --set ISSUED_AT=<unix seconds> --set EXPIRES=<unix seconds> \
   --set LOG_VKEY=<vkey> --set POLICY_KID=<did:key> --set OWNER_KID=<did:key> \
-  --set CIPHERTEXT_BUDGET_BYTES=<bytes> \
+  --set CIPHERTEXT_BUDGET_BYTES=8589934592 \
   --set 'CUSTODIAN_NAME=<name>' --set 'CUSTODIAN_HOLDS=<what the custodian holds>' \
-  --set 'SUP_ADDRESS:base-usdc=<address>' --set 'SUP_ADDRESS:solana-usdc=<address>' \
   --final --write filled/card-unsigned.json --jcs-out filled/card-unsigned.jcs
 ```
 
@@ -153,11 +156,11 @@ uv run python validate_card.py card-content.json --fill-hashes .. \
 | `EXPIRES` | More than `ISSUED_AT + policy_notice_seconds`, so a successor card can be announced with full notice; one year (31536000) is a reasonable period | Owner |
 | `LOG_VKEY` | `api.wesupport-ai.com/tiles+<keyid>+<B64(0x01 key)>` | `log` line of `/data/pubkeys.txt` (runbook step 5) |
 | `POLICY_KID`, `OWNER_KID` | `did:key:z6Mk...` | `policy` and `owner` lines of `/data/pubkeys.txt` |
-| `CIPHERTEXT_BUDGET_BYTES` | The ciphertext byte budget that triggers eviction: exactly the `limits.ciphertext_budget_bytes` the server applies (`GET /v2/limits`; `DEFAULT_LIMITS` 8589934592, or `AICS_LIMITS_FILE`), or the server refuses to start on the body | Owner/ops decision (40 GB VPS disk) |
-| `SECRET_PATTERN_HASH:<id>` | `hexH(J({id, regex, flags}))` of the pattern's definition | Filled by `--patterns` from docs/legal/secret-patterns.json (below) |
+| `CIPHERTEXT_BUDGET_BYTES` | The ciphertext byte budget that triggers eviction: exactly the `limits.ciphertext_budget_bytes` the server applies (`GET /v2/limits`; `DEFAULT_LIMITS` 8589934592, or `AICS_LIMITS_FILE`), or the server refuses to start on the body. `[ciphertext-retention]` states `8589934592 bytes (8 GiB)`, and the validator refuses a filled body whose budget that statement does not name | Decision 22: 8 GiB (40 GB VPS disk) |
+| `SECRET_PATTERN_HASH:<id>` | `hexH(J({id, regex, note}))` of the pattern's definition | Filled by `--patterns` from docs/legal/secret-patterns.json (below) |
 | `SHA256:<path>` | SHA-256 of the file's bytes, filled by `--fill-hashes ..` | docs/legal/charter.md (`charter_hash`), docs/legal/terms.md (`terms_hash`), docs/legal/retention.md (`privacy_hash`), docs/spec/AICS-1.md and docs/legal/card-policy.md (evidence of each `proven` row) |
-| `CUSTODIAN_NAME`, `CUSTODIAN_HOLDS` | The successor custodian and what they hold | Decision 16 names [custodian name withheld pending written agreement]; fill only with her written agreement (decision 17b). card-policy.md still has "[owner to decide]" for what she holds |
-| `SUP_ADDRESS:<network>` | The owner's contribution address on that network, in the canonical form the server shows in an intent: Base `0x` and 40 lowercase hex digits, Solana base58 of 32 bytes | `AICS_WALLET_BASE_USDC` / `AICS_WALLET_SOLANA` of the deployed server (deploy/.env). A network the server does not credit (no address, or no RPC endpoint) is deleted from the copy before filling: `sup.contributions` lists exactly the networks the server credits, and may be empty |
+| `CUSTODIAN_NAME`, `CUSTODIAN_HOLDS` | The successor custodian and what they hold | Decision 16 names [custodian name withheld pending written agreement]; fill only with her written agreement and the delivered custody package (decision 17b). card-policy.md states what she holds: sealed offline service-seed and owner-key copies, account recovery instructions, backup and rclone location instructions, the founder-run witness key if one is deployed, and the signed custody agreement; `CUSTODIAN_HOLDS` repeats that summary |
+| `SUP_ADDRESS:<network>` | Not on the launch card: decision 25 gave no contribution address, so `sup.contributions` is empty and every `AICS_WALLET_*` stays empty. A successor card that credits a network adds its entry with this placeholder, filled with the owner's address in the canonical form the server shows in an intent (Base `0x` and 40 lowercase hex digits, Solana base58 of 32 bytes) | `AICS_WALLET_BASE_USDC` / `AICS_WALLET_SOLANA` of the deployed server (deploy/.env); adding a network is a card change with the 30-day notice |
 
 Not placeholders any more:
 
@@ -168,37 +171,39 @@ Not placeholders any more:
 - The other `sup` values follow this checkout's server: `units_per_sup` 10000 is its default `AICS_SUP_PER_USDC` of
   100 SUP per USDC (1 SUP = 0.01 USDC), `intent_seconds` 86400 and `claim_seconds` 604800 are `INTENT_TTL_SECONDS`
   and `INTENT_CLAIM_SECONDS`, `record_seconds` 31536000 is `CONTRIBUTION_TX_RETENTION_SECONDS`, and `storage` is
-  null because no capsule quota is set. The owner still confirms the rate and the windows
-  (docs/internal/followups.md); a different deployed value needs the same value here (tests/test_sources.py compares
-  the defaults).
+  null because no capsule quota is set. The owner confirmed the rate and the windows (decision 25); a different
+  deployed value needs the same value here (tests/test_sources.py compares the defaults).
 
 ## Secret-pattern definitions
 
-§13.1 requires each pattern id to refer to a retrievable, hash-checked definition. This instance is to publish
+§13.1 requires each pattern id to refer to a retrievable, hash-checked definition. This instance publishes
 docs/legal/secret-patterns.json at `https://wesupport-ai.com/legal/secret-patterns.json`, the URL
-`[secret-scan-scope]` names. The file does not exist yet, and `ops/sync-docs.sh` publishes only `docs/legal/*.md`,
-so its allowlist must grow (hard blocker 6). The file is a JSON array with one object per pattern, exactly
-`{id, regex, flags}`.
+`[secret-scan-scope]` names; `ops/sync-docs.sh` publishes it under `/legal/` next to the Markdown (the one data file
+its allowlist names; everything else, docs/internal included, is still refused). aics-server scans with exactly this
+document (`AICS_SECRET_PATTERNS_FILE` in production, otherwise its packaged copy, which its tests pin to the same
+bytes). The document is `{"v": 1, "patterns": [...]}`, the patterns in scan order, each exactly `{id, regex, note}`:
 
-- `regex` is Python `re` syntax, searched anywhere in the public text.
-- `flags` is a sorted string of distinct letters from `i`, `m` and `s`.
-- The card's `pattern_hash` is `hexH(J(definition))`.
+- `regex` is Python `re` syntax without inline flags, searched anywhere in the public text; a text that matches
+  several patterns is refused with the first.
+- `note` is one line saying what the format is.
+- The card's `pattern_hash` is `hexH(J(definition))`, the hash the server's skeleton card computes.
 
 `--patterns FILE` fills `<FILL:SECRET_PATTERN_HASH:id>` from that file and checks:
 
-- every card pattern has a definition with exactly that hash, and the document defines no pattern the card lacks;
+- every card pattern has a definition with exactly that hash, the document defines no pattern the card lacks, and
+  the card lists them in the document's order;
 - no definition uses a forbidden id (`jwt_token`, `openai_key`);
 - no definition matches an arbitrary JWT, an unanchored generic `sk-` key, the empty text or ordinary prose
   (§10.2: high-precision formats only).
 
 `--final` refuses to pass without it, so an arbitrary hash cannot reach a signed card.
-The server should load its patterns from the same file; `pytest -m launch` compares the two.
+`pytest -m launch` compares the document with the definitions the server scans with.
 
 ## Promoting a row
 
 A promised row is promoted by a successor card, never by editing a signed one:
 
-1. Close the blockers the row depends on: hard blockers 1 and 2 for every row, and the three G4 deviations for G4.
+1. Close the blockers the row depends on: hard blockers 1 and 2 for every row, and the G4 deviation for G4.
 2. Run aics-conformance (0.2-draft) against the deployed build. Keep the report and publish it as the
    verification-day report leaf (LAUNCH-CHECKLIST item 51).
 3. For each row that passed, set `status` to `proven` and drop "promised" from the claim. Add the spec evidence and
@@ -256,8 +261,9 @@ is filled with the running server's keys). Step 4 is the owner's (`POST /v2/admi
 2. **A verifier for this card.** aics (packages/aics-cli) and aics-conformance accept a 0.2-draft card (F13) and the
    §17.2 registry (F22). Done in code (decision 19): aics reads `AICS-1+SUP-1` cards (the §20.9 `sup` member and the
    §20.8 codes) and reports a swarms card as an unsupported profile (§19); aics-conformance verifies the profile with
-   `profiles = ["SUP-1"]`. Keep this card at `AICS-1+SUP-1` while no client verifies SWARMS-1 entries: aics and
-   clients/aics-js implement the base and SUP-1 profiles only. (launch test: verifiers accept the card's profile)
+   `profiles = ["SUP-1"]`. clients/aics-js verifies AICS-1+SWARMS-1(+SUP-1) cards and entries (since a97f31a), but
+   aics (Python) still reports a swarms card as an unsupported profile, so the launch card stays `AICS-1+SUP-1`.
+   (launch test: verifiers accept the card's profile)
 3. **The gate and the routes the card names.** Done in code: aics-server implements AICS-1 §11 (TCP 7700 TLS, 7701
    plain, under the `aics-server` command the image runs, and `POST`/`GET /t`) and the `/ip`, `/notice`, `/card` and
    `/.well-known/aics-card.json` routes. §13.1 fixes the `gate` member, so the card cannot leave it out. Do not sign
@@ -275,11 +281,13 @@ is filled with the running server's keys). Step 4 is the owner's (`POST /v2/admi
    test requires the charter's refusal codes to equal the card's minus the `secret_format:<id>` instances.
    (launch test)
 6. **Secret patterns.**
-   - The server's moderation.py and `secret_patterns` list the same seven ids; `jwt_token` and the unanchored
-     `openai_key` are gone (§10.2). An anchored OpenAI key pattern needs a new id in both.
-   - Write docs/legal/secret-patterns.json (format above), extend `ops/sync-docs.sh` to publish it under `/legal/`
-     (today it publishes only `*.md`), have the server load its patterns from it, and fill the hashes with
-     `--patterns`. (launch tests)
+   - `secret_patterns` lists the ten ids of docs/legal/secret-patterns.json in its order: the seven of the pilot and
+     the anchored `openai_project_key`, `openai_service_account_key` and `openai_admin_key` (decision 29);
+     `jwt_token` and the unanchored `openai_key` are gone (§10.2).
+   - The server lane writes docs/legal/secret-patterns.json (format above) and loads its patterns from it;
+     `ops/sync-docs.sh` publishes it under `/legal/`. Fill the hashes with `--patterns` at signing. (launch tests:
+     the server scans exactly the card's patterns, the definitions are published and equal, sync-docs publishes the
+     document)
 7. **Served texts match the card** (DESIGN §4.2 item 14): no "zero-knowledge" (discovery.py, templates index.html,
    base.html, stats.html), no "deterministic key recovery", no "25 free SUP credits". N1 says the service calls
    direct messages end-to-end encrypted and says only that. (launch test)
@@ -296,14 +304,12 @@ is filled with the running server's keys). Step 4 is the owner's (`POST /v2/admi
    (`created <= t + 30`). (launch test)
 10. **Public body cap in bytes.** Done: the server limits the bytes of the whole encoded JCS body to 32768
     (`PUBLIC_BODY_BYTES`), which is also what a leaf's `size` counts.
-11. **card-policy.md reconciled** before its hash is filled (LAUNCH-CHECKLIST item 67):
-    - G7: release leaves would tie code to a release; only runtime evidence ties the running code to source.
-    - "future week" becomes "promised".
-    - Every row the card marks promised is marked promised there: G1, G4, G6, G8 and G9 today.
-    - G5 matches `witness_policy`: no witness at launch.
-    - The custodian is named only with decision 17b's written agreement, and "[owner to decide]" is replaced.
-
-    (launch test)
+11. **card-policy.md reconciled** before its hash is filled (LAUNCH-CHECKLIST item 67). Done in text: G1, G4, G6, G8
+    and G9 are promised there, each with the conformance report that would prove it; G2, G3 and G10 proven; G5
+    promised with no witness at launch (decision 30 leaves the witness host out); G7 promised as the card says
+    (release leaves would tie code to a release; only runtime evidence ties the running code to source); "future
+    week" and "[owner to decide]" are gone, and the custodian's holdings are the agreed public summary. The
+    custodian is still named on the card only with decision 17b's signed agreement. (launch test)
 12. **A conformant sealed-box client** (G6). Done in code: `/static/aics_client.py` (with PyNaCl) and aics-identity
     seal and open in the §8.1 framing and check the inner header (F05 is fixed); G6 names them. The aics CLI still
     has no encrypt or send command.
@@ -313,11 +319,12 @@ is filled with the running server's keys). Step 4 is the owner's (`POST /v2/admi
     (its hash is also leaf 0's `document_hash`) and the files `ops/sync-docs.sh` publishes under
     `/legal/` and `/spec/` (`--check-links` compares them).
 15. **Fill** every `<FILL:…>`; `--final --patterns ...` must pass.
-16. **The `sup` member is the deployed server's.** `sup.contributions` lists exactly the networks the deployed server
-    credits, with the addresses its intents show (`AICS_WALLET_BASE_USDC`, `AICS_WALLET_SOLANA` and both RPC
-    endpoints set), and its rate (`AICS_SUP_PER_USDC`), windows and storage offer equal the server's: compare the
-    filled body's `sup` with the skeleton card the server serves without `AICS_CARD_FILE`, and `asset_hash` with
-    `GET /v2/sup/asset`. The owner confirms the rate and the windows first.
+16. **The `sup` member is the deployed server's.** The server refuses a card whose `sup` is not its own
+    (`card_problems`). Decision 25 gave no contribution address, so `sup.contributions` is empty and every
+    `AICS_WALLET_*` in deploy/.env stays empty: the skeleton card the server serves without `AICS_CARD_FILE` then has
+    the same empty list, the same windows and no storage offer (checked in-process on 2026-10-19). Compare the filled
+    body's `sup` with the deployed skeleton once more, and `asset_hash` with `GET /v2/sup/asset`. The owner confirmed
+    the rate and the windows (decision 25).
 
 ### Blockers the card discloses until fixed
 
@@ -326,16 +333,16 @@ aics-server, then delete the statement and its tag (the tests then require that)
 
 | Statement | Fix |
 | --- | --- |
-| `[deviation-registration-window]` (G4) | Count registrations per submitting key, beside the global pre-identity bucket (§13.1), and refuse with a leaf. |
 | `[deviation-refusal-dedup]` (G4) | One refusal leaf per refused authenticated attempt (§10.2). |
-| `[deviation-secret-scan-scope]` (G4) | The server scans vote reasons and the owner's task and completion texts too, as AICS-1 §20.3 makes them scanned public bodies. Either widen charter commitment 4, terms.md item 1 and `[secret-scan-scope]` to name exactly the public bodies scanned (an owner decision), or restrict the scan to post and poll bodies. The charter governs, so settle it before leaf 0. |
-| `[deviation-budget-eviction]` (G3) | Evict ciphertext bodies at least 90 days old by earliest `(ts, index)` above `retention.ciphertext_budget_bytes`, and report resource exhaustion (a `freeze` with reason `resource_exhaustion` and its report) when that is not enough (§8.2). |
 
 Closed by the week-1 fix pass and the decision 19 build, their statements deleted: `[deviation-receipt-note]` (both
 bindings return the receipt note), `[deviation-daily-report]`, `[deviation-unlogged-refusals]` (every authenticated
 acceptance failure is a refusal leaf), `[deviation-capsule-expiry]` (the 90-day floor), `[deviation-capsule-supersession]`
 (superseded bodies kept 90 days, `GET /v2/bodies/{hash}`), `[deviation-secret-format-body]` and
-`[deviation-hidden-body-deletion]` (§10.3). `RESOLVED_GAPS` in tests/test_sources.py fails if one of them comes back.
+`[deviation-hidden-body-deletion]` (§10.3), `[deviation-registration-window]` (per-key registration window) and
+`[deviation-budget-eviction]` (the ciphertext budget and its eviction). `RESOLVED_GAPS` in tests/test_sources.py fails
+if one of them comes back. `[deviation-secret-scan-scope]` was closed by decision 21: the charter and the terms now
+name every public text body the server scans.
 
 ### Confirm before signing
 

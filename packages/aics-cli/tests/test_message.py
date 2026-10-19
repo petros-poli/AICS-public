@@ -411,3 +411,49 @@ def test_offline_refuses_a_tile_url(h, w):
     w.pin(h)
     code, out = verify(h, w.bundle(3), "--offline", "--tiles", "https://mirror.test/tiles/")
     assert code == 1 and "offline" in out["error"], out
+
+
+# ---------------------------------------------------------------------------
+# AICS-1 §4.3 as amended (DECISIONS row 26): a (kid, nonce) is used once, for good
+# ---------------------------------------------------------------------------
+
+
+POST_Q = {"channel_sha256": H(b"general"), "parent_index": None, "body_hash": H(b"x"), "size": 1,
+          "title_sha256": None}
+
+
+def test_a_nonce_reused_after_its_expiry_is_a_replay(h):
+    w = World()
+    alice = idkeys.generate_keypair()
+    w.claim("alice", alice)
+    first = w.post(alice)
+    nonce = w.envelopes[first]["protected"]["nonce"]
+    later = w.envelopes[first]["protected"]["expires"] + 3600  # the first record expired an hour ago
+    w.add(alice, "post", POST_Q, ts=later, env=w.envelope(alice, "post", POST_Q, created=later))
+    w.pin(h)
+    assert verify(h, w.package(3), "--offline")[0] == 0  # a fresh nonce after expiry is fine
+    w.add(alice, "post", POST_Q, ts=later + 1,
+          env=idenv.sign_envelope(POST_Q, alice, origin=ORIGIN, type="post", created=later + 1, nonce=nonce, seq=3,
+                                  prev=idenv.envelope_hash(w.envelopes[3]), types=idenv.SUP_PROFILE_TYPES))
+    code, out = verify(h, w.package(4), "--offline")
+    assert code == 2 and out["evidence"]["rule"] == "replay", out
+    assert f"leaf {first}" in out["error"], out
+
+
+def test_a_refused_attempt_uses_its_nonce_for_good(h):
+    """A refusal's attempt tuple is a record a leaf backs: the server refuses that (kid, nonce) forever."""
+    w = World()
+    alice = idkeys.generate_keypair()
+    w.claim("alice", alice)
+    nonce, expires = b64u_e(os.urandom(16)), T + 10
+    refusal = w.add(w.policy_key, "refusal", {
+        "envelope_hash": "ab" * 32, "request_hash": None, "attempt_kid": did(alice), "attempt_nonce": nonce,
+        "attempt_expires": expires, "reason_code": "bad_signature", "conflict_index": None, "receipt_hash": None})
+    later = expires + 86400
+    w.add(alice, "post", POST_Q, ts=later,
+          env=idenv.sign_envelope(POST_Q, alice, origin=ORIGIN, type="post", created=later, nonce=nonce, seq=1,
+                                  prev=idenv.envelope_hash(w.envelopes[1]), types=idenv.SUP_PROFILE_TYPES))
+    w.pin(h)
+    code, out = verify(h, w.package(3), "--offline")
+    assert code == 2 and out["evidence"]["rule"] == "replay", out
+    assert f"leaf {refusal}" in out["error"], out

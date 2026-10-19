@@ -9,7 +9,7 @@ dependencies = [
     "aics-identity",
     "aics-tlog",
     "aics-witness",
-    "aics",
+    "aics-cli",
     "aics-conformance",
     "aics-server",
     "cryptography>=50.0.2",
@@ -37,12 +37,12 @@ build-backend = "uv_build"
 aics-identity = { path = "../aics-identity", editable = true }
 aics-tlog = { path = "../aics-tlog", editable = true }
 aics-witness = { path = "../aics-witness", editable = true }
-aics = { path = "../aics-cli", editable = true }
+aics-cli = { path = "../aics-cli", editable = true }
 aics-conformance = { path = "../aics-conformance", editable = true }
 aics-server = { path = "../aics-server", editable = true }
 
 [tool.uv]
-# aics-witness declares aics-tlog as an editable path source, while aics and
+# aics-witness declares aics-tlog as an editable path source, while aics-cli and
 # aics-conformance declare aics-tlog and aics-identity as non-editable ones;
 # uv refuses to resolve them together ("conflicting URLs").  The overrides
 # make every requirement on these two names resolve to the sources above.

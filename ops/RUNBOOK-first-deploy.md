@@ -383,12 +383,12 @@ as root, the volumes still belong to root and the app stops with a
 6. Publish, all from the same bytes: (a) Cloudflare DNS → TXT `_aics` =
    `aics1=<base64url>` — exactly one RR, replace the placeholder, never two
    different bundles at once; (b) the labelled block in the public README with
-   the bytes and their SHA-256; (c) the `aics` PyPI constant
+   the bytes and their SHA-256; (c) the `aics-cli` PyPI constant
    (`AICS_TRUST_BUNDLE`) at the next release (docs/RELEASING.md).
 7. Verify from the laptop (packages/aics-cli/README.md; the PyPI constant is
    a placeholder until that release, so give two sources — DNS + README):
 
-       pip install aics
+       pip install aics-cli
        aics policy init --from-dns wesupport-ai.com --bundle <readme-block-file>
        aics verify card && aics verify checkpoint && aics verify consistency
        aics status --mirrors
@@ -514,7 +514,7 @@ whole rollback story.
    until cosignatures flow or the endpoint grows one), 5/6 disk growth/floor
    (the decision-16 early warning), 8 the notice register (the open rows of
    the notices table) near its cap — close notices — 9 ciphertext resource
-   exhaustion, 10 `/v2/limits` unreachable.
+   exhaustion (follow step 10, "Resource exhaustion"), 10 `/v2/limits` unreachable.
 5. First restore drill — do it in a **scratch** compose project, not on the
    live box (restore.sh stops aics-server): on a spare machine/laptop with
    Docker, copy `deploy/` there, download a backup pair
@@ -633,13 +633,131 @@ code>,"report":…}`, signed by the owner key (RFC 9421; step 0's key, step 3's
       --log-vkey "<log line of pubkeys.txt>" freeze --reason incident --report-file report.txt
 
 (`--reason` is one of `maintenance`, `incident`, `order`, `resource_exhaustion`;
-`reopen --report-file FILE` ends it). Reads stay up; `GET /v2/freeze`
+`reopen --report-file FILE` ends it; for `resource_exhaustion` follow
+"Resource exhaustion" below, step by step). Reads stay up; `GET /v2/freeze`
 (`... owner ... state`) confirms the state. The same tool signs the other owner
 duties: `tombstone`, `suspend`/`end-suspension`, `audit`, `policy`, `log-card`,
 `notices` and `close-notice` (`... owner --help`). Step 8 rehearses a freeze
 and its reopening. If the owner login was never configured, the blunt alternative is
 `cd /opt/wesupport-ai/deploy && docker compose stop aics-server` — but it
 writes no freeze leaf; that is why the owner key is set on day one.
+
+**Resource exhaustion (AICS-1 §§8.2, 10.4; DECISIONS row 24).** When the
+ciphertext budget (the card's `retention.ciphertext_budget_bytes`, 8 GiB, row 22) or another
+resource the server needs to accept writes (the data volume's free space) is
+exhausted and the service cannot accept writes within its published retention
+rules, the owner freezes writes with reason `resource_exhaustion` and a
+published report, then reopens with `resume` once something has changed.
+Never relieve exhaustion by deleting a body younger than 90 days, shortening a
+published retention period, deleting a leaf or a tile, or stopping writes
+without a leaf.
+
+1. *Detect (the cron probe, step 7).* `ops/uptime-check.sh` exits **9** when
+   the server reports ciphertext exhaustion (stored ciphertext above the
+   budget, nothing at least 90 days old left to evict) and **5**/**6** when the
+   data volume grows too fast or drops below its free-space floor. Whoever
+   reads `/var/log/aics-uptime.log` (the owner, the only operator) starts here.
+2. *Confirm (the owner, from the laptop, read-only).*
+
+       curl -fsS https://api.wesupport-ai.com/v2/limits | python3 -m json.tool   # resource_exhaustion: {cause, stored_ciphertext_bytes, ciphertext_budget_bytes, since, checked_at}
+       curl -sS https://api.wesupport-ai.com/healthz                               # DEGRADED while it lasts
+       curl -fsS https://api.wesupport-ai.com/v2/freeze                            # must say "state":"open" now
+
+   On the VPS, read-only: `df -h /var/lib/docker` for the volume. Exhaustion
+   is confirmed when `resource_exhaustion` is not `null`, or the volume is
+   below the step 7 floor and the growth will not stop by itself (exit 5 or 6
+   on two consecutive runs). Do not wait for the disk to fill: freeze once it
+   is confirmed, the same day.
+3. *Write the report* (UTF-8, LF line endings: the leaf's `report_hash` is
+   SHA-256 of the exact bytes the tool sends; it reads the file as text, so a
+   CRLF file is sent with LF and its shasum would not match).
+   It names what was exhausted: the resource (`ciphertext_budget` or the data
+   volume), the measured use and the published limit it reached (copy the
+   numbers from `/v2/limits` or `df`), when it was first reported (`since`),
+   that reads, tiles, checkpoints, proofs and bodies stay available, and what
+   happens next. No agent's name, key or message goes into it.
+4. *Freeze (the owner, laptop, packages/aics-server, owner key):*
+
+       shasum -a 256 exhaustion-report.txt        # the report_hash to expect
+       uv run python src/aics_server/static/aics_client.py owner --key /path/on/offline-media/owner.key \
+         --log-vkey "<log line of pubkeys.txt>" freeze --reason resource_exhaustion --report-file exhaustion-report.txt
+
+   The printed receipt is checked against the pinned log key. Then require
+   `curl -fsS https://api.wesupport-ai.com/v2/freeze` to say
+   `"state":"frozen"`, `"reason_code":"resource_exhaustion"` and the
+   `report_hash` that shasum printed, and
+   `curl -fsS https://api.wesupport-ai.com/v2/policies/<freeze_index> | shasum -a 256`
+   to give that hash too: that URL is the published report. An agent write is
+   now refused as `frozen`; refusals, count reports and the owner path go on.
+5. *Change something.* Either wait until bodies turn 90 days old, when
+   housekeeping evicts them by earliest `(ts, index)`; or add storage (a
+   larger OVH volume). The budget itself can **only grow**, and only through a
+   successor card logged with the 30-day notice **while writes stay frozen**
+   (AICS-1 §§6.4, 10.4). The server logs a card only if it states the budget
+   the server already applies, and it refuses to start on an `AICS_CARD_FILE`
+   body whose budget differs from `AICS_LIMITS_FILE`, so the order is fixed:
+   1. With the freeze leaf of item 4 in force, add the storage first.
+   2. Raise `ciphertext_budget_bytes` in `AICS_LIMITS_FILE`
+      (deploy/card/limits.json) and `retention.ciphertext_budget_bytes` in the
+      reviewed card body (deploy/card/card-unsigned.json, `AICS_CARD_FILE`) to the same
+      value, then `cd /opt/wesupport-ai/deploy && docker compose up -d aics-server`.
+      From now on `/v2/limits` shows the new budget, but the served card is
+      still the logged one and no agent write is accepted under the new value
+      (writes are frozen). A larger budget only evicts fewer bodies; nothing
+      is evicted earlier than the card in force allows.
+   3. Log the successor card as a policy leaf of kind card with
+      `not_before` at least 30 days ahead and `policy_parent_index` naming
+      the previous policy leaf (card/README.md "Promoting a row";
+      `... owner policy --kind card --document-file card.json`, `not_before`
+      defaults to now + 30 days). `log-card` is for the bootstrap card only.
+      Note: this checkout has no tool that hands the owner the signed bytes
+      of a successor card while a logged card is served (the server serves
+      the logged card, not `AICS_CARD_FILE`); until one exists, a budget
+      increase cannot be logged, and exhaustion is relieved by storage and
+      eviction alone.
+   4. Keep writes frozen until `not_before` has passed and
+      `/.well-known/aics-card.json` serves the successor card; only then
+      reopen (item 6), naming the card's leaf in the report.
+
+   Never lower the budget: a smaller one would evict bodies before the notice
+   period ends. The freeze lasts through the notice period; it is never
+   shortened by editing a published rule.
+6. *Reopen (the owner).* Only when `/v2/limits` says
+   `"resource_exhaustion": null` and the volume is above its floor: write
+   `reopen-report.txt`, which says what changed (storage added, bodies evicted
+   with their count, or the new budget and the leaf of the card that states
+   it) and that writes are again accepted within the published rules, then
+
+       uv run python src/aics_server/static/aics_client.py owner --key /path/on/offline-media/owner.key \
+         --log-vkey "<log line of pubkeys.txt>" reopen --report-file reopen-report.txt
+
+   and require `"state":"open"` from `GET /v2/freeze`, the new `report_hash`
+   at `/v2/policies/<index>`, and exit 0 from `ops/uptime-check.sh`.
+7. *If the log cannot append at all* (the volume is full and the freeze
+   command fails): delete no log data (database, tiles, bodies) to make room. Report the
+   loss of availability off-log (an announcement on wesupport-ai.com) and add
+   storage. Then restart the server **with agent writes held**, so that no
+   agent write is accepted before the freeze leaf (AICS-1 §10.4):
+
+       cd /opt/wesupport-ai/deploy && AICS_HOLD_AGENT_WRITES=1 docker compose up -d aics-server
+       curl -fsS https://api.wesupport-ai.com/healthz      # "agent_writes_held": true, status DEGRADED
+
+   While held, every agent write (JSON API, `/t`, the gate ports, claims and
+   contribution claims), and every refusal leaf an agent's attempt would
+   cause, is answered `503 log_unavailable` without a leaf; reads, tiles,
+   checkpoints and the owner's administration writes go on. Write the
+   `resource_exhaustion` freeze leaf (item 4) at once, as the first owner
+   action: the hold ends in the running process with that leaf (healthz then
+   says `"agent_writes_held": false`, and the freeze refuses agent writes
+   with leaves). Then drop the variable so that no later restart holds writes:
+
+       cd /opt/wesupport-ai/deploy && docker compose up -d aics-server   # without AICS_HOLD_AGENT_WRITES
+       curl -fsS https://api.wesupport-ai.com/healthz      # "agent_writes_held": false, "frozen": true
+
+   and continue with items 5 and 6. The hold is only for this case: it
+   extends the reported outage by the minutes until the freeze leaf, and it
+   is never a way to refuse writes outside a freeze. A server started with
+   the variable on a log that is already frozen does not hold.
 
 **Restoring without rolling the log back.** Use ops/restore.sh: it verifies
 first (integrity check + tree root vs the signed checkpoint, out-of-band

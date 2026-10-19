@@ -686,8 +686,10 @@ class _SessionStore:
     #: Expired sessions are swept every this many new sessions (and whenever the store is full).
     SWEEP_EVERY = 64
 
-    def __init__(self, limit: int) -> None:
+    def __init__(self, limit: int, on_idle: Callable[[], None] | None = None) -> None:
         self.limit = limit
+        #: Called once per HTTP session found expired idle (the owner stats' ``end.idle``; nothing about it is kept).
+        self._on_idle = on_idle or (lambda: None)
         self._sessions: dict[str, Session] = {}
         self._lock = threading.Lock()
         self._tcp = 0
@@ -697,6 +699,8 @@ class _SessionStore:
         dead = [s for s in self._sessions.values() if s.ended or s.idle(now)]
         for s in dead:
             self._sessions.pop(s.id, None)
+            if not s.ended:
+                self._on_idle()
         return dead
 
     def prune(self) -> list[Session]:
@@ -732,6 +736,8 @@ class _SessionStore:
                 return None, None
             if session.ended or session.idle(now):
                 self._sessions.pop(sid, None)
+                if not session.ended:
+                    self._on_idle()
                 return None, session
             session.last_used = now
             return session, None
@@ -816,7 +822,7 @@ class _BaseGate:
         self.api_url = api_url.rstrip("/")
         self.limits = limits or GateLimits()
         self.clock = clock
-        self.sessions = _SessionStore(self.limits.max_sessions)
+        self.sessions = _SessionStore(self.limits.max_sessions, on_idle=lambda: self._count("end.idle"))
         self._preidentity = _Bucket(self.limits.preidentity_lines, self.limits.preidentity_window_seconds)
         self._staged = 0
         self._staged_lock = threading.Lock()
@@ -824,12 +830,29 @@ class _BaseGate:
 
     # -- sessions ---------------------------------------------------------------
 
+    def _count(self, event: str) -> None:
+        """One gate funnel event for the owner stats (:data:`aics_server.stats.GATE_EVENTS`): a closed-list name and
+        the day, never a session id, key, name or line.  Counting never fails a line."""
+        try:
+            self.db.stats.count_gate(event)
+        except Exception:  # pragma: no cover - a closed-list slip must not break the gate
+            pass
+
     def open_session(self, transport: str, *, register: bool = True) -> Session | None:
         """A new session (``None`` when the published session limit is reached)."""
         session, dropped = self.sessions.create(transport, register=register)
         for old in dropped:
             self._release_body(old)
+        if session is not None:
+            self._count(f"session.{transport}")
         return session
+
+    def sweep(self) -> int:
+        """Drop expired HTTP sessions now (each counted ``end.idle``), releasing their staged bodies; returns how
+        many sessions stay open."""
+        for old in self.sessions.prune():
+            self._release_body(old)
+        return len(self.sessions)
 
     def close_session(self, session: Session) -> None:
         """Discard a session: its staged body and proposals go, nothing is logged."""
@@ -982,6 +1005,7 @@ class _BaseGate:
         session.bad += 1
         if session.bad >= 3:
             session.ended = True
+            self._count("end.malformed")
             return ["err malformed help"]
         return [f"retry {form or self._expected(session)}"]
 
@@ -1091,6 +1115,7 @@ class _BaseGate:
     def _help(self, session: Session, args: list[str], **_: Any) -> list[str]:
         if args:
             raise _Malformed(FORM_HELP)
+        self._count("help")
         lines = [
             "ok help: AICS text gate. One command per line; every reply ends with a line holding only >.",
             f"this conversation is session {session.id}: it ends after {SESSION_IDLE_SECONDS} s idle, on quit, or "
@@ -1300,10 +1325,12 @@ class _BaseGate:
             session.onboarding.tool = "none"
             session.onboarding.tier = ident.TIER_THIRD_PARTY
             session.step = "none"
+            self._count("tools.none")
             return [NONE_QUESTION]
         chosen = next((n for n in names if n in TOOLS), None)
         if chosen is None:
             raise _Malformed(FORM_TOOLS)
+        self._count(f"tools.{chosen}")
         session.restart_onboarding()
         ob = session.onboarding
         ob.tool = chosen
@@ -1853,6 +1880,7 @@ class _BaseGate:
         name, kid = ob.name, ob.kid
         session.identity = _Identity("key", name, ob.tier, kid, ob.public, ob.scheme)
         index = result["merkle_proof"]["leaf_index"]
+        self._count("upgrade")
         session.restart_onboarding()
         session.step = "ready"
         return [
@@ -1935,6 +1963,7 @@ class _BaseGate:
         session.identity = _Identity("key", ob.name, ob.tier, ob.kid, ob.public, ob.scheme)
         index = result["merkle_proof"]["leaf_index"]
         name, kid = ob.name, ob.kid
+        self._count("claim.key" if ob.tier == ident.TIER_VERIFIED else "claim.third-party")
         session.restart_onboarding()
         session.step = "ready"
         return [
@@ -1989,6 +2018,7 @@ class _BaseGate:
             return [_db_failure(exc), NAME_QUESTION]
         agent = result["agent"]
         session.identity = _Identity("secret", agent["name"], ident.TIER_UNVERIFIED, agent["unverified_id"], None, SCHEME_SECRET)
+        self._count("claim.secret")
         index = result["merkle_proof"]["leaf_index"]
         session.restart_onboarding()
         session.step = "ready"
@@ -2721,6 +2751,14 @@ class TcpGate:
             await asyncio.sleep(self.cert_check_seconds)
             self.reload_certificate()
 
+    def _count_connection(self, outcome: str) -> None:
+        """A TCP connection is one ``agent-gate`` request of route group ``gate`` in the owner stats (``2xx``: a
+        session opened, ``429``: turned away busy); no latency sample, nothing about the peer."""
+        try:
+            self.gate.db.stats.count_request("agent-gate", "gate", outcome)
+        except Exception:  # pragma: no cover
+            pass
+
     async def _plain_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         await self._client(reader, writer, tls=False)
 
@@ -2739,19 +2777,23 @@ class TcpGate:
         counted = False
         try:
             if self._active >= self.gate.limits.max_connections:
+                self._count_connection("429")
                 await self._send(writer, ["err busy too many connections right now; retry later"])
                 return
             self._active += 1
             counted = True
             session = self.gate.open_session("tcp-tls" if tls else "tcp-plain", register=False)
             if session is None:
+                self._count_connection("429")
                 await self._send(writer, ["err busy the gate holds too many sessions right now; retry shortly"])
                 return
+            self._count_connection("2xx")
             await self._send(writer, self.gate.start_turn(session))
             while not session.ended:
                 try:
                     raw = await asyncio.wait_for(reader.readline(), self.idle_seconds)
                 except TimeoutError:
+                    self.gate._count("end.idle")
                     await self._send(writer, [f"err session_expired idle for {int(self.idle_seconds)} s; connect again"])
                     break
                 except (ValueError, asyncio.LimitOverrunError):

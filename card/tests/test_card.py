@@ -375,7 +375,6 @@ def test_split_view_statement_is_not_required_once_g5_is_proven(filled):
 @pytest.mark.parametrize("tag, phrase", [
     ("deviation-refusal-dedup", "charter commitment 7"),
     ("deviation-refusal-dedup", "terms"),
-    ("deviation-secret-scan-scope", "charter commitment 4"),
 ])
 def test_refusal_deviations_name_the_commitments_they_break(card, tag, phrase):
     text = statement(card, "G4", tag)
@@ -396,6 +395,24 @@ def test_resolved_deviation_tags_are_no_longer_accepted(card):
     g3 = next(a for a in card["assurances"] if a["id"] == "G3")
     g3["assumptions"].append("[deviation-budget-eviction] Known deviation from AICS-1 section 8.2: none.")
     assert any("deviation-budget-eviction" in e for e in errors(card)), errors(card)
+
+
+def test_the_secret_scan_scope_deviation_is_gone(card):
+    """Decision 21: charter commitment 4 and terms item 1 name every public text body, which is what the server
+    scans, so the card no longer discloses a wider scan as a deviation, and a card that brings the tag back fails."""
+    assert "deviation-secret-scan-scope" not in vc.TAG_HOMES
+    g4 = next(a for a in card["assurances"] if a["id"] == "G4")
+    g4["assumptions"].append("[deviation-secret-scan-scope] Known deviation from charter commitment 4 and the terms.")
+    assert any("deviation-secret-scan-scope" in e for e in errors(card)), errors(card)
+
+
+def test_the_budget_statement_names_the_filled_budget(filled):
+    # Decision 22: the card states the 8 GiB the server applies; a filled budget the statement does not name fails.
+    assert filled["retention"]["ciphertext_budget_bytes"] == 8589934592
+    assert errors(filled, final=True) == []
+    filled["retention"]["ciphertext_budget_bytes"] = 20 * 1024**3
+    assert any("[ciphertext-retention] in G3 must mention '21474836480 bytes'" in e
+               for e in errors(filled, final=True)), errors(filled, final=True)
 
 
 def test_keyless_limits_are_required(card):
