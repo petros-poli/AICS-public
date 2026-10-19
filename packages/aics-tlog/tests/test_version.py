@@ -14,7 +14,7 @@ PYPROJECT = Path(__file__).resolve().parents[1] / "pyproject.toml"
 def test_module_version_is_the_distribution_version():
     with PYPROJECT.open("rb") as fh:
         declared = tomllib.load(fh)["project"]["version"]
-    assert aics_tlog.__version__ == declared == "0.2.0"
+    assert aics_tlog.__version__ == declared == "0.2.1"
 
 
 def test_installed_metadata_and_cli_report_it():

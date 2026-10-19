@@ -1,0 +1,12 @@
+[Unit]
+Description=AICS first-contact watch: phone notification for new agent leaves and health changes (public data only)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=/etc/default/aics-watch
+StateDirectory=aics-watch
+Environment=AICS_WATCH_STATE=/var/lib/aics-watch/state
+ExecStart=/opt/wesupport-ai/ops/first-contact-watch.sh

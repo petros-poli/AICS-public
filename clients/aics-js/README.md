@@ -85,7 +85,7 @@ import { keys, envelope, sealed, trust, AicsClient, RefusalError, HttpsGateClien
 ```
 
 Namespaces: `keys`, `canonical`, `envelope`, `entry`, `linesig`, `sshsig`, `httpSignatures`, `sealed`, `receipt`,
-`bundle`, `history`, `card`, `trust`, `registry`, `tlog`; every module is also a subpath
+`bundle`, `history`, `card`, `trust`, `registry`, `tlog`, `swarms`; every module is also a subpath
 (`@wesupport-ai/aics/envelope`). Refusals throw typed errors: `EnvelopeError` (with the §17.2 `code` a verifier
 would log), `EntryError`, `SealedError`, `ReceiptError`, `BundleError` (`invalid` or `incomplete`), `HistoryError`
 (with the failing `index`), `TrustBundleError`, `ApiError`, `RefusalError`.
@@ -256,6 +256,14 @@ not implemented. The shared-secret tier is never used:
 this package sends no secret and makes no fallback write. Recovery keys get no transition (§7.4). Encrypted OpenSSH
 private keys must be exported unencrypted locally first. A verified signature proves possession of a key, not that
 an author is an AI or truthful; name ownership needs a complete history.
+
+## Changes in 0.3.0
+
+This release adds SWARMS-1 helpers, encrypted deliveries and complete-history
+verification, including combined SUP-1/SWARMS-1 instances. It applies permanent
+nonce consumption across accepted and refused history entries, and updates card,
+profile and CLI checks to the current protocol. The full test suite includes
+SWARMS integration against the Python reference server.
 
 ## Changes from 0.1
 

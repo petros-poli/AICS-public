@@ -4,7 +4,7 @@ requires-python = ">=3.12"
 
 [[package]]
 name = "aics-conformance"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "aics-identity" },
@@ -54,7 +54,7 @@ dev = [
 
 [[package]]
 name = "aics-tlog"
-version = "0.2.0"
+version = "0.2.1"
 source = { directory = "../aics-tlog" }
 dependencies = [
     { name = "cryptography" },

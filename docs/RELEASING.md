@@ -63,12 +63,16 @@ which workflow built it.
    value skips PyPI; the `prepare` job logs the reason. No API token, signing
    key, password, or long-lived secret is used. GitHub's job token and OIDC tokens
    are short lived. Setting the variable does not rerun completed jobs.
-5. Leave the optional repository variable **`PYPI_ONLY_PROJECT`** empty to publish
-   all six projects. For a correction that needs only one upload, set it to that
-   project's distribution name, such as `aics-cli`. The preparation job validates
-   the name against the six-project list, normalizes case and runs of `-`, `_` or
-   `.` as PyPI does, and freezes the result in its outputs. Unknown names and
-   whitespace are errors. The filter does not enable publishing by itself:
+5. Leave both optional repository variables **`PYPI_ONLY_PROJECT`** and
+   **`PYPI_PROJECTS`** empty to publish all six projects. The existing
+   `PYPI_ONLY_PROJECT` selects one distribution, such as `aics-cli`.
+   `PYPI_PROJECTS` selects a comma-separated list, such as
+   `aics-tlog,aics-conformance`. Set at most one selector, even if their values
+   would select the same project. The preparation job validates every name
+   against the six-project list, normalizes case and runs of `-`, `_` or `.` as
+   PyPI does, and freezes a sorted JSON list in its outputs. Unknown names,
+   whitespace, empty list members and duplicate normalized names are errors.
+   A selector does not enable publishing by itself:
    `PUBLISH_PYPI` must still be exactly `true`. Every publishing step uses the
    frozen value, including when a failed publishing job is rerun; changing the
    repository variable does not change an existing run's selection.
@@ -91,8 +95,8 @@ for this repository before enabling package distribution.
    The repository tag identifies a release of the monorepo; package versions come
    from their own `pyproject.toml` and need not match one another or the tag.
    When publishing to PyPI, **every selected package/version must be new**. By
-   default all six libraries are selected; `PYPI_ONLY_PROJECT` can select one
-   for a correction release. Publishing never skips existing files. PyPI
+   default all six libraries are selected; `PYPI_ONLY_PROJECT` can select one,
+   or `PYPI_PROJECTS` can select a reviewed subset. Publishing never skips existing files. PyPI
    disallows reusing a published filename, including after deletion.
 3. Create and push an immutable `v*` tag pointing to the reviewed commit, using
    your normal source-control tool. Prefer names such as `v0.2.0` or `v0.3.0-rc1`
@@ -118,14 +122,14 @@ The import remains `aics_cli` and the console command remains `aics`. The earlie
 `aics` PyPI project is owned separately; a JSON endpoint returning 404 does not
 prove that a project name is available.
 
-The first `aics-cli` publication is held until production genesis is complete
-and the production trust bundle has been finalized in the release source. The
-distribution rename and publisher configuration alone do not lift that hold.
+`aics-cli` 0.1.0 was first published by `v0.2.1` after production genesis, with
+the production trust bundle in the release source. That tag and its artifacts
+are immutable.
 
-After that prerequisite, for a reviewed correction release such as `v0.2.1`, configure the `aics-cli`
-publisher with environment `pypi-aics`, set `PUBLISH_PYPI=true` and
-`PYPI_ONLY_PROJECT=aics-cli`, then create a new immutable tag after CI passes.
-The existing `v0.2.0` tag and assets remain unchanged. All six distributions are
+For a future CLI-only release, use a new CLI version and the existing publisher
+with environment `pypi-aics`, set `PUBLISH_PYPI=true` and
+`PYPI_ONLY_PROJECT=aics-cli`, leave `PYPI_PROJECTS` empty, then create a new
+immutable tag after CI passes. All six distributions are
 still built, tested, signed and included in the GitHub release, but only the
 CLI's wheel and sdist are uploaded to PyPI. The other five matrix entries skip
 their download, selection and publishing steps, so their existing versions are
@@ -134,8 +138,30 @@ not uploaded again.
 Verify the new CLI's PyPI bytes against the correction release's signed
 inventory. Verify the other five existing PyPI versions against the release
 that originally published them; a later rebuild can have different bytes.
-Clear `PYPI_ONLY_PROJECT` before the next release intended to publish all six
+Clear both selectors before the next release intended to publish all six
 projects, and give every selected package a new unused version.
+
+### Publish a reviewed subset
+
+For the post-genesis Python updates, the changed distributions are
+`aics-tlog` 0.2.1 (bounded Merkle tree cache) and `aics-conformance` 0.1.1
+(permanent nonce uniqueness, including authenticated refusals). Their package
+changelogs describe the changes. The other four distributions retain their
+existing versions and must not be uploaded again.
+
+After reviewing the source, tests and public snapshot, set `PUBLISH_PYPI=true`,
+leave `PYPI_ONLY_PROJECT` empty and set
+`PYPI_PROJECTS=aics-tlog,aics-conformance` before creating a new immutable tag.
+The preparation job rejects conflicting selectors before building or publishing.
+All six distributions are still built, tested and signed. Each publishing step
+uses only the frozen list, so only the selected wheel/sdist pairs are uploaded.
+Rerunning a failed publishing job uses that run's original selection, even if
+repository variables have since changed.
+
+Check each selected version's public PyPI bytes against this release's signed
+inventory. Existing unselected PyPI versions still belong to their original
+release inventories; do not compare them to a later rebuild. Clear both
+selectors before a future all-project release, or deliberately set a new subset.
 
 ### First publication with PyPI's three-pending-publisher limit
 

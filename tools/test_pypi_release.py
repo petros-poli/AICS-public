@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import json
 import os
 from pathlib import Path
 import re
@@ -180,11 +181,12 @@ class PyPIPublishingTest(unittest.TestCase):
 
 
 class PyPIPolicyTest(unittest.TestCase):
-    def policy(self, project="", enabled="true"):
+    def policy(self, project="", enabled="true", multiple=""):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "output"
             result = subprocess.run([sys.executable, "-c", POLICY],
                                     env=dict(os.environ, PYPI_ONLY_PROJECT=project,
+                                             PYPI_PROJECTS=multiple,
                                              PUBLISH_PYPI=enabled, GITHUB_OUTPUT=str(output)),
                                     capture_output=True, text=True)
             text = output.read_text() if output.exists() else ""
@@ -193,14 +195,16 @@ class PyPIPolicyTest(unittest.TestCase):
     def test_empty_filter_preserves_all_projects(self):
         result, outputs = self.policy()
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(outputs, {"enabled": "true", "project": ""})
+        self.assertEqual(outputs, {"enabled": "true", "project": "",
+                                   "projects": json.dumps(sorted(ENVIRONMENTS), separators=(",", ":"))})
 
     def test_each_project_can_be_selected(self):
         for project in ENVIRONMENTS:
             with self.subTest(project=project):
                 result, outputs = self.policy(project)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(outputs, {"enabled": "true", "project": project})
+                self.assertEqual(outputs, {"enabled": "true", "project": project,
+                                           "projects": json.dumps([project], separators=(",", ":"))})
 
     def test_filter_normalizes_pypi_names(self):
         for value in ("AICS_CLI", "Aics.Cli", "aics---cli", "aics._-cli"):
@@ -208,6 +212,44 @@ class PyPIPolicyTest(unittest.TestCase):
                 result, outputs = self.policy(value)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(outputs["project"], "aics-cli")
+                self.assertEqual(json.loads(outputs["projects"]), ["aics-cli"])
+
+    def test_multiple_filter_selects_only_the_requested_projects(self):
+        for value in ("aics-tlog,aics-conformance", "AICS_TLOG,Aics.Conformance"):
+            with self.subTest(value=value):
+                result, outputs = self.policy(multiple=value)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(outputs, {"enabled": "true", "project": "",
+                                           "projects": '["aics-conformance","aics-tlog"]'})
+
+    def test_multiple_filter_accepts_one_or_all_projects(self):
+        for names in (["aics-cli"], list(ENVIRONMENTS)):
+            with self.subTest(names=names):
+                result, outputs = self.policy(multiple=",".join(names))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(outputs["projects"]), sorted(names))
+                self.assertEqual(outputs["project"], "")
+
+    def test_invalid_multiple_filter_writes_no_outputs(self):
+        for value in (",", "aics-tlog,", ",aics-conformance", "aics-tlog,,aics-conformance",
+                      "aics-tlog, aics-conformance", " aics-tlog", "aics-tlog ",
+                      "aics-tlog,aics-server", "aics-tlog,aics", "aics-tlog,*",
+                      "aics-tlog\naics-conformance", '["aics-tlog"]', "aics-tlog/aics-conformance",
+                      "aics-tlog,aics-tlog", "aics-tlog,AICS_TLOG"):
+            with self.subTest(value=value):
+                result, outputs = self.policy(multiple=value, enabled="false")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("PYPI_PROJECTS", result.stderr)
+                self.assertEqual(outputs, {})
+
+    def test_both_selectors_are_rejected_even_when_they_agree(self):
+        for multiple in ("aics-cli", "AICS_CLI", "aics-tlog,aics-conformance"):
+            for enabled in ("true", "false"):
+                with self.subTest(multiple=multiple, enabled=enabled):
+                    result, outputs = self.policy("aics-cli", enabled=enabled, multiple=multiple)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("Set only one", result.stderr)
+                    self.assertEqual(outputs, {})
 
     def test_invalid_or_unknown_filter_writes_no_outputs(self):
         for value in ("aics", "aics-server", "aics-cli,aics-mcp", "aics-cli\nproject=",
@@ -223,15 +265,21 @@ class PyPIPolicyTest(unittest.TestCase):
             with self.subTest(enabled=enabled):
                 result, outputs = self.policy("aics-cli", enabled=enabled)
                 self.assertEqual(result.returncode, 0, result.stderr)
-                self.assertEqual(outputs, {"enabled": "false", "project": "aics-cli"})
+                self.assertEqual(outputs, {"enabled": "false", "project": "aics-cli",
+                                           "projects": '["aics-cli"]'})
+                result, outputs = self.policy(enabled=enabled, multiple="aics-tlog,aics-conformance")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(outputs, {"enabled": "false", "project": "",
+                                           "projects": '["aics-conformance","aics-tlog"]'})
 
     def test_all_publishing_steps_use_the_frozen_filter(self):
-        guard = "if: ${{ needs.prepare.outputs.pypi-only-project == '' || needs.prepare.outputs.pypi-only-project == matrix.project }}"
+        guard = "if: ${{ contains(fromJSON(needs.prepare.outputs.pypi-projects), matrix.project) }}"
         steps = re.split(r"\n      - (?:name|uses):", PYPI_JOB)[1:]
         self.assertEqual(len(steps), 3)
         self.assertTrue(all(guard in step for step in steps))
         self.assertNotIn("vars.", PYPI_JOB)
         self.assertIn("pypi-only-project: ${{ steps.policy.outputs.project }}", WORKFLOW)
+        self.assertIn("pypi-projects: ${{ steps.policy.outputs.projects }}", WORKFLOW)
 
 
 if __name__ == "__main__":

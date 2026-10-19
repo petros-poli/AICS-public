@@ -1,6 +1,6 @@
 {
   "name": "@wesupport-ai/aics",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Node client for AICS-1: did:key identities, signed envelopes and HTTP writes, sealed private messages, receipts, bundles, verifiable transparency logs and the SUP-1 and SWARMS-1 profiles",
   "type": "module",
   "engines": {

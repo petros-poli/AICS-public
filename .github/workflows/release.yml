@@ -21,6 +21,7 @@ jobs:
     outputs:
       publish-pypi: ${{ steps.policy.outputs.enabled }}
       pypi-only-project: ${{ steps.policy.outputs.project }}
+      pypi-projects: ${{ steps.policy.outputs.projects }}
     steps:
       - name: Refuse to replace a published release
         env:
@@ -52,27 +53,43 @@ jobs:
         env:
           PUBLISH_PYPI: ${{ vars.PUBLISH_PYPI }}
           PYPI_ONLY_PROJECT: ${{ vars.PYPI_ONLY_PROJECT }}
+          PYPI_PROJECTS: ${{ vars.PYPI_PROJECTS }}
         run: |
           python3 - <<'PY'
+          import json
           import os
           import re
 
           allowed = {"aics-identity", "aics-tlog", "aics-witness",
                      "aics-conformance", "aics-cli", "aics-mcp"}
-          requested = os.environ.get("PYPI_ONLY_PROJECT", "")
-          if requested and not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?", requested):
-              raise SystemExit("PYPI_ONLY_PROJECT must be empty or a valid PyPI project name")
-          project = re.sub(r"[-_.]+", "-", requested).lower()
-          if project and project not in allowed:
-              raise SystemExit("PYPI_ONLY_PROJECT is not one of the six release projects")
+          single = os.environ.get("PYPI_ONLY_PROJECT", "")
+          multiple = os.environ.get("PYPI_PROJECTS", "")
+          if single and multiple:
+              raise SystemExit("Set only one of PYPI_ONLY_PROJECT and PYPI_PROJECTS")
+          selector = "PYPI_PROJECTS" if multiple else "PYPI_ONLY_PROJECT"
+          requested = multiple.split(",") if multiple else [single] if single else []
+          projects = []
+          for value in requested:
+              if not re.fullmatch(r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?", value):
+                  raise SystemExit(f"{selector} contains an empty or invalid PyPI project name")
+              name = re.sub(r"[-_.]+", "-", value).lower()
+              if name not in allowed:
+                  raise SystemExit(f"{selector} contains a name outside the six release projects")
+              if name in projects:
+                  raise SystemExit(f"{selector} contains a duplicate normalized project name")
+              projects.append(name)
+          projects = sorted(projects or allowed)
+          # Retain the legacy single-project output; upload guards use the full list.
+          project = projects[0] if single else ""
           # Freeze validated policy once; later steps never reread repository variables.
           # Python comparison is case sensitive; Actions expression equality is not.
           enabled = os.environ.get("PUBLISH_PYPI") == "true"
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               print(f"enabled={str(enabled).lower()}", file=output)
               print(f"project={project}", file=output)
+              print("projects=" + json.dumps(projects, separators=(",", ":")), file=output)
           if enabled:
-              print(f"PyPI publishing enabled for {project or 'all six projects'} after release verification succeeds.")
+              print(f"PyPI publishing enabled for {', '.join(projects)} after release verification succeeds.")
           else:
               print('PyPI publishing skipped: PUBLISH_PYPI is not exactly "true" (unset defaults to skipped).')
           PY
@@ -212,12 +229,12 @@ jobs:
       id-token: write
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: ${{ needs.prepare.outputs.pypi-only-project == '' || needs.prepare.outputs.pypi-only-project == matrix.project }}
+        if: ${{ contains(fromJSON(needs.prepare.outputs.pypi-projects), matrix.project) }}
         with:
           name: verified-dist
           path: verified
       - name: Select this project's verified wheel and sdist
-        if: ${{ needs.prepare.outputs.pypi-only-project == '' || needs.prepare.outputs.pypi-only-project == matrix.project }}
+        if: ${{ contains(fromJSON(needs.prepare.outputs.pypi-projects), matrix.project) }}
         env:
           PYPI_PROJECT: ${{ matrix.project }}
         run: |
@@ -293,7 +310,7 @@ jobs:
               print(f"Selected {project}: {path.name}")
           PY
       - name: Publish with PyPI trusted publishing
-        if: ${{ needs.prepare.outputs.pypi-only-project == '' || needs.prepare.outputs.pypi-only-project == matrix.project }}
+        if: ${{ contains(fromJSON(needs.prepare.outputs.pypi-projects), matrix.project) }}
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: dist/

@@ -63,7 +63,7 @@ from .remote import HttpTileReader
 from .verified import VerifiedTileReader, audit_tiles
 from .bundle import Bundle, bundle_from_tiles, verify_bundle
 
-__version__ = "0.2.0"  # keep equal to pyproject.toml (tests/test_version.py)
+__version__ = "0.2.1"  # keep equal to pyproject.toml (tests/test_version.py)
 
 __all__ = [
     "EMPTY_HASH",
