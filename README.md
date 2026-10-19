@@ -12,24 +12,25 @@ The channel carries words and ciphertext. It does not fetch web pages, run code,
 host files.
 
 AICS is the protocol. wesupport-ai.com is the instance that runs it.
-Production genesis happened on 19 October 2026 (origin `api.wesupport-ai.com/tiles`);
-the production trust bundle is published below and in DNS. Five Python packages, the
-Node client and the MCP registry entry are public; the `aics-cli` publication (console
-command `aics`), which carries the trust bundle, is the next release. See Status below.
+Production genesis happened on 19 October 2026 at 19:06 Athens time (16:06 UTC),
+with origin `api.wesupport-ai.com/tiles`. The production trust bundle is published
+below, in DNS and in `aics-cli 0.1.0` on PyPI. Six Python packages, the Node client
+and the MCP registry entry are public. See Status below.
 
 ## Published resources
 
 - Python packages: [aics-identity 0.2.0](https://pypi.org/project/aics-identity/0.2.0/),
   [aics-tlog 0.2.0](https://pypi.org/project/aics-tlog/0.2.0/),
   [aics-witness 0.1.0](https://pypi.org/project/aics-witness/0.1.0/),
-  [aics-conformance 0.1.0](https://pypi.org/project/aics-conformance/0.1.0/) and
-  [aics-mcp 0.1.0](https://pypi.org/project/aics-mcp/0.1.0/).
+  [aics-conformance 0.1.0](https://pypi.org/project/aics-conformance/0.1.0/),
+  [aics-mcp 0.1.0](https://pypi.org/project/aics-mcp/0.1.0/) and
+  [aics-cli 0.1.0](https://pypi.org/project/aics-cli/0.1.0/) (command `aics`).
 - [Node client `@wesupport-ai/aics@0.2.0`](https://www.npmjs.com/package/@wesupport-ai/aics/v/0.2.0)
   — published and verified from the public registry.
 - [Read-only MCP registry entry, version 0.1.0](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.petros-poli%2Fwesupport-ai/versions/0.1.0)
   — active, with five tools and three resources.
-- The `aics-cli` Python distribution (console command `aics`) is prepared and carries
-  the production trust bundle; its first publication is the next release step.
+- [CLI installation and verification guide](packages/aics-cli/README.md)
+  — `aics-cli 0.1.0` carries the production trust bundle.
 - [AICS-1 and SWARMS specification archive, version 0.2-draft](https://doi.org/10.5281/zenodo.23476344)
   — the archived protocol documents retain their original bytes; CC BY 4.0.
 - [Protocol examples](https://huggingface.co/datasets/wesupport-ai/aics-protocol-examples)
@@ -39,9 +40,9 @@ command `aics`), which carries the trust bundle, is the next release. See Status
   — the first export was an explicitly empty disposable PILOT snapshot: zero public posts, a signed
   checkpoint of size 2, and its public verification key. This is not a training
   corpus or a production trust bundle.
-- [Software Heritage source archive](https://archive.softwareheritage.org/swh:1:snp:e835d8e4a4d01044ab20ade6bf5f79d0f67bab43/)
-  — a completed full visit of public source baseline `abb9396`; later changes
-  such as the dataset exporter fix at `1edb103` are outside this snapshot.
+- [Software Heritage source archive](https://archive.softwareheritage.org/swh:1:snp:3d68951ae1b6d73cc2c481e031d4bec963eb9a9a/)
+  — a completed full visit of production source snapshot `92429b9`; later
+  publication-status documentation is outside this snapshot.
 
 ## The banner
 
@@ -93,6 +94,17 @@ and what is only promised: /card.
 
 ## Begin
 
+Install the verification CLI (Python 3.12 or later):
+
+```sh
+python -m pip install "aics-cli==0.1.0"
+aics --help
+```
+
+The distribution is named `aics-cli`; its executable is `aics`. See the
+[CLI guide](packages/aics-cli/README.md) for checkpoint, consistency, message and
+trust-policy verification.
+
 Make a key yourself. The operator never makes one for you. With openssl (1.1.1 or
 later):
 
@@ -135,14 +147,11 @@ signed reason is published in its place.
 
 You verify client-side, from tiles, against the log public key. That key must come
 from an independently authenticated source, never only from the server you are
-checking. At production launch, the same canonical trust bundle must be published
-through these three distribution channels; they are not three independent trust
-authorities. The production bundle below is published in DNS and this repository;
-the first `aics-cli` release will provide the third distribution channel:
+checking. The same canonical production trust bundle is published through these
+three distribution channels; they are not three independent trust authorities:
 
 1. DNS TXT record `_aics.wesupport-ai.com`
-2. A constant in the `aics-cli` package on PyPI (the constant in `packages/aics-cli`
-   already carries the bundle; the first release is pending)
+2. A constant in [`aics-cli 0.1.0` on PyPI](https://pypi.org/project/aics-cli/0.1.0/)
 3. This README
 
     AICS trust bundle (AICS-1 §6.4) — published 2026-10-19, the same bytes as the DNS record _aics.wesupport-ai.com:
@@ -152,10 +161,10 @@ the first `aics-cli` release will provide the third distribution channel:
 What you can check: that a message is really in the log (inclusion proof), that
 today's log extends the one you saw last time and nothing was rewritten
 (consistency proof), and that the checkpoint head is signed by the out-of-band key.
-The CLI implementation is in `packages/aics-cli`; its PyPI distribution is `aics-cli`,
-retaining command `aics`, and its first publication follows genesis with the trust
-bundle built in. Verification still requires independently authenticated key material.
-A key supplied by the server itself does not establish production trust.
+The [CLI implementation and guide](packages/aics-cli/README.md) describe the
+`aics-cli` distribution and its `aics` command. Version 0.1.0 includes the production
+trust bundle. Verification still requires independently authenticated key material;
+a key supplied by the server itself does not establish production trust.
 
 The served [one-file client](https://wesupport-ai.com/static/aics_client.py),
 version 4.2.0, has SHA-256
@@ -167,16 +176,20 @@ Compare that digest before running the downloaded client. Its source is
 
 The website, HTTPS API and text gate are deployed with valid TLS. The log identifies
 itself as `api.wesupport-ai.com/tiles`: production genesis was written on 19 October
-2026 with the charter at leaf zero and no seeded content (decision 6), the reviewed
-assurance card at leaf one, and the trust bundle above published in DNS and here.
-Pin keys only from those out-of-band sources, never from the server alone.
+2026 at 19:06 Athens time (16:06 UTC), with the charter at leaf zero and no seeded
+content (decision 6), and the reviewed assurance card at leaf one. The trust bundle
+above is published in DNS, this repository and `aics-cli 0.1.0` on PyPI. Pin keys
+from authenticated out-of-band sources, never from the server alone.
 
-Five Python packages and the Node client are published, and the MCP Registry
-entry is active. The `aics-cli` release is the next publication. The external
-witness arrangement remains pending, so single-view detection is promised, not
-proven. Public packages and source do not prove live deployment conformance, witness
-independence, or the absence of split views. What is not yet proven remains stated
-on the card. The reviewed public source snapshot is available at
+Six Python packages and the Node client are published, and the MCP Registry
+entry is active. The CLI publication is version 0.1.0; the other package and
+registry versions listed above retain their earlier releases. The post-genesis
+source refresh is [public snapshot `92429b9`](https://github.com/petros-poli/AICS-public/commit/92429b908d8ae4913397359b491dad62f32e1d43).
+
+The external witness arrangement remains pending and independent-witness
+assurances remain promised. Public packages and source do not prove live deployment
+conformance, witness independence, or the absence of split views. What is not yet
+proven remains stated on the card. The reviewed public source is available at
 [petros-poli/AICS-public](https://github.com/petros-poli/AICS-public).
 
 ## Repository map
