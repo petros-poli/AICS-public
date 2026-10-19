@@ -20,9 +20,9 @@ which workflow built it.
    workflow referenced in these files. Use GitHub-hosted Ubuntu runners. Require
    the CI check **All packages passed** on `main`, and restrict creation and
    modification of `v*` tags to release maintainers.
-2. Create the GitHub Actions environment **`pypi`**. Restrict deployment to `v*`
-   tags; add environment reviewers if desired. This exact name is part of the
-   publisher identity.
+2. Create the six GitHub Actions environments listed below. Restrict each to
+   `v*` tags; add environment reviewers if desired. The exact environment name
+   is part of each project's publisher identity.
 3. In PyPI, configure a GitHub trusted publisher for **each** project below. For
    an existing project use **Manage → Publishing**. For a new project register a
    [pending publisher](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)
@@ -30,11 +30,27 @@ which workflow built it.
 
    | Field | Value |
    | --- | --- |
-   | Projects | `aics-identity`, `aics-tlog`, `aics-witness`, `aics-conformance`, `aics` (the `packages/aics-cli` project), `aics-mcp` |
    | Repository owner | `petros-poli` |
    | Repository name | `AICS-public` |
    | Workflow filename | `release.yml` (no directory prefix) |
-   | Environment name | `pypi` |
+
+   | PyPI project | GitHub environment |
+   | --- | --- |
+   | `aics-identity` | `pypi` |
+   | `aics-tlog` | `pypi-aics-tlog` |
+   | `aics-witness` | `pypi-aics-witness` |
+   | `aics-conformance` | `pypi-aics-conformance` |
+   | `aics` (`packages/aics-cli`) | `pypi-aics` |
+   | `aics-mcp` | `pypi-aics-mcp` |
+
+   Distinct environments are necessary for initial project creation: PyPI
+   rejects pending publishers with identical owner, repository, workflow and
+   environment under different project names. It also permits only **three
+   pending publishers per account** at once. These constraints are enforced by
+   [PyPI's publisher registration implementation](https://github.com/pypi/warehouse/blob/fbbd1acf790826370ba97c4257e8c81291a03f2c/warehouse/accounts/views.py#L1928-L2004).
+   Use the first-release sequence below; do not try to register all six pending
+   publishers simultaneously. Once a pending publisher creates its project, it
+   becomes an ordinary publisher and frees a pending slot.
 
    Do not configure `aics-server`: it is tested but never built or uploaded by the
    release pipeline. Use `[project].name` from each included `pyproject.toml`,
@@ -42,7 +58,8 @@ which workflow built it.
    [Adding a trusted publisher](https://docs.pypi.org/trusted-publishers/adding-a-publisher/).
 4. Leave the **repository** Actions variable `PUBLISH_PYPI` absent for GitHub-only
    releases. Set it to the literal string **`true`** once all included projects
-   have publishers configured and are ready for public distribution. Every other
+   have publishers configured and are ready for public distribution, or once
+   the first three are configured for the controlled bootstrap below. Every other
    value skips PyPI; the `prepare` job logs the reason. No API token, signing
    key, password, or long-lived secret is used. GitHub's job token and OIDC tokens
    are short lived. Setting the variable does not rerun completed jobs.
@@ -58,7 +75,8 @@ for this repository before enabling package distribution.
    `packages/*/pyproject.toml`, including future packages and the server. Release
    discovery selects `aics-identity`, `aics-tlog`, `aics-witness`,
    `aics-conformance`, `aics-cli`, and `aics-mcp` when their metadata files exist.
-   Register all six publishers before enabling PyPI.
+   Confirm all six ordinary publishers, or the first three pending publishers
+   for the initial release sequence below, before enabling PyPI.
 2. Set each included library's version deliberately, update its changelog and
    dependency constraints, and ensure `main` passes CI and Reproducible builds.
    The repository tag identifies a release of the monorepo; package versions come
@@ -76,10 +94,36 @@ for this repository before enabling package distribution.
    become SLSA subjects. The generator creates a draft release with
    `aics.intoto.jsonl`; the next job adds distributions, `.sigstore.json` bundles,
    base64 `.sig` signatures and PEM `.crt` certificates, then publishes the draft.
-5. If enabled, approve the `pypi` environment deployment and inspect the trusted
-   publishing job. It uploads the same distribution bytes, without signature
-   sidecars, using `pypa/gh-action-pypi-publish` and GitHub OIDC. Verify the GitHub
-   Release as described below before using its artifacts.
+5. If enabled, approve any required per-project environment deployments and
+   inspect the six trusted publishing jobs. Each job checks that its wheel and
+   sdist have the expected project metadata, matching versions and verified
+   inventory hashes, then uploads only those two files using
+   `pypa/gh-action-pypi-publish` and GitHub OIDC. Verify the GitHub Release as
+   described below before using its artifacts.
+
+### First publication with PyPI's three-pending-publisher limit
+
+1. Register pending publishers for `aics-identity`, `aics-tlog` and
+   `aics-witness` using their exact environments above. Create all six GitHub
+   environments and pass CI before setting `PUBLISH_PYPI=true` and pushing the
+   reviewed immutable release tag.
+2. The three configured publishing jobs create their projects. The remaining
+   three fail during OIDC authentication, before uploading any distributions.
+   The matrix uses `fail-fast: false`, so those failures cannot cancel the
+   configured jobs. Confirm that the first three versions are live and that
+   their publishers have converted to ordinary publishers.
+3. Register pending publishers for `aics-conformance`, `aics` and `aics-mcp`,
+   using the newly freed slots and their distinct environments.
+4. Inspect the failed job logs to confirm that **only those three PyPI jobs**
+   failed before uploading. Choose **Re-run failed jobs** on the same Release
+   run (or `gh run rerun RUN_ID --failed --repo petros-poli/AICS-public`). This preserves
+   successful uploads and reuses the original verified distribution artifacts.
+   Do not rerun the whole workflow, successful PyPI jobs, signing, provenance or
+   GitHub release publication. Confirm all six exact versions on PyPI afterward.
+
+This sequence is needed only while the projects are new. If a failure occurs
+after any files were accepted, follow the partial-upload guidance below rather
+than assuming it is safe to rerun that publishing job.
 
 Do not move a published tag. The preparation job refuses to rerun the full release
 pipeline for an already published release; rerun only a failed PyPI job after

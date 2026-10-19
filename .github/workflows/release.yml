@@ -167,11 +167,30 @@ jobs:
             --title "$RELEASE_TAG" --notes-file release-notes.md --draft=false
 
   pypi:
+    name: Publish ${{ matrix.project }} to PyPI
     if: ${{ needs.prepare.outputs.publish-pypi == 'true' }}
     needs: [prepare, github-release]
     runs-on: ubuntu-24.04
+    strategy:
+      # First publication may need two batches: PyPI permits only three pending
+      # publishers per account. Rerun failed jobs without republishing successes.
+      fail-fast: false
+      matrix:
+        include:
+          - project: aics-identity
+            environment: pypi
+          - project: aics-tlog
+            environment: pypi-aics-tlog
+          - project: aics-witness
+            environment: pypi-aics-witness
+          - project: aics-conformance
+            environment: pypi-aics-conformance
+          - project: aics
+            environment: pypi-aics
+          - project: aics-mcp
+            environment: pypi-aics-mcp
     environment:
-      name: pypi
+      name: ${{ matrix.environment }}
     permissions:
       id-token: write
     steps:
@@ -179,10 +198,81 @@ jobs:
         with:
           name: verified-dist
           path: verified
-      - name: Select only distributions for PyPI
+      - name: Select this project's verified wheel and sdist
+        env:
+          PYPI_PROJECT: ${{ matrix.project }}
         run: |
-          mkdir dist
-          cp verified/*.whl verified/*.tar.gz dist/
+          python3 - <<'PY'
+          import hashlib
+          import os
+          import re
+          import shutil
+          import tarfile
+          import zipfile
+          from email.parser import BytesParser
+          from pathlib import Path
+
+          project = os.environ["PYPI_PROJECT"]
+          if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", project):
+              raise SystemExit("Invalid PyPI project name")
+          # Distribution filenames normalize hyphens to underscores. The final
+          # dash is essential: the CLI's 'aics' must not select every aics_* file.
+          prefix = project.replace("-", "_") + "-"
+          verified = Path("verified")
+          selected = []
+          versions = set()
+          for suffix in (".whl", ".tar.gz"):
+              candidates = sorted(p for p in verified.iterdir()
+                                  if p.name.startswith(prefix) and p.name.endswith(suffix))
+              if len(candidates) != 1:
+                  raise SystemExit(f"Expected exactly one {project} {suffix}; found {len(candidates)}")
+              path = candidates[0]
+              if path.is_symlink() or not path.is_file():
+                  raise SystemExit(f"Not a regular distribution: {path.name}")
+              if suffix == ".whl":
+                  fields = path.name[:-4].split("-")
+                  if len(fields) not in (5, 6):
+                      raise SystemExit(f"Invalid wheel filename: {path.name}")
+                  version = fields[1]
+                  metadata_path = f"{fields[0]}-{version}.dist-info/METADATA"
+                  with zipfile.ZipFile(path) as archive:
+                      metadata_files = [n for n in archive.namelist() if n.endswith(".dist-info/METADATA")]
+                      if metadata_files != [metadata_path]:
+                          raise SystemExit(f"Unexpected wheel metadata: {path.name}")
+                      metadata = archive.read(metadata_path)
+              else:
+                  stem = path.name[:-7]
+                  version = stem[len(prefix):]
+                  with tarfile.open(path, "r:gz") as archive:
+                      entries = [m for m in archive.getmembers() if m.name == f"{stem}/PKG-INFO"]
+                      if len(entries) != 1 or not entries[0].isfile():
+                          raise SystemExit(f"Missing or ambiguous sdist metadata: {path.name}")
+                      metadata = archive.extractfile(entries[0]).read()
+              info = BytesParser().parsebytes(metadata)
+              names, metadata_versions = info.get_all("Name", []), info.get_all("Version", [])
+              if (len(names) != 1 or re.sub(r"[-_.]+", "-", names[0]).lower() != project
+                      or metadata_versions != [version]):
+                  raise SystemExit(f"Distribution metadata does not match filename/project: {path.name}")
+              versions.add(version)
+              selected.append(path)
+          if len(versions) != 1:
+              raise SystemExit("Wheel and sdist versions differ")
+          hashes = {}
+          for line in (verified / "SHA256SUMS").read_text().splitlines():
+              digest, name = line.split("  ", 1)
+              if name in hashes or not re.fullmatch(r"[0-9a-f]{64}", digest):
+                  raise SystemExit("Invalid distribution inventory")
+              hashes[name] = digest
+          for path in selected:
+              if hashes.get(path.name) != hashlib.sha256(path.read_bytes()).hexdigest():
+                  raise SystemExit(f"Verified inventory mismatch: {path.name}")
+          # Copy only after every check passes; never include other projects or
+          # signing sidecars in a publisher's upload directory.
+          Path("dist").mkdir()
+          for path in selected:
+              shutil.copyfile(path, Path("dist") / path.name)
+              print(f"Selected {project}: {path.name}")
+          PY
       - name: Publish with PyPI trusted publishing
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:

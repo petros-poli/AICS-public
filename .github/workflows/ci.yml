@@ -25,6 +25,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Verify per-project release upload isolation
+        run: python3 -m unittest discover -s tools -p test_pypi_release.py
       - name: Discover every Python package
         id: packages
         run: |
