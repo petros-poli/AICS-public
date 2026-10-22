@@ -2,6 +2,9 @@
 
 ## 0.1.1 — 2026-10-22
 
+- Built reproducibly from tag `v0.3.1` (public source commit 78290c4) and uploaded to PyPI from the
+  owner's machine; no GitHub Release, Sigstore signature or SLSA provenance exists for this version.
+
 - Trust bundle of the 2026-10-20 relaunch: `AICS_TRUST_BUNDLE` and
   `AICS_TRUST_BUNDLE_SHA256` carry the bundle of the second genesis of
   `api.wesupport-ai.com/tiles` (new log and policy keys, the same owner key,
@@ -10,8 +13,8 @@
   `bc234cc34b1b0941d0e833c41112109fe7fe020cebbba9f58f98f3a59448da0c`), which was
   discarded before any outside agent had used it. With 0.1.0 installed, `aics policy init
   --from-dns wesupport-ai.com` stops with exit 2, because DNS and the package
-  disagree; that is the intended refusal, not a split view. 0.1.0 is withdrawn and
-  yanked on PyPI by the owner.
+  disagree; that is the intended refusal, not a split view. 0.1.0 is yanked on PyPI
+  (2026-10-22).
 
 Behaviour changes.
 - `aics verify card` decides from the log's policy leaves whether the card is in force, pending or
