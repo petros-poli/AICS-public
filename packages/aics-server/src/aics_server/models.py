@@ -115,3 +115,12 @@ class PolicyRequest(BaseModel):
     not_before: StrictInt = Field(..., ge=0, description="Unix time it takes effect (at least the notice period ahead)")
     effective_after: StrictInt | None = Field(default=None, ge=0, description="Applies after this index (default: its own)")
     order_hash: str | None = Field(default=None, description="SHA-256 (hex) of an order requiring an earlier effect")
+
+
+class CardPreviewRequest(BaseModel):
+    """Owner-only (owner login): a reviewed successor card body for the server to sign and check, never logged."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    body: str = Field(..., min_length=1, max_length=262144,
+                      description="The unsigned card body (strict JSON: every member of its profile but signatures)")

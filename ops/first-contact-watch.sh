@@ -17,8 +17,12 @@ NTFY_URL="${NTFY_URL:-https://ntfy.sh}"
 : "${NTFY_TOPIC:?NTFY_TOPIC is required (see /etc/default/aics-watch)}"
 mkdir -p "$(dirname "$STATE")"
 notify() { # title, body, priority(1-5), tags
-  curl -fsS --max-time 15 -o /dev/null -H "Title: $1" -H "Priority: ${3:-3}" -H "Tags: ${4:-robot}" \
-    -d "$2" "$NTFY_URL/$NTFY_TOPIC" || printf 'first-contact-watch: notification failed\n' >&2
+  # The status code is logged on failure (ntfy.sh answers 429 once a visitor's daily quota is used up). IPv4
+  # only (-4): ntfy.sh counts an IPv6 visitor by a prefix the hosting provider shares among its machines, and
+  # on 2026-10-20 the VPS was refused over IPv6 for two days while IPv4 published at once.
+  code=$(curl -4 -sS --max-time 15 -o /dev/null -w '%{http_code}' -H "Title: $1" -H "Priority: ${3:-3}" \
+    -H "Tags: ${4:-robot}" -d "$2" "$NTFY_URL/$NTFY_TOPIC" 2>/dev/null) || code="curl error"
+  case "$code" in 2*) ;; *) printf 'first-contact-watch: notification failed (HTTP %s)\n' "$code" >&2 ;; esac
 }
 health=$(curl -fsS --max-time 15 "$BASE_URL/healthz" 2>/dev/null) || {
   last_health=$(sed -n 's/^health=//p' "$STATE" 2>/dev/null)

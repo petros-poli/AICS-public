@@ -1,5 +1,14 @@
 name: Release
 
+# The only workflow with a trigger: a pushed v* tag (create and move rights
+# restricted to release maintainers, docs/RELEASING.md). Every other workflow in
+# this directory is reusable and is called exactly once from here, so a release
+# runs one verification (scripts/verify.sh --full --strict, which includes a
+# quick in-job double build of each library as a pre-check), one interop run
+# on the other supported Pythons through the same script, and one pair of
+# independent builds per package on separate runners (the release evidence).
+# Pushes, pull requests, documentation edits and schedules start no jobs.
+
 on:
   push:
     tags: ['v*']
@@ -18,6 +27,7 @@ defaults:
 jobs:
   prepare:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       publish-pypi: ${{ steps.policy.outputs.enabled }}
       pypi-only-project: ${{ steps.policy.outputs.project }}
@@ -94,19 +104,58 @@ jobs:
               print('PyPI publishing skipped: PUBLISH_PYPI is not exactly "true" (unset defaults to skipped).')
           PY
 
+  # scripts/verify.sh --full: the same checks a contributor runs locally.
+  # Local reusable workflows come from the same commit as this release workflow.
   tests:
     needs: prepare
+    permissions:
+      contents: read
     uses: ./.github/workflows/ci.yml
 
+  # The interop suite and fixture check on the supported Pythons that the
+  # tests job does not use.
+  interop:
+    needs: prepare
+    permissions:
+      contents: read
+    uses: ./.github/workflows/interop.yml
+
   # Builds every library twice and exports only byte-identical artifacts.
-  # Local reusable workflows come from the same commit as this release workflow.
   build:
     needs: prepare
+    permissions:
+      contents: read
     uses: ./.github/workflows/reproducible.yml
 
-  sign:
-    needs: [tests, build]
+  # Nothing is signed, attested or published unless verification, interop and
+  # the build comparison all passed, on one and the same source commit.
+  release-gate:
+    needs: [tests, interop, build]
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Require verification, interop and both builds on one commit
+        env:
+          VERIFIED_COMMIT: ${{ needs.tests.outputs.verified-commit }}
+          INTEROP_COMMIT: ${{ needs.interop.outputs.verified-commit }}
+          BUILD_COMMIT: ${{ needs.build.outputs.commit }}
+          SUBJECTS: ${{ needs.build.outputs.hashes }}
+        run: |
+          for value in "$VERIFIED_COMMIT" "$INTEROP_COMMIT" "$BUILD_COMMIT"; do
+            [[ "$value" =~ ^[0-9a-f]{40}$ ]] || { echo "::error::Missing or invalid source commit output"; exit 1; }
+          done
+          if [[ "$VERIFIED_COMMIT" != "$BUILD_COMMIT" || "$INTEROP_COMMIT" != "$BUILD_COMMIT" ]]; then
+            echo "::error::Verification ($VERIFIED_COMMIT), interop ($INTEROP_COMMIT) and build ($BUILD_COMMIT) ran on different commits"
+            exit 1
+          fi
+          [[ -n "$SUBJECTS" ]] || { echo "::error::The build comparison produced no provenance subjects"; exit 1; }
+          echo "Verified, interop-tested and reproducibly built: $BUILD_COMMIT"
+
+  sign:
+    needs: [tests, interop, build, release-gate]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       id-token: write
     steps:
@@ -158,7 +207,7 @@ jobs:
           retention-days: 14
 
   provenance:
-    needs: [build, sign]
+    needs: [tests, interop, build, release-gate, sign]
     permissions:
       actions: read
       id-token: write
@@ -175,8 +224,9 @@ jobs:
       private-repository: false
 
   github-release:
-    needs: [sign, provenance]
+    needs: [tests, interop, build, release-gate, sign, provenance]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     permissions:
       contents: write
     steps:
@@ -203,8 +253,9 @@ jobs:
   pypi:
     name: Publish ${{ matrix.project }} to PyPI
     if: ${{ needs.prepare.outputs.publish-pypi == 'true' }}
-    needs: [prepare, github-release]
+    needs: [prepare, tests, interop, build, release-gate, sign, provenance, github-release]
     runs-on: ubuntu-24.04
+    timeout-minutes: 15
     strategy:
       # First publication may need two batches: PyPI permits only three pending
       # publishers per account. Rerun failed jobs without republishing successes.

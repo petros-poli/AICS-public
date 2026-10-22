@@ -107,4 +107,4 @@ def test_write_rate_floor_r36(card, window, ok):
 def test_g5_and_g7_stay_promised_with_swarms(card):
     swarms = activate(card)
     assurance(swarms, "G5")["status"] = "proven"
-    assert any("G5 cannot be proven with witness quorum 0" in e for e in errors(swarms))
+    assert any("G5 needs at least one independent witness" in e for e in errors(swarms))

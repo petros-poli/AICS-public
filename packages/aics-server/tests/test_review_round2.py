@@ -356,8 +356,13 @@ class TestServing:
         health = client.get("/healthz")
         assert health.status_code == 200
         assert set(health.json()) == {"status", "tree_size", "published_size", "tiles_error", "diverged", "frozen",
-                                      "freeze_index", "agent_writes_held", "resource_exhaustion"}
+                                      "freeze_index", "agent_writes_held", "resource_exhaustion", "served_size",
+                                      "serving_uncosigned", "uncosigned_reason", "served_cosignature_age_seconds",
+                                      "witnesses"}
         assert health.json()["status"] == "OPERATIONAL" and health.json()["tree_size"] >= 1
+        # Without witnesses the served checkpoint is the published one, and no cosignature is expected (quorum 0).
+        assert health.json()["served_size"] == health.json()["published_size"]
+        assert health.json()["serving_uncosigned"] is False and health.json()["uncosigned_reason"] is None
 
     def test_stats_are_counted_outside_the_writer_lock_and_cached(self, client, monkeypatch):
         db = client.app.state.db

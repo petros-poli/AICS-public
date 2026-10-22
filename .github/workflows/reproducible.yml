@@ -1,14 +1,24 @@
 name: Reproducible builds
 
+# Reusable only: the Release workflow calls it once per v* tag. Each library is
+# built twice on independent runners; only byte-identical wheel and sdist pairs
+# leave this workflow (verified-dist). No input can change what is built.
+
 on:
-  push:
-    branches: [main]
-    tags: ['**']
   workflow_call:
     outputs:
       hashes:
         description: Base64 SHA-256 subjects for the distributions and their manifest
         value: ${{ jobs.compare.outputs.hashes }}
+      commit:
+        description: The source commit both builds used (GITHUB_SHA peeled by the commits API)
+        value: ${{ jobs.discover.outputs.commit }}
+      epoch:
+        description: SOURCE_DATE_EPOCH of both builds (the commit's committer time)
+        value: ${{ jobs.discover.outputs.epoch }}
+      packages:
+        description: JSON array of the package directories that were built and compared
+        value: ${{ jobs.discover.outputs.packages }}
 
 permissions:
   contents: read
@@ -20,9 +30,11 @@ defaults:
 jobs:
   discover:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     outputs:
       packages: ${{ steps.inputs.outputs.packages }}
       epoch: ${{ steps.inputs.outputs.epoch }}
+      commit: ${{ steps.inputs.outputs.commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,6 +78,7 @@ jobs:
           with open(os.environ["GITHUB_OUTPUT"], "a") as output:
               print(f"packages={json.dumps(packages)}", file=output)
               print(f"epoch={epoch}", file=output)
+              print(f"commit={commit['sha']}", file=output)
           print(f"Libraries: {', '.join(packages)}; SOURCE_DATE_EPOCH={epoch}; commit={commit['sha']}")
           PY
 
@@ -73,6 +86,7 @@ jobs:
     name: Build ${{ matrix.package }} (copy ${{ matrix.copy }})
     needs: discover
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -111,6 +125,7 @@ jobs:
   compare:
     needs: [discover, build]
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     permissions: {}
     outputs:
       hashes: ${{ steps.compare.outputs.hashes }}

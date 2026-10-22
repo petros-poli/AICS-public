@@ -4,6 +4,7 @@ the §13.1 schema, expiry, bootstrap hash, pins and the saved-card diff."""
 from __future__ import annotations
 
 import base64
+import dataclasses
 import json
 
 import pytest
@@ -155,9 +156,12 @@ def test_reason_registries_must_equal_section_17_2(h, inst):
 
 
 def test_expired_card_is_stale(h, inst):
-    publish(h, inst.make_card(issued_at=NOW - 100, expires=NOW - 1))
+    publish(h, inst.make_card(issued_at=NOW - 100, expires=NOW - 31))
     code, out = h.run("verify", "card")
     assert code == 2 and out["evidence"]["reason"] == "expired"
+    publish(h, inst.make_card(issued_at=NOW - 100, expires=NOW - 1))  # within the 30 s two clocks may differ
+    code, out = h.run("verify", "card")
+    assert code == 1 and out["reason"] == "expired" and "evidence" not in out, out
 
 
 def test_card_from_the_future_is_rejected(h, inst):
@@ -167,6 +171,9 @@ def test_card_from_the_future_is_rejected(h, inst):
 
 
 def test_a_later_card_is_signature_valid_but_incomplete(h, inst):
+    """Without the log's policy leaves (no /v2/policies here) a later card's currency is unproven: exit 1, and it
+    is not stored, so it can never make the card in force look superseded (the 2026-10-20 defect: 0.1.0 stored
+    it, and every later check of the bootstrap card exited 2)."""
     publish(h, inst.card)
     assert h.run("verify", "card")[0] == 0
     later = inst.make_card(issued_at=NOW - 60, mutate=lambda c: c["assurances"][3].update(status="proven"))
@@ -177,18 +184,28 @@ def test_a_later_card_is_signature_valid_but_incomplete(h, inst):
     paths = {d["path"]: d for d in out["diff"]}
     assert paths["$.assurances[3].status"]["new"] == "proven"
     assert paths["$.issued_at"]["new"] == NOW - 60
-    assert out["stored"]["new"]
+    assert "stored" not in out and "nothing was stored" in out["error"]
+    assert out["currency_state"] == "unproven" and out["policy_history"]["available"] is False
     code, text = h.run_text("verify", "card")
     assert code == 1 and "STATUS" in text and text.rstrip().splitlines()[-1].startswith("error: incomplete")
+    publish(h, inst.card)
+    assert h.run("verify", "card")[0] == 0  # the bootstrap card still verifies
 
 
-def test_a_superseded_card_is_rejected(h, inst):
-    newer = inst.make_card(issued_at=NOW - 60)
-    publish(h, newer)
-    h.run("verify", "card")
-    publish(h, inst.card)  # the older bootstrap card served again
+def test_a_superseded_card_is_rejected(h):
+    """A card issued before one that verified as current (here: proven in force by the policy leaves) is rejected
+    from the stored history alone, even where the policy leaves cannot be read."""
+    from conftest import DAY, Site
+
+    site = Site()
+    newer = site.successor()
+    h.clock[0] = NOW + 7 * DAY
+    site.publish(h, served=newer)
+    site.policy(h)
+    assert h.run("verify", "card")[0] == 0  # in force: stored
+    site.publish(h, listing=False)  # the older bootstrap card served again, and no policy listing
     code, out = h.run("verify", "card")
-    assert code == 2 and out["evidence"]["reason"] == "superseded"
+    assert code == 2 and out["evidence"]["reason"] == "superseded", out
 
 
 def test_witness_downgrade_against_the_saved_card(h):
@@ -199,7 +216,11 @@ def test_witness_downgrade_against_the_saved_card(h):
     assert h.run("verify", "card")[0] == 0
     publish(h, inst.make_card(issued_at=NOW - 60, quorum=1))
     code, out = h.run("verify", "card")
-    assert code == 2 and out["evidence"]["reason"] == "witness-downgrade"
+    # this fixture serves no policy leaves, and a logged change with its notice would look the same: incomplete, not
+    # evidence (AICS-1 §14; exit 2 for an unlogged weaker card at the pinned URL is in test_card_evidence.py)
+    assert code == 1 and out["reason"] == "witness-downgrade" and out["error"].startswith("incomplete:"), out
+    assert out["witness_policy_vs_saved_card"] == "weaker" and out["policy_history"]["available"] is False
+    assert "evidence" not in out and "stored" not in out
 
 
 def test_keys_that_differ_from_the_bundle_are_rejected(h, inst):
@@ -344,3 +365,24 @@ def test_a_swarms_card_is_an_unsupported_profile(h, inst, profile):
     code, out = h.run("verify", "card")
     assert code == 1 and "unsupported profile" in out["error"] and out["profile"] == profile, out
     assert out["supported_profiles"] == ["AICS-1", "AICS-1+SUP-1"]
+
+
+def test_the_gate_names_the_instances_own_two_ports(h):
+    """AICS-1 §13.1 (revision of 2026-10-20): the gate's ports are the instance's own, two distinct TCP ports. A
+    staging card beside production states 7800/7801 (its 7700/7701 were production's gates on the same address)
+    and verifies as a bootstrap card; the deployment profile's 7700/7701 verify as before (the other tests)."""
+    staging = Instance(Log(5))
+    assert staging.card["gate"]["tls_port"] == 7700 and staging.card["gate"]["plaintext_port"] == 7701
+    staging.card = staging.make_card(mutate=lambda c: c["gate"].update(tls_port=7800, plaintext_port=7801))
+    staging.bundle = dataclasses.replace(staging.bundle, bootstrap_card_hash=card_hash(staging.card))
+    assert schema_problems(staging.card) == []
+    policy_for(h.home, staging)
+    publish(h, staging.card)
+    code, out = h.run("verify", "card")
+    assert code == 0 and out["bootstrap"] is True, out
+    for ports, where in (((7800, 7800), "$.gate.plaintext_port"), ((0, 7801), "$.gate.tls_port"),
+                         ((7800, 65536), "$.gate.plaintext_port"), (("7800", 7801), "$.gate.tls_port"),
+                         ((True, 7801), "$.gate.tls_port")):
+        card = staging.make_card(mutate=lambda c: c["gate"].update(tls_port=ports[0], plaintext_port=ports[1]))
+        problems = schema_problems(card)
+        assert problems and all(p.split(":", 1)[0] == where for p in problems), (ports, problems)

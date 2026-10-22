@@ -7,7 +7,16 @@ import copy
 import pytest
 
 import validate_card as vc
-from helpers import FOUNDER_WITNESS_STATEMENT, add_founder_witness, assurance, errors, replace_statement, statement
+from helpers import (
+    CONFORMANCE_REPORTS,
+    FOUNDER_WITNESS_STATEMENT,
+    add_founder_witness,
+    assurance,
+    errors,
+    launch_witness_policy,
+    replace_statement,
+    statement,
+)
 
 
 def test_template_passes(card):
@@ -21,15 +30,52 @@ def test_template_passes(card):
 
 def test_template_status_table(card):
     statuses = {a["id"]: a["status"] for a in card["assurances"]}
+    # Genesis v2 (2026-10-20): the first card proves every row that can be proven with this build, G1, G4, G6, G8 and
+    # G9 by the conformance reports; G5 waits for an independent witness and G7 for runtime evidence.
     assert statuses == {
-        "G1": "promised", "G2": "proven", "G3": "proven", "G4": "promised", "G5": "promised", "G6": "promised",
-        "G7": "promised", "G8": "promised", "G9": "promised", "G10": "proven",
+        "G1": "proven", "G2": "proven", "G3": "proven", "G4": "proven", "G5": "promised", "G6": "proven",
+        "G7": "promised", "G8": "proven", "G9": "proven", "G10": "proven",
         "N1": "not-offered", "N2": "not-offered", "N3": "not-offered", "N4": "not-offered", "N5": "not-offered"}
-    # Charter commitment 6 and card-policy.md: at launch there is no witness, so none is listed.
-    assert card["witness_policy"] == {"quorum": 0, "witnesses": []}
+    # Charter commitment 6 puts the witness policy on the card: the founder-run witness at quorum 1 from the first card,
+    # in the log's trust domain, so G5 stays promised.
+    assert card["witness_policy"] == {"quorum": 1, "witnesses": [
+        {"name": "<FILL:WITNESS_NAME>", "vkey": "<FILL:WITNESS_VKEY>", "trust_domain": "founder", "independent": False}]}
     # A promised row is a commitment only; evidence comes with the successor card that promotes it.
     assert all(a["evidence"] == [] for a in card["assurances"] if a["status"] != "proven")
     assert card["retention"]["dm_seconds"] == vc.DM_SECONDS_UNSCHEDULED
+
+
+SPEC_AND_POLICY = [{"hash": "<FILL:SHA256:docs/spec/AICS-1.md>", "media_type": "text/markdown"},
+                   {"hash": "<FILL:SHA256:docs/legal/card-policy.md>", "media_type": "text/markdown"}]
+
+
+@pytest.mark.parametrize("aid", vc.CONFORMANCE_ROWS)
+def test_conformance_rows_name_the_relaunch_build_reports(card, aid):
+    # README "Promoting a row": the spec evidence plus the hashes of the conformance reports in which the row passed,
+    # the relaunch build at quorum 0 and at the card's quorum 1 (the pre-launch report ran the pre-fix build at
+    # quorum 0 only, so it backs no row of this card).
+    assert assurance(card, aid)["evidence"] == SPEC_AND_POLICY + [
+        {"hash": f"<FILL:SHA256:{rel}>", "media_type": vc.CONFORMANCE_MEDIA_TYPE} for rel in CONFORMANCE_REPORTS]
+    assert not any("prelaunch" in e["hash"] for e in assurance(card, aid)["evidence"])
+
+
+@pytest.mark.parametrize("aid", vc.CONFORMANCE_ROWS)
+def test_proven_conformance_rows_say_how_they_are_checked(card, aid):
+    # The row says what the agent checks itself, and which runs show this server's build passing: on the discarded
+    # first log (G2), at quorum 0 and at the card's own quorum. No launch wording is left.
+    text = " ".join([assurance(card, aid)["claim"], *assurance(card, aid)["assumptions"]])
+    assert "Promised at launch" not in text and "promised at launch" not in text
+    boundary = statement(card, aid, "boundary")
+    assert boundary.startswith("[boundary] Proven ")
+    assert "conformance reports named in evidence" in boundary and f"({aid} passed)" in boundary
+    quorum = card["witness_policy"]["quorum"]
+    assert (f"run on this server's build against the discarded first log of this origin (G2) at quorum 0 and at this "
+            f"card's quorum {quorum}") in boundary
+
+
+@pytest.mark.parametrize("aid", ["G2", "G3", "G10"])
+def test_rows_proven_from_the_spec_keep_their_evidence(card, aid):
+    assert assurance(card, aid)["evidence"] == SPEC_AND_POLICY
 
 
 def test_template_is_ascii_and_has_no_signatures(card):
@@ -56,9 +102,21 @@ def test_filled_card_passes_final(filled):
 
 
 def test_g5_proven_with_quorum_zero_fails(card):
+    launch_witness_policy(card)
     assurance(card, "G5")["status"] = "proven"
     errs = errors(card)
     assert any("G5 cannot be proven with witness quorum 0" in e for e in errs), errs
+
+
+def test_g5_proven_with_the_founder_witness_alone_fails(card):
+    assurance(card, "G5")["status"] = "proven"
+    errs = errors(card)
+    assert any("needs at least one independent witness outside the log's trust domain" in e for e in errs), errs
+
+
+def test_the_launch_witness_policy_still_validates(card):
+    # The bootstrap card logged at genesis: quorum 0, no witness, no founder or verification statement needed.
+    assert errors(launch_witness_policy(card)) == []
 
 
 def test_missing_required_statement_fails(card):
@@ -224,6 +282,10 @@ def _prove_g5(filled, quorum):
     filled["witness_policy"]["quorum"] = quorum
     replace_statement(filled, "G5", "witness-policy",
                       f"[witness-policy] Witness policy: quorum {quorum} of the listed witnesses.")
+    replace_statement(filled, "G5", "witness-verification",
+                      statement(filled, "G5", "witness-verification").replace("quorum 1", f"quorum {quorum}"))
+    if not any(w["trust_domain"] == "founder" or not w["independent"] for w in filled["witness_policy"]["witnesses"]):
+        replace_statement(filled, "G5", "founder-witness", None)
     g5 = assurance(filled, "G5")
     g5["status"] = "proven"
     g5["claim"] = "Single view."
@@ -255,16 +317,31 @@ def test_founder_witness_cannot_be_independent(card):
 
 
 def test_quorum_above_witness_count_fails(card):
-    card["witness_policy"]["quorum"] = 1
+    card["witness_policy"]["quorum"] = 2
     assert any("exceeds the number of witnesses" in e for e in errors(card))
 
 
 def test_witness_policy_statement_follows_quorum(card):
+    launch_witness_policy(card)
     add_founder_witness(card)
     card["witness_policy"]["quorum"] = 1
     errs = errors(card)
     assert any("must mention 'quorum 1'" in e for e in errs), errs
+    assert any("missing required statement [witness-verification] in G5" in e for e in errs), errs
     assert not any("exceeds the number of witnesses" in e for e in errs)
+
+
+def test_founder_witness_statement_says_freshness_not_independence(card):
+    replace_statement(card, "G5", "founder-witness", statement(card, "G5", "founder-witness").replace(
+        "proves freshness, not independence", "is independent enough"))
+    assert any("must mention 'proves freshness, not independence'" in e for e in errors(card))
+
+
+@pytest.mark.parametrize("phrase", ["cosignature/v1", "quorum 1", "max_checkpoint_age", "now + 30", "stale"])
+def test_witness_verification_tells_agents_how_to_count_cosignatures(card, phrase):
+    replace_statement(card, "G5", "witness-verification",
+                      statement(card, "G5", "witness-verification").replace(phrase, "something"))
+    assert any(f"[witness-verification] in G5 must mention {phrase!r}" in e for e in errors(card))
 
 
 def test_witness_key_must_be_cosignature_type_and_named(filled):
@@ -373,19 +450,22 @@ def test_split_view_statement_is_not_required_once_g5_is_proven(filled):
 
 
 @pytest.mark.parametrize("tag, phrase", [
-    ("deviation-refusal-dedup", "charter commitment 7"),
-    ("deviation-refusal-dedup", "terms"),
+    ("refusal-citation", "AICS-1 section 10.2"),
+    ("refusal-citation", "charter"),
+    ("refusal-citation", "terms"),
 ])
-def test_refusal_deviations_name_the_commitments_they_break(card, tag, phrase):
+def test_the_refusal_citation_names_the_texts_that_state_it(card, tag, phrase):
     text = statement(card, "G4", tag)
     replace_statement(card, "G4", tag, text.replace(phrase, "an earlier text"))
     assert any(f"statement [{tag}] in G4 must mention {phrase!r}" in e for e in errors(card))
 
 
-def test_deviation_statement_says_so(card):
-    text = statement(card, "G4", "deviation-refusal-dedup").replace("Known deviation from", "Unlike")
-    replace_statement(card, "G4", "deviation-refusal-dedup", text)
-    assert any("[deviation-refusal-dedup] must say 'Known deviation from'" in e for e in errors(card))
+def test_deviation_statement_says_so(card, monkeypatch):
+    # No [deviation-*] statement is left on the card since the relaunch of 2026-10-20 (the refusal citation is
+    # now what the texts state); the rule still guards any future one.
+    monkeypatch.setitem(vc.TAG_HOMES, "deviation-example", ("G4",))
+    assurance(card, "G4")["assumptions"].append("[deviation-example] Unlike AICS-1 section 10.2, the server does X.")
+    assert any("[deviation-example] must say 'Known deviation from'" in e for e in errors(card))
 
 
 def test_resolved_deviation_tags_are_no_longer_accepted(card):
@@ -489,3 +569,96 @@ def test_zero_knowledge_only_in_n1(card):
 def test_control_characters_fail(card):
     assurance(card, "G2")["claim"] += "‮"
     assert any("control, format or unassigned characters (U+202E)" in e for e in errors(card))
+
+
+def test_hosting_provider_names_the_witness_host(filled):
+    # Decision 30: the founder witness runs on a second provider; once the card lists it under witness.wesupport-ai.com
+    # the [hosting-provider] statement says what that host and its provider see, so it must name the host.
+    from helpers import WITNESS_KEY, vkey
+    w = add_founder_witness(filled)
+    w["name"] = "witness.wesupport-ai.com/w2"
+    w["vkey"] = vkey(w["name"], 0x04, WITNESS_KEY)
+    assert "witness.wesupport-ai.com" in vc.witness_hosts(filled)
+    assert errors(filled, final=True) == []
+    text = statement(filled, "N2", "hosting-provider")
+    assert "witness.wesupport-ai.com" in text
+    replace_statement(filled, "N2", "hosting-provider", text.replace("witness.wesupport-ai.com", "a second host"))
+    assert any("[hosting-provider] must name witness.wesupport-ai.com" in e for e in errors(filled, final=True))
+
+
+def test_witness_hosts_skips_placeholders_and_other_domains(card):
+    assert vc.witness_hosts(card) == set()  # <FILL:WITNESS_NAME>
+    card["witness_policy"]["witnesses"][0]["name"] = "witness1.example.org/w1"
+    assert vc.witness_hosts(card) == set()
+    card["witness_policy"]["witnesses"][0]["name"] = "Witness.WeSupport-AI.com/w2"
+    assert vc.witness_hosts(card) == {"witness.wesupport-ai.com"}
+
+
+@pytest.mark.parametrize("member", ["log_vkey", "policy_kid"])
+def test_the_discarded_first_log_keys_are_refused(filled, member):
+    # Genesis v2 replaced the log and policy keys; a body filled from the discarded log's pubkeys.txt is refused.
+    filled[member] = vc.DISCARDED_LOG[member]
+    assert any(f"$.{member}: is the {member} of the discarded first log" in e for e in errors(filled, final=True))
+
+
+def test_g2_names_the_discarded_first_log(card):
+    text = next(t for t in assurance(card, "G2")["assumptions"] if "discarded" in t)
+    for value in vc.DISCARDED_LOG.values():
+        assert value in text
+    assert "aics-cli 0.1.0" in text and "owner_kid" in text and "--reset-history" in text
+    assert vc.RETIRED_WITNESS["name"] in text
+    # The pre-launch conformance runs wrote synthetic agents to it (docs/evidence/README.md, served by sync-docs at
+    # /docs/evidence/), so the card says that, not that no agent wrote to it.
+    assert "before any agent wrote to it" not in text and "unused" not in text
+    assert ("its only agent entries are synthetic ones that the operator's pre-launch conformance runs wrote "
+            "(https://wesupport-ai.com/docs/evidence/README.md)") in text
+    # The card's own keys are filled at signing from the new server; the template names none of the old ones there.
+    assert {card["log_vkey"], card["policy_kid"]} == {"<FILL:LOG_VKEY>", "<FILL:POLICY_KID>"}
+
+
+@pytest.mark.parametrize("member, value", [
+    ("name", vc.RETIRED_WITNESS["name"]),
+    ("name", "Witness.WeSupport-AI.com/w1"),
+    ("vkey", vc.RETIRED_WITNESS["vkey"]),
+])
+def test_the_retired_witness_is_refused(filled, member, value):
+    # The witness that cosigned the discarded log cannot cosign this one without breaking [founder-witness]; a new
+    # identity (witness.wesupport-ai.com/w2) is listed instead (README "Genesis v2", step 2).
+    w = add_founder_witness(filled)
+    w[member] = value
+    assert any(f"$.witness_policy.witnesses[0].{member}: is the retired witness witness.wesupport-ai.com/w1" in e
+               for e in errors(filled, final=True))
+
+
+def test_the_card_names_the_cli_by_its_distribution(card):
+    # The verifier is the aics-cli distribution on PyPI (its command is aics); the PyPI project "aics" belongs to
+    # someone else (the first-visit readiness audit of 2026-10-20), so the card never names "the aics package".
+    texts = [text for _, text in vc.iter_strings(card)]
+    assert not [t for t in texts if "aics package" in t or "aics PyPI" in t]
+    assert any("aics-cli package" in t for t in texts)
+
+
+def test_g5_does_not_assume_the_card_is_leaf_1(card):
+    # A daily count report (every finished UTC day from leaf 0's day) or a refusal leaf can land before the first
+    # card, so the permanent [witness-policy] statement names no leaf index for it.
+    text = statement(card, "G5", "witness-policy")
+    assert ("This card is the first card of this log; the checkpoints from before it was logged cover only the leaves "
+            "before it.") in text
+    assert "leaf 0 alone" not in text and "leaf 1" not in text
+
+
+def test_the_founder_witness_host_is_allowed_outside_decision_10(filled):
+    # Decision 30: the witness runs on a second provider under witness.wesupport-ai.com. It is not an instance
+    # hostname of decision 10 (so it is not listed in $.proxy), but it names the witness and its vkey, and its
+    # `_aics-witness` TXT record name may appear in text.
+    from helpers import WITNESS_KEY, vkey
+    assert "witness.wesupport-ai.com" in vc.WITNESS_HOSTS
+    assert "witness.wesupport-ai.com" not in vc.DECISION_10_HOSTS
+    w = add_founder_witness(filled)
+    w["name"] = "witness.wesupport-ai.com/w2"
+    w["vkey"] = vkey(w["name"], 0x04, WITNESS_KEY)
+    assert not [e for e in errors(filled, final=True) if "witness.wesupport-ai.com" in e]
+    w["name"] = "elsewhere.wesupport-ai.com/w1"
+    w["vkey"] = vkey(w["name"], 0x04, WITNESS_KEY)
+    assert any("hostname elsewhere.wesupport-ai.com is not one of decision 10's hostnames" in e
+               for e in errors(filled, final=True))

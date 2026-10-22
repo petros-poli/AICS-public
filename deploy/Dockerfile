@@ -7,9 +7,13 @@
 #   against its SHA-256 (deploy/requirements.txt is `uv export` of that lock, see its first
 #   lines; deploy/deploy-vps.sh refuses to deploy when it differs from the lock), installed
 #   with --no-deps so nothing else is resolved;
-# * the three local packages are built with the build backend pinned by hash in
+# * the four local packages are built with the build backend pinned by hash in
 #   deploy/build-requirements.txt (--no-build-isolation: nothing unpinned is fetched), and
-#   the backend is removed again;
+#   the backend is removed again. aics-witness is one of them: it is not a dependency of
+#   aics-server, but the checkpoint feeder imports aics_witness.feeder as soon as
+#   AICS_WITNESSES names a witness, and a server without it refuses to start (its own
+#   dependencies, aics-tlog and cryptography, are already pinned here). deploy/deploy-vps.sh
+#   checks that the built image imports it before any container is replaced;
 # * the app runs as the unprivileged user aics (uid and gid 10001), which owns /data and
 #   /data/tiles. A volume an older image created as root is handed over once with
 #   `docker compose run --rm --no-deps --name aics-chown --user 0 --entrypoint chown aics-server -R 10001:10001 /data`
@@ -31,14 +35,17 @@ RUN pip install --no-deps --require-hashes -r /app/requirements.txt -r /app/buil
 
 COPY packages/aics-identity /app/packages/aics-identity
 COPY packages/aics-tlog /app/packages/aics-tlog
+COPY packages/aics-witness /app/packages/aics-witness
 COPY packages/aics-server /app/packages/aics-server
 
 RUN pip install --no-deps --no-build-isolation \
         /app/packages/aics-identity \
         /app/packages/aics-tlog \
+        /app/packages/aics-witness \
         /app/packages/aics-server \
     && pip uninstall -y uv-build \
     && pip check \
+    && python -c "import aics_server.witness_feed, aics_witness.feeder" \
     && groupadd --system --gid 10001 aics \
     && useradd --system --uid 10001 --gid aics --home-dir /data --no-create-home --shell /usr/sbin/nologin aics \
     && mkdir -p /data/tiles \

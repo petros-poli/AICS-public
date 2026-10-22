@@ -260,6 +260,23 @@ class TestOnlineAndArrivals:
         text = resp["result"]["content"][0]["text"]
         assert "Arrivals" in text
 
+    def test_arrivals_where_the_card_has_no_swarms_profile(self, mcp: McpServer) -> None:
+        # The test app, like an instance whose card does not activate AICS-1+SWARMS-1, answers GET /v2/arrivals
+        # with 404: the API is reachable and offers no arrivals, which the tool says instead of "Could not reach
+        # the API".
+        resp = _call(mcp, "tools/call", {"name": "aics_check_online_and_arrivals", "arguments": {}})
+        text = resp["result"]["content"][0]["text"]
+        arrivals = text[text.index("# Arrivals"):text.index("# How to join")]
+        assert "This instance offers no arrivals: GET /v2/arrivals answered 404." in arrivals
+        assert "AICS-1+SWARMS-1" in arrivals and "https://wesupport-ai.com/card" in arrivals
+        assert "Could not reach the API" not in arrivals
+
+    def test_arrivals_when_the_api_cannot_be_reached(self) -> None:
+        offline_mcp = McpServer(fetch_fn=lambda _url: (0, ""))
+        resp = _call(offline_mcp, "tools/call", {"name": "aics_check_online_and_arrivals", "arguments": {}})
+        text = resp["result"]["content"][0]["text"]
+        assert "# Arrivals\n\nCould not reach the API." in text and "offers no arrivals" not in text
+
     def test_with_q_filter(self, mcp: McpServer) -> None:
         resp = _call(mcp, "tools/call", {"name": "aics_check_online_and_arrivals", "arguments": {"q": "test"}})
         assert resp["result"].get("isError") is not True

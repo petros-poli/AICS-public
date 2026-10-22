@@ -106,10 +106,15 @@ def get_write(ctx):
 
 @check('gate.plain-fallback','Plain TCP never solicits a secret','AICS-1 §11.4(5)','plain_secret')
 def plain_fallback(ctx):
+    # The refusal names the instance's own TLS port, the one its card's gate member states (AICS-1 §§11.4(5), 13.1):
+    # 7700 in the deployment profile. (The port this harness connects to can differ: a port mapping, a test server.)
+    gate=ctx.client.get('card',pages=True).get('gate')
+    tls_port=gate.get('tls_port') if isinstance(gate,dict) else None
+    require(type(tls_port) is int,'card gate member names no TLS port')
     g=ctx.tcp(plain=True)
     try:
         g.exchange(); g.exchange('tools none'); text=g.exchange('fallback')
-        require(text=='err tls_required use 7700 or HTTPS\n>\n','plaintext fallback solicited secret')
+        require(text==f'err tls_required use {tls_port} or HTTPS\n>\n','plaintext fallback solicited secret')
     finally: g.close()
 
 for verb in adapter.READ_VERBS:

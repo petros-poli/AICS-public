@@ -65,6 +65,113 @@ def test_historical_heads_are_log_authenticated_and_state_their_witness_policy(s
         verify.bundle({**b,'checkpoint_note':U(log_only)},ctx.policy,ctx.now(),prefix=prefix)
 
 
+def lagging_witness(server, *, lag, bundles=True, cosigned_now=True):
+    """Pin one witness at quorum 1 that cosigns each new size ``lag`` fake seconds after it first appears, as a real
+    log publishes its checkpoint before the witness answers.  ``bundles`` False: bundles keep the log-signed note of
+    the whole tree (the aics-server behaviour before 2026-10-20), whatever the witness cosigned.  ``cosigned_now``:
+    the head of the fixture (also the saved checkpoint) was cosigned long ago."""
+    w=keys.generate_keypair(); honest=server.checkpoint; honest_bundle=server.bundle
+    first_seen={len(server.entries):server.now-lag} if cosigned_now else {}
+    def note(mirror=False):
+        raw=honest(mirror); n=parse_note(raw); cp=parse_checkpoint(n.text)
+        seen=first_seen.setdefault(cp.size,server.now)
+        if server.now-seen<lag: return raw
+        _,sig=sign_cosignature(w,'witness',int(server.now),cp.origin,cp.size,cp.root)
+        return Note(n.text,n.signatures+(sig,)).to_bytes()
+    server.checkpoint=note
+    if not bundles:
+        def log_only_bundle(i):
+            server.checkpoint=honest
+            try: return honest_bundle(i)
+            finally: server.checkpoint=note
+        server.bundle=log_only_bundle
+    ctx=server.context(); ctx.policy.witness_vkeys=[format_vkey(cosignature_vkey('witness',w.public_key()))]; ctx.policy.quorum=1
+    return ctx
+
+
+def test_a_current_head_is_awaited_until_its_witness_cosigns(server):
+    ctx=lagging_witness(server,lag=3,cosigned_now=False); started=server.now
+    h=ctx.head(); assert h.witness_policy_met and server.now-started==3
+    assert len(ctx.evidence['checkpoint_notes'])==4  # every note fetched is kept as evidence
+    ctx2=lagging_witness(FakeServer(),lag=3,cosigned_now=False); ctx2.policy.witness_wait_seconds=0
+    with pytest.raises(ValueError,match='quorum not met'): ctx2.head()
+
+
+def test_the_witness_wait_is_bounded_and_ignored_at_quorum_zero(server):
+    ctx=lagging_witness(server,lag=10**6,cosigned_now=False); ctx.policy.witness_wait_seconds=5; started=server.now
+    with pytest.raises(ValueError,match='quorum not met'): ctx.head()
+    assert server.now-started==5
+    plain=FakeServer(); qctx=plain.context(); before=plain.now
+    assert qctx.head().witness_policy_met and plain.now==before  # quorum 0: log signatures alone, no wait
+
+
+def frozen(ctx, server):
+    """A pinned clock and a sleep that does nothing, as aics-interop's drivers give the harness."""
+    at=server.now; ctx.now=lambda: at; ctx.sleep=lambda s: None
+    return ctx
+
+
+def test_witness_waits_end_with_a_frozen_clock(server):
+    # A wait bounded only by the clock's reading never ends when the clock does not move (the aics-interop suite
+    # hung in such a loop): it is also bounded by the steps that fit in witness_wait_seconds.
+    ctx=frozen(lagging_witness(server,lag=10**6,cosigned_now=False),server)
+    with pytest.raises(ValueError,match='quorum not met'): ctx.head()
+    assert len(ctx.evidence['checkpoint_notes'])==31  # the first fetch and 30 one-second pauses
+    with pytest.raises(ValueError,match='quorum not met'):
+        check_bundle=ctx.witnessed(lambda: server.bundle(3),lambda b: DU(b['checkpoint_note']))
+        verify.head(DU(check_bundle['checkpoint_note']),ctx.policy,ctx.now())
+    other=FakeServer(); result=check('G5').run(frozen(lagging_witness(other,lag=10**6,cosigned_now=False),other))
+    assert result['verdict']=='fail' and 'quorum not met' in result['details']['reason']
+
+
+def test_the_restart_wait_ends_with_a_frozen_clock():
+    server=BootingServer(10**6); ctx=frozen(server.context(),server); ctx.policy.restart_ready_seconds=5
+    result=check('G3').run(ctx)
+    assert result['verdict']=='fail' and 'not ready' in result['details']['reason']
+    assert server.down==10**6-6  # the first try and five pauses
+
+
+@pytest.mark.parametrize('guarantee',['G1','G4','G5','G6','G8','G9'])
+def test_guarantees_pass_at_quorum_one_with_a_witness_that_cosigns_late(guarantee):
+    result=check(guarantee).run(lagging_witness(FakeServer(),lag=2))
+    assert result['verdict']=='pass',result['details']
+
+
+@pytest.mark.parametrize('guarantee',['G1','G6','G8'])
+def test_bundles_whose_checkpoint_never_carries_the_quorum_fail(guarantee):
+    # The deviation the pre-launch run found: a bundle proven against a log-signed note can never meet quorum 1.
+    result=check(guarantee).run(lagging_witness(FakeServer(),lag=2,bundles=False))
+    assert result['verdict']=='fail' and 'quorum not met' in result['details']['reason'],result['details']
+
+
+def test_a_view_is_awaited_and_every_distinct_view_is_compared(server):
+    # The origin first serves the log-signed note, then the cosigned one: both are views (the first was log-signed,
+    # so it is compared for a split), and the origin met the policy with the second.
+    ctx=lagging_witness(server,lag=4,cosigned_now=False); ctx.policy.saved_checkpoint=None
+    result=check('G5').run(ctx)
+    assert result['verdict']=='pass',result['details']
+    assert result['details']['views']==4  # origin twice (log-signed, then cosigned), the mirror, the latest head
+    server.faults.add('split_view')  # a conflicting mirror view still fails as a split, waited for or not
+    result=check('G5').run(lagging_witness(server,lag=4))
+    assert result['verdict']=='fail' and result['details']['reason'].startswith('split-proven'),result['details']
+
+
+@pytest.mark.parametrize('witnessed',[False,True])
+@pytest.mark.parametrize('guarantee',['G4','log.receipt'])
+def test_receipt_timing_is_labelled_by_the_harness_clock_at_every_quorum(guarantee,witnessed):
+    # AICS-1 §14.4 step 3: the inclusion observation is timed by this harness's own clock, so the conclusion is
+    # clock-dependent whatever the pinned quorum; at quorum 1 a witness cosigned the head, it did not time this
+    # observation (a founder-run witness's time is not independent evidence either).
+    from aics_conformance.core import LOCAL_CLOCK
+    server=FakeServer(); ctx=lagging_witness(server,lag=2) if witnessed else server.context()
+    result=check(guarantee).run(ctx)
+    assert result['verdict']=='pass',result['details']
+    timing=result['details']['timing']
+    assert timing['clock']==LOCAL_CLOCK and 'clock-dependent' in timing['clock'] and 'witness' not in timing['clock']
+    assert timing['met_deadline'] is True and timing['observed_at']<=timing['deadline']
+    assert ctx.policy.quorum==(1 if witnessed else 0)
+
+
 def test_receipt_breach_contains_complete_absence_and_clock_evidence():
     s=FakeServer('dropped_receipt'); result=check('G4').run(s.context()); evidence=result['details']['evidence']
     raw=[DU(x) for x in evidence['entry_prefix']]; entry=json.loads(DU(evidence['entry']))
@@ -125,6 +232,63 @@ def test_missing_refusal_fails_not_skip():
 def test_unconfigured_restart_is_skip(ctx):
     ctx.restart=None; ctx.policy.saved_checkpoint=None
     assert check('G3').run(ctx)['verdict']=='skip'
+
+
+class BootingServer(FakeServer):
+    """After the restart the instance answers 502 to its next ``down`` checkpoint requests, as a proxy does while the
+    restarted app is still starting (``docker compose restart`` returns before the app listens)."""
+    def __init__(self,down,*faults): super().__init__(*faults); self.down=down
+    def request(self,method,url,body=None,headers=None):
+        if self.after_restart and self.down and url.endswith('/checkpoint'):
+            self.down-=1; return __import__('aics_conformance.client',fromlist=['Response']).Response(502,b'booting',{})
+        return super().request(method,url,body,headers)
+
+
+def test_restart_readiness_is_waited_out_within_the_bound():
+    server=BootingServer(3); ctx=server.context(); ctx.policy.restart_ready_seconds=30
+    result=check('G3').run(ctx)
+    assert result['verdict']=='pass',result['details']
+    assert result['details']['restart']=='executed' and result['details']['ready_after_seconds']==3
+
+
+def test_restart_unavailability_without_a_wait_is_incomplete_not_success():
+    result=check('G3').run(BootingServer(3).context())  # restart_ready_seconds 0: the command must return once ready
+    assert result['verdict']=='fail' and result['details']['verification']=='incomplete'
+    assert 'not ready' in result['details']['reason']
+
+
+def test_restart_readiness_wait_is_bounded():
+    server=BootingServer(10**6); ctx=server.context(); ctx.policy.restart_ready_seconds=5
+    result=check('G3').run(ctx)
+    assert result['verdict']=='fail' and result['details']['verification']=='incomplete'
+    assert 'not ready 5 s after the restart (restart_ready_seconds 5)' in result['details']['reason']
+    assert server.down>10**6-10  # it stopped polling at the bound
+
+
+def test_restart_readiness_wait_does_not_excuse_a_rollback():
+    # The rolled-back head served once the instance answers fails G3 exactly as it does without a boot delay.
+    server=BootingServer(2,'restart_rollback'); ctx=server.context(); ctx.policy.restart_ready_seconds=30
+    result=check('G3').run(ctx); plain=check('G3').run(FakeServer('restart_rollback').context())
+    assert result['verdict']==plain['verdict']=='fail' and server.down==0
+    assert result['details']['reason']==plain['details']['reason'] and 'not ready' not in result['details']['reason']
+
+
+def test_restart_command_argv_runs_then_waits(tmp_path):
+    import sys
+    marker=tmp_path/'restarted'
+    server=FakeServer(); ctx=server.context(); ctx.restart=None
+    ctx.policy.restart_command=[sys.executable,'-c',f'open({str(marker)!r},"w").close()']; ctx.policy.restart_ready_seconds=10
+    result=check('G3').run(ctx)
+    assert result['verdict']=='pass' and result['details']['restart']=='executed' and marker.exists()
+
+
+@pytest.mark.parametrize('settings',[dict(restart_ready_seconds=-1),dict(restart_ready_seconds=601),dict(restart_ready_seconds=True),
+                                     dict(restart_ready_seconds='90'),dict(restart_command='ssh host restart'),dict(restart_command=[]),
+                                     dict(restart_command=['ssh','']),dict(restart_command=['ssh',3])])
+def test_restart_settings_are_validated(settings):
+    from aics_conformance.policy import Policy
+    with pytest.raises(ValueError,match='restart_'):
+        Policy(copy.deepcopy(FakeServer().trust),**settings)
 
 
 def test_saved_offline_package_rejects_replaced_trust(ctx):

@@ -33,7 +33,10 @@ def receipt(ctx):
 def tombstone(ctx):
     hist,h=ctx.scan(); candidates=[(i,e) for i,e in enumerate(hist.entries) if e['type']=='tombstone']
     if ctx.policy.tombstone_index is not None: candidates=[(i,e) for i,e in candidates if i==ctx.policy.tombstone_index]
-    if not candidates: raise Skip('operator must prepare a lawful synthetic tombstone fixture; no administrative signing key required')
+    if not candidates:
+        where='at tombstone_index %d' % ctx.policy.tombstone_index if ctx.policy.tombstone_index is not None else 'in the log'
+        raise Skip(f'no tombstone {where} to check: an operator logs one only for a reason that is true of its target '
+                   '(AICS-1 §10.3), with its own owner tools; the harness holds no owner or policy key')
     def digest_of(q): return q.get('body_hash',q.get('ct_hash'))
     for i,e in candidates:
         target=e['payload']['target_index']; b=ctx.client.get('entry',index=target)

@@ -1,6 +1,6 @@
 # AICS key-transparency map — proposed later-phase profile
 
-Status: design only, 2026-10-18. This profile is not an implemented guarantee or an amendment to the active AICS-1 registry. MUST, MUST NOT, SHOULD and MAY specify requirements for adoption. Binding inputs are [DECISIONS](../DECISIONS.md) rows 1, 4, 5, 7, 8 and 18; [DESIGN](../DESIGN.md) §§3–6 and §12; [AICS-1](AICS-1.md) §§3–8 and §14; and the verifiable-infrastructure findings in [the research sweep](../../research/sweeps-provable-security.md). Where the memo is less precise, AICS-1's witness assumptions, recovery boundary and index-based validity apply.
+Status: design only, 2026-10-18. This profile is not an implemented guarantee or an amendment to the active AICS-1 registry. MUST, MUST NOT, SHOULD and MAY specify requirements for adoption. Binding inputs are [DECISIONS](https://github.com/petros-poli/AICS-public/blob/main/docs/DECISIONS.md) rows 1, 4, 5, 7, 8 and 18; [DESIGN](../DESIGN.md) §§3–6 and §12; [AICS-1](AICS-1.md) §§3–8 and §14; and the verifiable-infrastructure findings in the project's research sweep (not published). Where the memo is less precise, AICS-1's witness assumptions, recovery boundary and index-based validity apply.
 
 ## 1. Purpose and scope
 

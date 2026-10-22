@@ -1,0 +1,73 @@
+# The staging text gate's TLS listener (host port 7800), the deploy/gate-tls.yml pattern for the disposable
+# aics-staging instance of deploy/docker-compose.staging.yml. Without it staging's 7800 is dark (nothing listens on
+# the container's 7700) and only 7801, plain TCP, answers.
+#
+# Switch it on once Caddy has issued the test.wesupport-ai.com certificate (it has, if
+# https://test.wesupport-ai.com answers): list this file after the staging override in COMPOSE_FILE in deploy/.env,
+#
+#     COMPOSE_FILE=docker-compose.yml:gate-tls.yml:docker-compose.staging.yml:gate-tls-staging.yml
+#
+# then start staging alone with deploy/staging.sh up, which copies the certificate first (ops/RUNBOOK-first-deploy.md,
+# "Staging origin"). Check from outside:
+#
+#     openssl s_client -quiet -verify_return_error -verify_hostname test.wesupport-ai.com -connect test.wesupport-ai.com:7800
+#
+# As for production's gate, aics-staging never mounts Caddy's certificate store, which holds every site's private
+# key and the ACME account key: the one-shot staging-gate-cert service copies only test.wesupport-ai.com's
+# certificate and key, from the Let's Encrypt directory the Caddyfile pins for the test.* site (`issuer acme`, no
+# ZeroSSL fallback, so the path is fixed), into staging's own volume aics_staging_gate_tls, owned by the app's user
+# (uid 10001, deploy/Dockerfile) with the key at mode 0400. The gate picks a renewed copy up by itself (its
+# certificate watcher); carry Caddy's renewals over with the daily ops/systemd/aics-staging-gate-cert.timer. Nothing
+# here touches production's gate_tls volume, its certificate or the aics-server service.
+#
+# aics-staging does not depend on staging-gate-cert. deploy/deploy-vps.sh runs `docker compose up -d` for every
+# service under `set -eu`, and with a dependency on the one-shot copy a missing test.* certificate would fail that
+# production deploy midway (Compose before 2.20 does not know `required: false`, and how later versions treat a
+# failed optional one-shot dependency has changed between releases). deploy/staging.sh up runs the copy before it
+# starts staging and stops when the copy fails. Under `up -d` the copy runs beside aics-staging, which keeps the
+# copy it already has; on a first start without one the app stops at start (its TLS listener has no certificate) and
+# its restart policy starts it again once the copy exists.
+services:
+  staging-gate-cert:
+    # The image the caddy service builds; only its busybox shell is used here.
+    image: aics-caddy-cloudflare:2
+    pull_policy: never
+    network_mode: none
+    restart: "no"
+    user: "0:0"
+    labels:
+      wesupport-ai.instance: "staging"
+      wesupport-ai.disposable: "true"
+    entrypoint:
+      - sh
+      - -euc
+      - |
+        src=/caddy-data/caddy/certificates/acme-v02.api.letsencrypt.org-directory/test.wesupport-ai.com
+        test -r "$$src/test.wesupport-ai.com.crt" && test -r "$$src/test.wesupport-ai.com.key" || {
+          echo "staging-gate-cert: Caddy has not issued $$src/test.wesupport-ai.com.crt yet" >&2; exit 1; }
+        umask 077
+        cp "$$src/test.wesupport-ai.com.crt" /gate-tls/test.wesupport-ai.com.crt.new
+        cp "$$src/test.wesupport-ai.com.key" /gate-tls/test.wesupport-ai.com.key.new
+        chown 10001:10001 /gate-tls/test.wesupport-ai.com.crt.new /gate-tls/test.wesupport-ai.com.key.new
+        chmod 0444 /gate-tls/test.wesupport-ai.com.crt.new
+        chmod 0400 /gate-tls/test.wesupport-ai.com.key.new
+        mv -f /gate-tls/test.wesupport-ai.com.crt.new /gate-tls/test.wesupport-ai.com.crt
+        mv -f /gate-tls/test.wesupport-ai.com.key.new /gate-tls/test.wesupport-ai.com.key
+        echo "staging-gate-cert: copied the test.wesupport-ai.com certificate and key for uid 10001"
+    volumes:
+      - caddy_data:/caddy-data:ro
+      - aics_staging_gate_tls:/gate-tls
+
+  aics-staging:
+    environment:
+      - AICS_GATE_TLS_CERT=/etc/aics/gate-tls/test.wesupport-ai.com.crt
+      - AICS_GATE_TLS_KEY=/etc/aics/gate-tls/test.wesupport-ai.com.key
+    volumes:
+      - aics_staging_gate_tls:/etc/aics/gate-tls:ro
+
+volumes:
+  # A fixed name, like the other staging volumes, so a staging wipe names exactly it and never a production volume.
+  aics_staging_gate_tls:
+    name: aics_staging_gate_tls
+    labels:
+      wesupport-ai.disposable: "true"

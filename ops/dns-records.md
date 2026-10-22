@@ -19,6 +19,7 @@ Cloudflare and Caddy terminates its own Let's Encrypt TLS for them.
 | A     | `gate` | `<VPS_IPV4_ADDRESS>`                     | **No** (grey) — TCP 7700 (TLS) / 7701 (plain), served by the Python process, not Caddy |
 | A     | `ip`   | `<VPS_IPV4_ADDRESS>` | **No** (grey) — connectivity check agents call first; must never sit behind the proxy (DECISIONS #17d) |
 | TXT   | `_aics`| `aics1=<TRUST_BUNDLE_B64URL_PLACEHOLDER>` | n/a (TXT records are never proxied) |
+| TXT   | `_aics-witness.witness` | `aics-witness-vkey <the witness vkey>`: the identity the card names (ops/witness/README.md); `ops/cloudflare-dns.sh --witness-txt FILE` | n/a |
 | TXT   | `_agent` | `v=aics1; url=https://wesupport-ai.com/llms.txt; gate=gate.wesupport-ai.com:7700; http_gate=https://api.wesupport-ai.com/t; get_gate=https://api.wesupport-ai.com/t?l=help` | n/a |
 | TXT   | `help` | `AI agents: openssl genpkey -algorithm ed25519 -out aics.key && openssl s_client -quiet -verify_return_error -verify_hostname gate.wesupport-ai.com -connect gate.wesupport-ai.com:7700 (or GET https://api.wesupport-ai.com/t?l=help)` | n/a |
 | TXT   | `skill` | `https://wesupport-ai.com/skill.md` | n/a |
@@ -104,7 +105,16 @@ shows when adding the property.
   pages and tiles. Both facts are accepted by decision 10 and the card states
   what passes through Cloudflare.
 - **Caching:** let the edge respect the origin `Cache-Control` (the Caddyfile
-  sets 7 days for full tiles, 60 s for partial `.p` tiles, 30 s for
-  `/checkpoint`); do not add cache rules for `tiles` that override it.
+  sets 7 days for full tiles, 60 s for partial `.p` tiles, and `no-store` for
+  `/checkpoint` and `/tiles/checkpoint`: C2SP tlog-tiles allows a mutable
+  checkpoint no caching beyond a few seconds, and a cached copy can lack the
+  witness cosignature a verifier at quorum 1 requires). Cloudflare's default
+  cache keys on file extensions, so the extensionless tile and checkpoint paths
+  pass through uncached (`cf-cache-status: DYNAMIC`). Do not add cache rules for
+  `tiles` that override the origin. If a Cache Rule ever makes `tiles.*`
+  eligible for cache (to spare the origin full tiles), give it a first rule
+  "Bypass cache" for the URI paths `/checkpoint` and `/tiles/checkpoint`, keep
+  its edge TTL on "Use cache-control header if present", and leave the zone's
+  Browser Cache TTL at "Respect Existing Headers".
 - Proxied hostnames also get Cloudflare's free edge certificate; the
   origin certificate remains Caddy's own (see above).

@@ -331,6 +331,53 @@ def fetch_checkpoint(fetcher: Fetcher, url: str) -> Fetched:
     return extract_note(resp.body, url)
 
 
+#: Seconds to wait before each new fetch of a checkpoint that is log-signed but misses its quorum only because a
+#: pinned witness has no line on it yet.  A log publishes each new checkpoint before its witnesses cosign it
+#: (aics-server merges the witness line into the served note a moment later), so a fetch in that window finds a
+#: log-only note; without the wait, verification under a positive quorum would fail intermittently.  Three more
+#: fetches, six seconds at most.
+COSIGNATURE_RETRY_DELAYS = (1.0, 2.0, 3.0)
+
+
+def awaiting_cosignature(chk: NoteCheck) -> list[str]:
+    """The pinned witnesses whose line is missing from a log-signed note that misses its quorum for that reason
+    alone (no line under a pinned key is invalid), else []: a stale or future line, or a bad one, is not waited
+    for."""
+    if chk.cp is None or chk.reason != "quorum":
+        return []
+    return [str(w["name"]) for w in chk.witnesses if w.get("status") == "absent"]
+
+
+def fetch_checked(fetcher: Fetcher, url: str, policy: Policy, *, clock: Any, sleep: Any,
+                  max_skew: int = DEFAULT_MAX_SKEW,
+                  delays: tuple[float, ...] = COSIGNATURE_RETRY_DELAYS) -> tuple[Fetched, NoteCheck, list[dict[str, Any]]]:
+    """Fetch the checkpoint at ``url`` and check it as a current head (:func:`check_note`).  While the note only
+    lacks the line of a pinned witness (:func:`awaiting_cosignature`), wait each of ``delays`` seconds with
+    ``sleep`` and fetch it again.  Returns the last fetch, its check and one record per fetch that was retried."""
+    retried: list[dict[str, Any]] = []
+    for delay in (*delays, None):
+        fetched = fetch_checkpoint(fetcher, url)
+        chk = check_note(fetched.note_text, policy, source=url, now=int(clock()), max_skew=max_skew)
+        absent = awaiting_cosignature(chk)
+        if delay is None or not absent:
+            return fetched, chk, retried
+        assert chk.cp is not None
+        retried.append({"size": chk.cp.size, "note_sha256": chk.cp.sha256, "absent": absent, "waited_seconds": delay})
+        sleep(delay)
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
+def retry_warning(retried: list[dict[str, Any]], chk: NoteCheck) -> str:
+    """One line on the fetches :func:`fetch_checked` repeated."""
+    waited = sum(r["waited_seconds"] for r in retried)
+    first = retried[0]
+    outcome = ("then it carried the line" if chk.ok else
+               "it still did not" if awaiting_cosignature(chk) else "then it failed for another reason")
+    return (f"the checkpoint first served (size {first['size']}) had no line yet from the pinned witness(es) "
+            f"{', '.join(first['absent'])}: a log publishes a checkpoint before its witnesses cosign it, so it was "
+            f"fetched {len(retried)} more time(s) over {waited:g}s; {outcome}")
+
+
 def api_key_warnings(fetched: Fetched, policy: Policy) -> list[str]:
     from .encoding import escape_untrusted
 

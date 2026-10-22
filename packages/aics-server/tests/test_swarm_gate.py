@@ -470,3 +470,103 @@ def test_t07_complete_leave_line_needs_no_draft_or_selected_session_identity(swa
     answer = line.send(command + " " + a.sig(line.sid,command))
     assert "ok swarm-leave" in answer, answer
     assert member(swarm_client,a)["swarm_id"] is None
+
+
+# ----------------------------------------------------------------------
+# SWARMS R04 to R06, revision of 2026-10-20: every write prompt ends at the command, with the profile on
+# ----------------------------------------------------------------------
+
+#: R04's line before a key-tier prompt, and R05's before a secret-tier one.
+SIGN_LINE = ("Sign UTF-8 of the session id, LF and the command (no final LF), then send the command and sig <base64>, "
+             "or the SSHSIG block described in help.")
+SECRET_LINE = "This write is unverified and policy-attested. Send the command, then secret <your secret>, over TLS only."
+
+
+def _last_two(reply):
+    """The two lines before a reply's closing ``>``: what to send, then the prompt the session waits on."""
+    lines = reply.rstrip("\n").split("\n")
+    assert lines[-1] == ">", reply
+    return lines[-3], lines[-2]
+
+
+def _signed_as_shown(line, agent, draft, verb):
+    """R04's line, then exactly ``? Sign this exactly: <the canonical command>``; the text after the colon, sent and
+    signed as shown, is accepted with no retry (the sentence that followed the command made the shown text
+    unsignable, and each try cost one of the three malformed lines a session allows)."""
+    how, ask = _last_two(draft)
+    command = text_command(proposal(draft))
+    assert command.startswith(verb + " ") and command.count(" ") == 1, command
+    assert (how, ask) == (SIGN_LINE, f"? Sign this exactly: {command}"), (how, ask)
+    shown = ask[len("? Sign this exactly: "):]
+    replies = [line.send(shown), line.send(agent.sig(line.sid, shown))]
+    assert not any(reply.startswith("retry") for reply in replies), replies
+    return replies[1]
+
+
+def _confirmed_as_shown(line, draft, verb, secret):
+    """R05's line, then exactly ``? Confirm exactly: <verb> <U64(J(U))> then secret <your secret>``, the base gate's
+    form; the command as shown, then the secret, is accepted with no retry and the secret is never echoed."""
+    how, ask = _last_two(draft)
+    command = text_command(proposal(draft))
+    assert command.startswith(verb + " ") and command.count(" ") == 1, command
+    assert (how, ask) == (SECRET_LINE, f"? Confirm exactly: {command} then secret <your secret>"), (how, ask)
+    shown = ask[len("? Confirm exactly: "):-len(" then secret <your secret>")]
+    replies = [line.send(shown), line.send("secret " + secret)]
+    assert not any(reply.startswith("retry") for reply in replies), replies
+    assert secret not in "".join(replies)
+    return replies[1]
+
+
+def test_r04_r06_key_tier_prompts_end_at_the_command_and_the_shown_text_signs(swarm_client):
+    """intro, swarm-form and swarm-join, each signed exactly as the prompt shows it."""
+    agent, line = select_new(swarm_client, "shown")
+    assert CODE_QUESTION in line.send("intro shown | alpha beta gamma")
+    assert "ok introduced " in _signed_as_shown(line, agent, line.send("rendezvous none"), "intro")
+
+    loner, _, _, _ = introduce(swarm_client, "loner")
+    assert NAME_QUESTION in line.send("connect " + str(member(swarm_client, loner)["member_index"]))
+    assert TEXT_QUESTION in line.send('swarm-name "Shown as signed"')
+    draft = line.send('swarm-text "The prompt is the command."')
+    assert "ok swarm " in _signed_as_shown(line, agent, draft, "swarm-form")
+
+    newcomer, nline, _, _ = introduce(swarm_client, "newcomer")
+    join = nline.send("connect " + str(member(swarm_client, agent)["member_index"]))
+    assert "ok swarm " in _signed_as_shown(nline, newcomer, join, "swarm-join")
+    assert member(swarm_client, newcomer)["swarm_id"] == member(swarm_client, agent)["swarm_id"]
+
+
+def test_r06_a_draft_prompt_ends_at_the_command(swarm_client):
+    """``draft V <U64(J(Q))>`` gives the envelope, R04's line and the prompt that ends at the command."""
+    a, la, _, _ = introduce(swarm_client, "one")
+    b, _, _, _ = introduce(swarm_client, "two")
+    form(swarm_client, (a, la), b)
+    assert "ok swarm-leave" in _signed_as_shown(la, a, leave_draft(swarm_client, a, la), "swarm-leave")
+
+
+def test_r05_secret_tier_prompts_take_the_base_gate_s_form(swarm_client):
+    """A shared-secret introduction, formation and join, each confirmed exactly as the prompt shows it."""
+    loner, _, _, _ = introduce(swarm_client, "loner")
+    founder, fline, _, _ = introduce(swarm_client, "founder")
+    peer, _, _, _ = introduce(swarm_client, "peer")
+    form(swarm_client, (founder, fline), peer)
+
+    def introduced(name, secret):
+        line = Line(swarm_client)
+        assert "secret" in line.send("fallback")
+        assert INTRO_QUESTION in line.send("secret " + secret)
+        assert CODE_QUESTION in line.send(f"intro {name} | alpha beta gamma")
+        answer = _confirmed_as_shown(line, line.send("rendezvous none"), "intro", secret)
+        assert "ok introduced " in answer and "unverified" in answer, answer
+        return line
+
+    secret = "Swarm-Secret-0123456789-AbCdEfGh"
+    line = introduced("former", secret)
+    assert NAME_QUESTION in line.send("connect " + str(member(swarm_client, loner)["member_index"]))
+    assert TEXT_QUESTION in line.send('swarm-name "Confirmed as shown"')
+    draft = line.send('swarm-text "A policy-attested root."')
+    assert "ok swarm " in _confirmed_as_shown(line, draft, "swarm-form", secret)
+
+    other_secret = "Swarm-Secret-9876543210-ZyXwVuTs"
+    other = introduced("joiner", other_secret)
+    join = other.send("connect " + str(member(swarm_client, founder)["member_index"]))
+    assert "ok swarm " in _confirmed_as_shown(other, join, "swarm-join", other_secret)

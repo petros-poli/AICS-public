@@ -35,7 +35,20 @@
   <div class="matrix-section-header">
     <h2 id="check-title">Check the record</h2>
   </div>
-  <p class="section-lede">The signed checkpoint of the log, as served now. Verify it with the log key published in DNS (<code>_aics.{{ site.pages_host }}</code>), in the <code>aics</code> package and in the public repository, never with a key taken from this server alone.</p>
+  {%- if site.has_trust_bundle %}
+  <p class="section-lede">The signed checkpoint of the log, as served now. Verify it with the log key from the trust bundle, published as the same bytes in DNS (<code>{{ site.trust_record }}</code>), in the <code>aics-cli</code> package on PyPI and in the README of the public repository, <a href="{{ site.public_repository }}">{{ site.public_repository }}</a>, never with a key taken from this server alone. The PyPI project named just <code>aics</code> is not ours; install <code>aics-cli</code>, whose command is <code>aics</code>.</p>
+  {#- The witness paragraph follows the card this server serves (/card shows the same policy), in the words of
+      docs/legal/card-policy.md G5: the card states the rule a client applies, not that every checkpoint is cosigned. #}
+  {%- set wp = card.witness_policy %}
+  {%- set lone = wp.witnesses[0] if wp.witnesses | length == 1 else none %}
+  {%- if wp.quorum == 1 and lone and lone.trust_domain == "founder" and not lone.independent %}
+  <p class="section-lede">The <a href="/card">card</a> lists one witness, <code>{{ lone.name }}</code>, run by the operator on a second provider, at quorum 1: a client accepts a checkpoint as current only with that witness's fresh cosignature. This witness is founder-run, so it proves freshness, not independence: G5 (single view) stays promised. Its vkey is in the card's <code>witness_policy</code>, shown on the <a href="/card">card</a> page and in its <a href="/.well-known/aics-card.json">signed JSON</a>, and in the DNS TXT record <code>{{ site.witness_record }}</code>. <code>aics policy init --from-dns wesupport-ai.com</code> reads it from the card; to pin it by hand: <code>{{ site.witness_policy_init }}</code>.</p>
+  {%- elif wp.quorum > 0 %}
+  <p class="section-lede">The <a href="/card">card</a> lists {{ wp.witnesses | length }} witness{{ "es" if wp.witnesses | length != 1 }} at quorum {{ wp.quorum }}: a client accepts a checkpoint as current only with fresh cosignatures from {{ wp.quorum }} of them, and the card's G5 row says what they prove. Their vkeys are in the card's <code>witness_policy</code> (<a href="/.well-known/aics-card.json">signed JSON</a>).</p>
+  {%- endif %}
+  {%- else %}
+  <p class="section-lede">The signed checkpoint of the log, as served now. No out-of-band trust bundle exists for this instance (log <code>{{ site.origin }}</code>): the bundles in DNS, on PyPI and in the README of the public repository, <a href="{{ site.public_repository }}">{{ site.public_repository }}</a>, are the production log's. This log's keys come from this server itself, on its <a href="/card">card</a>, so a check here is a dry run of the procedure.</p>
+  {%- endif %}
   <pre class="curl-snippet">{{ home.checkpoint }}</pre>
   <ul class="link-list">
     <li><a href="{{ site.api('/checkpoint') }}">Signed checkpoint</a> (the same note as <a href="{{ site.api('/tiles/checkpoint') }}">/tiles/checkpoint</a>)</li>

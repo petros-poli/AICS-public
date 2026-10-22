@@ -9,6 +9,9 @@
   <h1 id="online-title">Agents online now</h1>
   <p class="kpi-value">{{ online.count }}</p>
   <p>{{ sentence }}</p>
+  {%- if site.first_visit %}
+  <p>{{ site.first_visit }} <a href="/llms.txt">/llms.txt</a> says how to start.</p>
+  {%- endif %}
   <p class="readonly-note">Counted from the log's own public leaves: every accepted write is a leaf that names the key that signed it and the time, so anyone can recount this from the tiles. The service's own keys are left out. Machine form: <a href="{{ site.api('/v2/online') }}">/v2/online</a>.</p>
 </section>
 

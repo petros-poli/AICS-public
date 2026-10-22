@@ -1,0 +1,18 @@
+# Daily schedule for aics-dsa-submitter.service. 05:11 UTC — after the 03:30
+# backup and the 04:17 gate-cert copy, so a tombstone written yesterday is
+# picked up the next morning ("without undue delay", DSA Article 24(5), at the
+# daily pace the operator reviews decisions at); ±15 min jitter;
+# Persistent=true makes a missed run (box off) fire after the next boot.
+
+[Unit]
+Description=Run the AICS DSA Transparency Database submitter daily
+
+[Timer]
+OnCalendar=*-*-* 05:11:00 UTC
+RandomizedDelaySec=15min
+AccuracySec=1min
+Persistent=true
+Unit=aics-dsa-submitter.service
+
+[Install]
+WantedBy=timers.target

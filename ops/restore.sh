@@ -45,7 +45,7 @@
 # with the root in that checkpoint — exactly "recomputed tree root equals the
 # latest checkpoint". --vkey-file must point at a LOCAL file holding the log
 # vkey line obtained out of band (the _aics.wesupport-ai.com DNS TXT record /
-# the aics package / the public README; format: "log name+8hex+base64", plain
+# the aics-cli package / the public README; format: "log name+8hex+base64", plain
 # text). The CLI refuses a key fetched from the server being verified, on
 # purpose. TODO(verify against live mirror too): once restored and running,
 # also run `aics-tlog verify-checkpoint --tiles https://tiles.wesupport-ai.com/tiles
@@ -88,7 +88,7 @@ while [ "$#" -gt 0 ]; do
 done
 
 [ -f "$COMPOSE_FILE" ] || die "compose file not found: $COMPOSE_FILE (set AICS_COMPOSE_DIR)"
-[ -n "$VKEY_FILE" ] && [ -f "$VKEY_FILE" ] || die "need --vkey-file FILE (or AICS_LOG_VKEY_FILE): the out-of-band log vkey, from the _aics DNS TXT record / the aics package / the README. Without it the tree root cannot be verified."
+[ -n "$VKEY_FILE" ] && [ -f "$VKEY_FILE" ] || die "need --vkey-file FILE (or AICS_LOG_VKEY_FILE): the out-of-band log vkey, from the _aics DNS TXT record / the aics-cli package / the README. Without it the tree root cannot be verified."
 
 compose() { docker compose --project-directory "$COMPOSE_DIR" -f "$COMPOSE_FILE" "$@"; }
 

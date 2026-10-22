@@ -1,0 +1,109 @@
+# The founder-run witness of wesupport-ai.com on the second host (the Oracle
+# always-free VM that also runs the agent-trials containers; ops/witness/README.md).
+#
+# Layout on the host (bootstrap-witness-host.sh checks it):
+#
+#   ~/aics/packages/aics-tlog/       source of the witness image (build context ../../packages)
+#   ~/aics/packages/aics-witness/
+#   ~/aics/ops/witness/              this file, Caddyfile, .env (host only), site/ (host only)
+#
+# Every command runs in ~/aics/ops/witness, where `docker compose` finds this
+# file and .env by itself:
+#
+#   docker compose build
+#   docker compose run --rm aics-witness init --name <the identity in use: README, host table>
+#   docker compose run --rm aics-witness add-log --origin '<origin>' --vkey '<log vkey>'
+#   docker compose up -d
+#   docker compose kill -s HUP aics-witness     # after add-log: reload the log list
+#
+# bootstrap-witness-host.sh does all of it. On this host use only this file,
+# not packages/aics-witness/compose.witness.yml: both have the same project
+# name, volume and container name (so Docker refuses a second container named
+# aics-witness, and one witness key never runs twice), but only this one
+# carries the host's Caddyfile, public page and memory settings.
+#
+# The witness port is published on the host's loopback only (127.0.0.1:7380,
+# as in the package compose file), for the probes that run on this host
+# (ops/vantage/vantage-probe.sh reads http://127.0.0.1:7380). From outside,
+# and from the agent-trials containers on Docker's default bridge, the
+# witness is reachable only through Caddy on 443. The witness state
+# (config, key, SQLite database) lives in the witness_data volume
+# (aics-witness_witness_data); the key never leaves it except for the one
+# offline backup (README).
+#
+# Memory: the box has 1 GB RAM and 2 GB swap and runs agent containers too.
+# The witness (stdlib HTTP server + SQLite) idles under 50 MB and Caddy under
+# 40 MB; the limits below cap both at 128 MB, and oom_score_adj makes the
+# kernel kill an agent container before either of them.
+
+name: aics-witness
+
+services:
+  aics-witness:
+    build:
+      context: ../../packages
+      dockerfile: aics-witness/Dockerfile
+    image: aics-witness:0.1.0
+    container_name: aics-witness
+    restart: unless-stopped
+    environment:
+      AICS_WITNESS_CONFIG: /data/witness.json
+    volumes:
+      - witness_data:/data
+    ports:
+      - "127.0.0.1:7380:7380"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    oom_score_adj: -500
+    deploy:
+      resources:
+        limits:
+          pids: 64
+          cpus: "0.50"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  caddy:
+    # Stock Caddy (HTTP-01 only, no DNS module), the same release and digest
+    # as the base image of ops/Dockerfile.caddy-cloudflare.
+    image: caddy:2.11.7-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    container_name: aics-witness-caddy
+    restart: unless-stopped
+    environment:
+      WITNESS_DOMAIN: ${WITNESS_DOMAIN:?set WITNESS_DOMAIN in ops/witness/.env (bootstrap-witness-host.sh writes it)}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./site:/srv/site:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - aics-witness
+    oom_score_adj: -500
+    deploy:
+      resources:
+        limits:
+          pids: 128
+          cpus: "0.30"
+          memory: 128M
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  witness_data:
+  caddy_data:
+  caddy_config:

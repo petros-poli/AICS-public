@@ -36,6 +36,32 @@ operator looks.
 
 One process writes the log (DESIGN.md section 4.1).  :func:`acquire_writer_lock`
 makes a second process on the same database refuse to start.
+
+Witness cosignatures (AICS-1 section 6.2, :mod:`aics_server.witness_feed`):
+after a new checkpoint is signed and its tiles are written,
+:attr:`TlogStore.on_publish` hands it to the witness feeder at once, which
+submits it to every witness without holding the writer.
+:meth:`TlogStore.add_cosignature` merges a returned ``cosignature/v1`` line
+only after verifying it under a configured witness key for exactly that
+checkpoint; the merged note replaces ``<tiles>/checkpoint`` atomically.  At
+start-up, cosignature lines already on the note on disk are kept only when
+they still verify under a configured witness key.
+
+The served checkpoint (AICS-1 sections 6.3, 10.1 and 14.3).  Without
+witnesses every publication is served at once, as it always was (quorum 0).
+With witnesses, the card states quorum 1, and a log-signed note that no
+witness has cosigned yet is not what a verifier holding that card can
+accept: :attr:`TlogStore.served` (``/checkpoint``, ``/tiles/checkpoint``,
+``<tiles>/checkpoint`` for the tile mirror, the stated checkpoint of read
+projections, the checkpoint entry bundles are proved against) stays the
+newest cosigned checkpoint until a witness cosigns a newer publication, so
+it may trail :attr:`TlogStore.published` by the publications still waiting
+for their cosignature.  It follows the publications uncosigned only when
+every witness is failing and either no cosigned checkpoint is served yet or
+they have all been failing for longer than the grace
+(``AICS_WITNESS_GRACE_SECONDS``, :attr:`TlogStore.grace_seconds`);
+:attr:`TlogStore.uncosigned_reason` then says why.  The served size never
+decreases.
 """
 
 from __future__ import annotations
@@ -44,13 +70,16 @@ import os
 import sys
 import time
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 from aics_tlog import (
     EMPTY_HASH,
     Checkpoint,
+    Note,
+    SignatureLine,
+    VKey,
     DirectoryTileStore,
     IncrementalTileWriter,
     TileConflictError,
@@ -65,6 +94,7 @@ from aics_tlog import (
     sign_checkpoint,
     tree_root_from_tiles,
     verify_checkpoint,
+    verify_cosignature,
     vkey_from_ed25519,
 )
 from aics_tlog.note import check_name
@@ -76,6 +106,7 @@ __all__ = [
     "CompactTree",
     "LogIntegrityError",
     "LogUnavailable",
+    "NotYetCosigned",
     "PublishedCheckpoint",
     "TlogStore",
     "acquire_writer_lock",
@@ -101,6 +132,31 @@ class LogIntegrityError(RuntimeError):
 
 class LogUnavailable(RuntimeError):
     """New leaves are refused: the published tiles diverged from the leaf table, or publication lags too long."""
+
+
+#: How many publications waiting for a cosignature are remembered (with witnesses).  A witness line for a size not
+#: remembered is answered ``"superseded"``; the feeder submits the newest publication, so its lines are for one of
+#: the last few.
+MAX_HELD_PUBLICATIONS = 4096
+
+
+class NotYetCosigned(RuntimeError):
+    """Entry ``index`` is committed but not yet under the served checkpoint, which no witness has cosigned past it.
+
+    Its receipt promises it a published checkpoint within :data:`MMD_SECONDS`, and with a witness quorum a
+    cosignature is part of publication (AICS-1 section 10.1): ask again after ``retry_after`` seconds.
+    """
+
+    def __init__(self, index: int, served_size: int, tree_size: int, retry_after: int) -> None:
+        super().__init__(
+            f"entry {index} is committed but not yet under a cosigned checkpoint (the served checkpoint has "
+            f"{served_size} leaves, the log {tree_size}); its receipt promises it one within {MMD_SECONDS} s: "
+            f"ask again in {retry_after} s"
+        )
+        self.index = index
+        self.served_size = served_size
+        self.tree_size = tree_size
+        self.retry_after = retry_after
 
 
 def _say(message: str) -> None:
@@ -289,6 +345,8 @@ class TlogStore:
         fsync: bool = True,
         audit: str = "full",
         clock: Callable[[], float] = time.monotonic,
+        witness_keys: Sequence[VKey] = (),
+        wall_clock: Callable[[], float] = time.time,
     ) -> None:
         check_name(origin, "origin")
         if not origin.isascii() or "://" in origin or origin.endswith("/"):
@@ -307,6 +365,11 @@ class TlogStore:
         self._writer: IncrementalTileWriter | None = None
         self._unpublished: list[bytes] = []
         self._published: PublishedCheckpoint | None = None
+        #: The newest published checkpoint whose served note carried a verified witness cosignature: the one
+        #: published now once a witness has cosigned it, an older one while the witnesses have not cosigned the
+        #: newest yet, ``None`` before any cosignature (or without witnesses).  Proofs are given against it
+        #: (:meth:`proof_checkpoint`).
+        self._cosigned: PublishedCheckpoint | None = None
         self._note_cache: tuple[int, bytes] | None = None
         self.tiles_error: str | None = None
         self.diverged: str | None = None
@@ -314,10 +377,39 @@ class TlogStore:
         self._clock = clock
         #: When the published checkpoint first fell behind the tree (``clock`` time), or ``None`` while it is current.
         self._behind_since: float | None = None
-        #: Wall-clock times (Unix seconds) of the last checkpoint write and the last tile write by this process (the
+        #: Wall-clock times (Unix seconds) of the last log-signed checkpoint write (a new publication; merging a
+        #: witness cosignature does not count, see ``cosigned_at``) and the last tile write by this process (the
         #: owner stats page's health section); before the first tile write, the published checkpoint file's mtime.
         self.checkpoint_written_at: float | None = None
         self.tiles_written_at: float | None = None
+        #: Wall-clock time of the last witness cosignature merged into the served note (``None`` before one).
+        self.cosigned_at: float | None = None
+        #: The witnesses whose cosignatures may be served (verified before each merge), in serving order.
+        self.witness_keys: tuple[VKey, ...] = tuple(witness_keys)
+        self._wall_clock = wall_clock
+        #: Called with ``(size, note)`` after a new checkpoint is written (the witness feeder's ``offer``); it must
+        #: not block, and an exception from it never affects publication.
+        self.on_publish: Callable[[int, bytes], None] | None = None
+        #: Cosignature lines that did not verify and were not served, since start-up.
+        self.cosignatures_dropped = 0
+        # The served checkpoint (see the module docstring and "the served checkpoint" below).  With witnesses it
+        # is its own state; without them :attr:`served` is :attr:`published`.
+        self._served: PublishedCheckpoint | None = None
+        self._served_cosigned = False
+        # The sizes published since the served one, still waiting for a cosignature (oldest first): a witness line
+        # moves the served note forward to one of them, never to a size that was not published.
+        self._held_sizes: list[int] = []
+        #: Why the served note carries no witness cosignature although witnesses are configured, else ``None``.
+        self.uncosigned_reason: str | None = None
+        #: How long every witness may fail before newer publications are served uncosigned
+        #: (``AICS_WITNESS_GRACE_SECONDS``, set from the witness settings).
+        self.grace_seconds: float = 120.0
+        #: ``witness_outage()``: for how many seconds every witness has been failing, or ``None`` while one of them
+        #: may still cosign (the witness feeder's ``outage``).  Unset (no feeder running), a cosigned note is held.
+        self.witness_outage: Callable[[], float | None] | None = None
+        #: Called after the served checkpoint changed (the database wakes the requests waiting for it); it must not
+        #: block, and an exception from it is ignored.
+        self.on_served: Callable[[], None] | None = None
 
     # -- checkpoints ----------------------------------------------------------
 
@@ -334,8 +426,28 @@ class TlogStore:
 
     @property
     def published(self) -> PublishedCheckpoint | None:
-        """The checkpoint the tiles directory serves now, if any."""
+        """The newest checkpoint signed for the tiles written, if any (with witnesses, :attr:`served` may trail it)."""
         return self._published
+
+    @property
+    def cosigned(self) -> PublishedCheckpoint | None:
+        """The newest published checkpoint served with a verified witness cosignature (see ``_cosigned``)."""
+        return self._cosigned
+
+    def proof_checkpoint(self, index: int) -> tuple[int, bytes]:
+        """``(size, note)`` that a proof of leaf ``index`` is given against (AICS-1 sections 6.3 and 14.3).
+
+        The newest published checkpoint that a witness cosigned and that covers ``index``, so that a verifier
+        pinning a positive witness quorum can accept the proof's checkpoint (offline, historical verification
+        counts a cosignature whatever its age); otherwise (a leaf newer than every cosigned checkpoint, or no
+        witness) the log-signed note of the whole tree.  A log publishes a checkpoint before its witnesses
+        cosign it, so a proof against the newest note would never carry a cosignature.
+        """
+        cosigned = self._cosigned
+        size = self.tree.size
+        if cosigned is not None and index < cosigned.size <= size:
+            return cosigned.size, cosigned.note
+        return size, self.checkpoint_note(size)
 
     @property
     def tiles_size(self) -> int:
@@ -368,8 +480,8 @@ class TlogStore:
     def read_resource(self, path: str) -> bytes | None:
         """Bytes of a tiles-directory resource (see :func:`tile_resource`); ``None`` if absent."""
         if path == CHECKPOINT_PATH:
-            published = self._published
-            return published.note if published is not None else None
+            served = self.served
+            return served.note if served is not None else None
         if tile_resource(path) is None:
             return None
         try:
@@ -471,8 +583,11 @@ class TlogStore:
                 self.tiles_written_at = None
         self._writer = writer
         self._booted = True
+        if published is not None and published.size < size:
+            self._restore_served(published)  # with witnesses it stays served until a newer note is cosigned
         if size:
-            self._publish_checkpoint(size, at_boot=True)
+            carried = published.note if published is not None and published.size == size else None
+            self._publish_checkpoint(size, at_boot=True, carried=carried)
 
     # -- after each commit ------------------------------------------------------
 
@@ -525,10 +640,21 @@ class TlogStore:
         self.tiles_error = None
         return True
 
-    def _publish_checkpoint(self, size: int, *, at_boot: bool = False) -> bool:
+    def _publish_checkpoint(self, size: int, *, at_boot: bool = False, carried: bytes | None = None) -> bool:
         note = self.checkpoint_note(size)
+        kept: dict[tuple[str, bytes], SignatureLine] = {}
+        if carried is not None:
+            # The same checkpoint as the one on disk: keep its witness lines that still verify.
+            kept = self._verified_lines(carried, size)
+            if kept:
+                note = self._compose(size, kept)
+        # With witnesses, a note no witness has cosigned is neither served nor written for the tile mirror while
+        # the newest cosigned note still stands for it ("the served checkpoint" below).
+        cosigned = note != self.checkpoint_note(size)
+        serve, reason = self._serves_publication(cosigned)
         try:
-            self.store.write_checkpoint(note)
+            if serve:
+                self.store.write_checkpoint(note)
         except OSError as exc:
             if at_boot:
                 raise
@@ -536,9 +662,286 @@ class TlogStore:
             _say(f"checkpoint write failed, will retry on the next commit: {self.tiles_error}")
             return False
         self._published = PublishedCheckpoint(size=size, root=self.tree.root(size), note=note)
+        if kept:
+            self._cosigned = self._published
         self.checkpoint_written_at = time.time()
         self.tiles_error = None
+        if serve:
+            self._serve(self._published, cosigned=cosigned, reason=reason)
+        else:  # held: served once a witness cosigns it (or a later one), or as _follows_uncosigned says
+            self._held_sizes.append(size)
+            del self._held_sizes[:-MAX_HELD_PUBLICATIONS]
+        hook = self.on_publish
+        if hook is not None:
+            try:
+                hook(size, note)
+            except Exception as exc:  # the witnesses are fed best effort; publication stands
+                _say(f"witness feeder hand-off failed: {type(exc).__name__}: {exc}")
         return True
+
+    # -- witness cosignatures -----------------------------------------------------
+
+    def _lines_of(self, note: Note, key: VKey) -> list[SignatureLine]:
+        return [s for s in note.signatures if s.name == key.name and s.key_id == key.key_id]
+
+    def _line_verifies(self, line: SignatureLine, key: VKey, size: int, **freshness: Any) -> bool:
+        if len(line.signature) != 8 + 64:
+            return False
+        try:
+            return verify_cosignature(
+                line.signature, key.name, key.public_key, self.origin, size, self.tree.root(size), **freshness
+            )
+        except ValueError:
+            return False
+
+    def _verified_lines(self, note_bytes: bytes, size: int) -> dict[tuple[str, bytes], SignatureLine]:
+        """The one line per configured witness on ``note_bytes`` that verifies for checkpoint ``size``."""
+        try:
+            note = parse_note(note_bytes)
+        except ValueError:
+            return {}
+        kept: dict[tuple[str, bytes], SignatureLine] = {}
+        for key in self.witness_keys:
+            lines = self._lines_of(note, key)
+            if len(lines) == 1 and self._line_verifies(lines[0], key, size):
+                kept[(key.name, key.key_id)] = lines[0]
+            elif lines:
+                self.cosignatures_dropped += len(lines)
+        return kept
+
+    def _compose(self, size: int, lines: dict[tuple[str, bytes], SignatureLine]) -> bytes:
+        """The log-signed note of ``size`` followed by ``lines`` in :attr:`witness_keys` order."""
+        base = parse_note(self.checkpoint_note(size))
+        ordered = [lines[(k.name, k.key_id)] for k in self.witness_keys if (k.name, k.key_id) in lines]
+        return Note(text=base.text, signatures=tuple(base.signatures) + tuple(ordered)).to_bytes()
+
+    def add_cosignature(self, key: VKey, size: int, lines: str) -> tuple[bool, str | None]:
+        """Merge a witness's ``cosignature/v1`` line into the served note; ``(served, reason)``.
+
+        ``key`` must be a configured witness key and ``size`` the size of the
+        checkpoint published now or, with witnesses, of an earlier
+        publication that is still newer than the served note (otherwise
+        ``"superseded"``): a line for that one moves the served note forward
+        while a later publication waits for its own cosignature, so a log that
+        publishes faster than its witness answers still advances.  The line
+        must verify for exactly that checkpoint and be dated within
+        :data:`aics_server.witness_feed.COSIGNATURE_MAX_AGE_SECONDS` before and
+        30 s after now; a line older than the one already served is not
+        merged.  The merged note is verified again as a whole before it
+        replaces ``<tiles>/checkpoint`` and becomes the served note.  A line
+        that fails is dropped and the served note is left as it was.
+        """
+        from .witness_feed import COSIGNATURE_MAX_AGE_SECONDS, COSIGNATURE_MAX_FUTURE_SECONDS
+
+        published = self._cosignature_target(size)  # the one published now, or with witnesses an earlier one
+        if published is None:
+            return False, "superseded"
+        ident = (key.name, key.key_id)
+        if ident not in {(k.name, k.key_id) for k in self.witness_keys}:
+            self.cosignatures_dropped += 1
+            return False, "not a configured witness key"
+        base_text = parse_note(published.note).text
+        try:
+            candidate = parse_note(base_text + "\n" + lines)
+        except ValueError as exc:
+            self.cosignatures_dropped += 1
+            return False, f"malformed cosignature lines ({exc})"
+        mine = self._lines_of(candidate, key)
+        if len(mine) != 1:
+            self.cosignatures_dropped += 1
+            return False, f"{len(mine)} lines from the witness key, expected one"
+        line = mine[0]
+        now = int(self._wall_clock())
+        if not self._line_verifies(
+            line, key, size,
+            max_age_seconds=COSIGNATURE_MAX_AGE_SECONDS, max_future_seconds=COSIGNATURE_MAX_FUTURE_SECONDS, now=now,
+        ):
+            self.cosignatures_dropped += 1
+            return False, "the cosignature does not verify for the published checkpoint, or is not fresh"
+        current = self._verified_lines(published.note, size)
+        previous = current.get(ident)
+        if previous is not None and int.from_bytes(previous.signature[:8], "big") > int.from_bytes(line.signature[:8], "big"):
+            return False, "older than the cosignature already served"
+        current[ident] = line
+        note = self._compose(size, current)
+        check = verify_checkpoint(parse_note(note), self.vkey, list(self.witness_keys), 0, expected_origin=self.origin)
+        if not check.ok or check.error is not None or key.name not in check.witnesses:
+            self.cosignatures_dropped += 1
+            return False, f"the merged note does not verify ({check.error or 'witness not counted'})"
+        if note == published.note:
+            self._cosigned = published
+            return True, None
+        try:
+            self.store.write_checkpoint(note)
+        except OSError as exc:
+            return False, f"checkpoint write failed ({type(exc).__name__}: {exc})"
+        if published is not self._published:  # an earlier publication, still newer than the served note
+            return self._serve_cosigned(replace(published, note=note))
+        self._published = replace(published, note=note)
+        self._cosigned = self._published
+        # Not checkpoint_written_at: that is the last log-signed publication, which the owner stats report as
+        # the checkpoint's age. A cosignature refresh every AICS_WITNESS_REFRESH_SECONDS must not make a
+        # publication that is stuck at an old size look fresh.
+        self.cosigned_at = time.time()
+        self._serve(self._published, cosigned=True)
+        return True, None
+
+    def _serve_cosigned(self, merged: PublishedCheckpoint) -> tuple[bool, str | None]:
+        """``merged``, an earlier publication's note with the line just merged (written already), is served."""
+        self.cosigned_at = time.time()
+        self._serve(merged, cosigned=True)
+        return True, None
+
+    def _cosignature_target(self, size: int) -> PublishedCheckpoint | None:
+        """The checkpoint a witness line for ``size`` is merged into, or ``None`` (``"superseded"``).
+
+        The checkpoint published now; with witnesses also the served one, or a
+        publication between the served one and the one published now that is
+        still held (rebuilt from the tree: the text the witness was given,
+        signed again by the same deterministic key).  Never one older than the
+        served note (the served size does not decrease), and never a size that
+        was not published by this process: a size inside one append batch has
+        no right-edge tiles of its own, so a restart could not resume the tiles
+        from a ``<tiles>/checkpoint`` of that size, and no witness was given it.
+        """
+        published = self._published
+        if published is None:
+            return None
+        if size == published.size:
+            return published
+        served = self.served
+        if not self.witness_keys or served is None or not served.size <= size < published.size:
+            return None
+        if size == served.size:
+            return served
+        if size not in self._held_sizes:
+            return None
+        return PublishedCheckpoint(size=size, root=self.tree.root(size), note=self.checkpoint_note(size))
+
+    def served_cosignatures(self) -> dict[str, int]:
+        """Witness vkey -> timestamp of its line on the note served now (lines were verified when merged)."""
+        served = self.served
+        if served is None or not self.witness_keys:
+            return {}
+        try:
+            note = parse_note(served.note)
+        except ValueError:  # pragma: no cover - the store wrote it
+            return {}
+        out: dict[str, int] = {}
+        for key in self.witness_keys:
+            lines = self._lines_of(note, key)
+            if len(lines) == 1 and len(lines[0].signature) == 72:
+                out[format_vkey(key)] = int.from_bytes(lines[0].signature[:8], "big")
+        return out
+
+    # -- the served checkpoint ------------------------------------------------------
+
+    #: :attr:`uncosigned_reason` until a witness cosigns a checkpoint this server serves (``/healthz`` ``witnesses``
+    #: says what each witness answers meanwhile).
+    NOT_YET_COSIGNED = "no witness has cosigned a checkpoint that this server serves yet"
+
+    @property
+    def served(self) -> PublishedCheckpoint | None:
+        """The checkpoint served now (``/checkpoint``, ``<tiles>/checkpoint``, proofs, stated read projections).
+
+        Without witnesses, :attr:`published`.  With witnesses, the newest
+        checkpoint carrying a verified cosignature of a configured witness,
+        which a newer publication replaces once a witness cosigns it (or, when
+        :meth:`_follows_uncosigned` says so, uncosigned).  Its size never
+        decreases and never exceeds the published size.
+        """
+        return self._served if self.witness_keys else self._published
+
+    @property
+    def served_size(self) -> int:
+        served = self.served
+        return served.size if served is not None else 0
+
+    @property
+    def served_cosigned(self) -> bool:
+        """Whether witnesses are configured and the served note carries a verified cosignature of one of them."""
+        return bool(self.witness_keys) and self._served is not None and self._served_cosigned
+
+    def _serve(self, checkpoint: PublishedCheckpoint, *, cosigned: bool, reason: str | None = None) -> None:
+        """``checkpoint`` (already written to ``<tiles>/checkpoint``) is the served one from now on."""
+        self._served = checkpoint
+        self._served_cosigned = cosigned
+        if self._held_sizes:
+            self._held_sizes = [held for held in self._held_sizes if held > checkpoint.size]
+        self.uncosigned_reason = None if cosigned or not self.witness_keys else (reason or self.NOT_YET_COSIGNED)
+        hook = self.on_served
+        if hook is not None:
+            try:
+                hook()
+            except Exception:  # waking waiters is best effort; they time out on their own
+                pass
+
+    def _follows_uncosigned(self) -> str | None:
+        """Why a publication no witness cosigned replaces the served note now, or ``None`` to keep the note.
+
+        Only while every witness is failing (:attr:`witness_outage`): at once
+        when the served note carries no cosignature either (there is nothing
+        better to hold on to), else once they have all been failing for longer
+        than :attr:`grace_seconds`.  While any witness may still cosign, the
+        served note is kept, so its cosignature can arrive and the served size
+        catch up instead of being overtaken by every publication.
+        """
+        outage = self.witness_outage() if self.witness_outage is not None else None
+        if outage is None:
+            return None
+        if not self._served_cosigned:
+            return self.uncosigned_reason or self.NOT_YET_COSIGNED  # already uncosigned: the reason stands
+        if outage > self.grace_seconds:
+            return (f"every witness has been failing for more than {self.grace_seconds:g} s "
+                    "(AICS_WITNESS_GRACE_SECONDS): newer checkpoints are served without a cosignature")
+        return None
+
+    def _serves_publication(self, cosigned: bool) -> tuple[bool, str | None]:
+        """Whether a new publication is served (and written for the tile mirror) at once, and why uncosigned."""
+        if not self.witness_keys or cosigned:
+            return True, None
+        if self._served is None:
+            return True, self.NOT_YET_COSIGNED  # nothing is served yet: the first note of the log, or of this start
+        reason = self._follows_uncosigned()
+        return reason is not None, reason
+
+    def refresh_served(self) -> bool:
+        """After the witnesses' state changed: serve the newest publication uncosigned if it is due; True if it was.
+
+        Called (under the database lock) when a witness fails, and before the
+        served note is read, so the grace takes effect without waiting for the
+        next publication.
+        """
+        published, served = self._published, self._served
+        if not self.witness_keys or published is None or served is None or served.size >= published.size:
+            return False
+        reason = self._follows_uncosigned()
+        if reason is None:
+            return False
+        try:
+            self.store.write_checkpoint(published.note)
+        except OSError as exc:
+            self.tiles_error = f"{type(exc).__name__}: {exc}"
+            _say(f"checkpoint write failed, will retry: {self.tiles_error}")
+            return False
+        self._serve(published, cosigned=False, reason=reason)
+        _say(f"serving the checkpoint of size {published.size} without a witness cosignature: {reason}")
+        return True
+
+    def _restore_served(self, on_disk: PublishedCheckpoint) -> None:
+        """At start-up, with witnesses: the note on disk, older than the tree, stays served for now.
+
+        Its witness lines that still verify are kept, the others removed (and
+        the file rewritten without them).  A newer note is served once a
+        witness cosigns it, or as :meth:`_follows_uncosigned` says.
+        """
+        if not self.witness_keys:
+            return
+        lines = self._verified_lines(on_disk.note, on_disk.size)
+        note = self._compose(on_disk.size, lines) if lines else self.checkpoint_note(on_disk.size)
+        if note != on_disk.note:
+            self.store.write_checkpoint(note)  # at start-up an error stops the start, as a publication's does
+        self._serve(replace(on_disk, note=note), cosigned=bool(lines))
 
     def check_writable(self) -> None:
         """Raise :class:`LogUnavailable` when no new leaf may be appended.

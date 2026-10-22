@@ -17,9 +17,13 @@ which workflow built it.
 ## One-time setup
 
 1. Enable GitHub Actions for `petros-poli/AICS-public`, including the actions and reusable
-   workflow referenced in these files. Use GitHub-hosted Ubuntu runners. Require
-   the CI check **All packages passed** on `main`, and restrict creation and
-   modification of `v*` tags to release maintainers.
+   workflow referenced in these files. Use GitHub-hosted Ubuntu runners. Actions
+   runs only for `v*` tags (see [What a tag starts](#what-a-tag-starts)); routine
+   verification is local (CONTRIBUTING.md). **Do not require any status check on
+   `main`**: no workflow runs on pull requests or branch pushes, so a required
+   check would never report and would block every merge. Restrict creation and
+   modification of `v*` tags to release maintainers where the plan allows it (see
+   [Repository settings](#repository-settings) for what is in force today).
 2. Create the six GitHub Actions environments listed below. Restrict each to
    `v*` tags; add environment reviewers if desired. The exact environment name
    is part of each project's publisher identity.
@@ -84,14 +88,18 @@ for this repository before enabling package distribution.
 
 ## Cut a release
 
-1. Review the release commit and its package metadata. CI discovers **every**
-   `packages/*/pyproject.toml`, including future packages and the server. Release
-   discovery selects `aics-identity`, `aics-tlog`, `aics-witness`,
+1. Review the release commit and its package metadata. `scripts/verify.sh --full`
+   tests **every** `packages/*/pyproject.toml`, including future packages and the
+   server. Release discovery selects `aics-identity`, `aics-tlog`, `aics-witness`,
    `aics-conformance`, `aics-cli`, and `aics-mcp` when their metadata files exist.
    Confirm all six ordinary publishers, or the first three pending publishers
    for the initial release sequence below, before enabling PyPI.
 2. Set each included library's version deliberately, update its changelog and
-   dependency constraints, and ensure `main` passes CI and Reproducible builds.
+   dependency constraints, and run `scripts/verify.sh --full` on the release
+   commit, once per supported Python version on the Linux VM (CONTRIBUTING.md,
+   "Python versions"). The release commit, or the merge that produced it, carries
+   the `Verified:` line for each run. Nothing on GitHub reports this result; the
+   release workflow runs the same script again before it builds anything.
    The repository tag identifies a release of the monorepo; package versions come
    from their own `pyproject.toml` and need not match one another or the tag.
    When publishing to PyPI, **every selected package/version must be new**. By
@@ -101,11 +109,14 @@ for this repository before enabling package distribution.
 3. Create and push an immutable `v*` tag pointing to the reviewed commit, using
    your normal source-control tool. Prefer names such as `v0.2.0` or `v0.3.0-rc1`
    (the verification script accepts letters, digits, dots, plus, underscore and
-   hyphen after the initial `v`). The tag's commit must contain all three workflows.
-4. Watch **Release**. It calls CI and the reusable reproducibility workflow at the
-   tagged commit. Only the first copy of distributions whose two builds match can
-   reach signing. The signed `SHA256SUMS` inventory and all distribution digests
-   become SLSA subjects. The generator creates a draft release with
+   hyphen after the initial `v`). The tag's commit must contain `release.yml`, any
+   local workflow it calls, and `scripts/verify.sh`: the run uses the files at the
+   tagged commit.
+4. Watch **Release**, the only workflow the tag starts. It verifies the tagged
+   commit once with `scripts/verify.sh --full` and builds each library twice, as
+   described under [What a tag starts](#what-a-tag-starts). Only the first copy of
+   distributions whose two builds match can reach signing. The signed
+   `SHA256SUMS` inventory and all distribution digests become SLSA subjects. The generator creates a draft release with
    `aics.intoto.jsonl`; the next job adds distributions, `.sigstore.json` bundles,
    base64 `.sig` signatures and PEM `.crt` certificates, then publishes the draft.
 5. If enabled, approve any required per-project environment deployments and
@@ -114,6 +125,78 @@ for this repository before enabling package distribution.
    inventory hashes, then uploads only those two files using
    `pypa/gh-action-pypi-publish` and GitHub OIDC. Verify the GitHub Release as
    described below before using its artifacts.
+
+### What a tag starts
+
+Pushing a `v*` tag starts one workflow run, **Release** (`release.yml`), and
+nothing else: no standalone CI, interop or reproducibility run starts for the tag,
+and none starts for pushes to `main`, pull requests, documentation edits or a
+schedule. The run has one path:
+
+1. `prepare` refuses to replace a published release and freezes the PyPI policy.
+2. Verification runs `scripts/verify.sh --full --strict` once at the tagged
+   commit (Python 3.12.12, Node 24), the same script contributors run locally,
+   through the reusable `ci.yml` (now named **Verify**). The reusable
+   `interop.yml` runs the same script's interop check
+   (`scripts/verify.sh --full --only interop --strict`) on the other supported
+   Python releases (3.13.15 and 3.14.7). Any failed check, any `SKIPPED` or
+   `PREREQ` line, and any change to tracked files fails the release; the interop
+   suite runs with `AICS_INTEROP_REQUIRE_TOOLS=1`, so a missing `openssl`,
+   `ssh-keygen` or `git` cannot drop its tests.
+
+   Two of the checks in that run are deliberate gates beyond the libraries.
+   `python:card:launch` runs the card's launch-blocker tests (card/README.md);
+   no library depends on `card/`, but a reopened launch blocker means the
+   checkout disagrees with what the card states, so it stops the release until
+   it is fixed. The six `reproducible:<library>` checks build each library twice
+   inside the Verify job, a cheap pre-check (seconds); they are not release
+   evidence and do not replace the isolated pair of builds in step 3.
+3. Each of the six libraries is built **twice**, on two separate fresh runners
+   (twelve build jobs in all), and the comparison job exports only distributions
+   whose wheel and sdist hashes match (details under
+   [Reproducibility and maintenance](#reproducibility-and-maintenance)).
+4. Signing, SLSA provenance, the GitHub Release and the per-project PyPI jobs
+   follow, each with the permissions and identities described in this document.
+
+Before this change a tag started CI and Reproducible builds as standalone runs
+**and** Release called both again, so every library was built four times (24
+build jobs). The standalone runs produced no release evidence; they are gone.
+The release evidence is unchanged: two isolated builds whose hashes must match,
+Sigstore signing and SLSA provenance under the same `release.yml` identity, and
+the same six PyPI environments and trusted publishers.
+
+GitHub reads a tag's triggers from the tagged commit. The workflow change that
+removed the `push` and `pull_request` triggers from `ci.yml`, `interop.yml` and
+`reproducible.yml` (they remain as reusable workflows that only `release.yml`
+calls) and moved verification to `scripts/verify.sh` is commit `b9a976e`. A tag
+on a commit before `b9a976e` still contains the old triggers and starts the old
+duplicate runs: tag only commits that contain `b9a976e`
+(`git merge-base --is-ancestor b9a976e <commit>`). `tools/test_workflows.py`
+fails if a trigger, a second call of a reusable workflow, an unpinned action or
+a missing timeout comes back.
+
+### Retries
+
+- **The run did not start.** If Actions refuses to start jobs (for example while
+  the account's Actions usage is blocked), the run fails before any step runs:
+  nothing was built, signed or published. Once Actions can run again, open the
+  same run and choose **Re-run all jobs** (or
+  `gh run rerun RUN_ID --repo petros-poli/AICS-public`). Do not delete, move or re-push
+  the tag. `prepare` still refuses if a release for the tag was already published.
+- **Verification failed.** A real failure needs a fix, a new commit, a new
+  `Verified:` line and a **new tag**; the tag is immutable. If the log shows an
+  infrastructure fault rather than a test failure (a runner lost, a download
+  timed out), **Re-run failed jobs** on the same run reruns verification and the
+  jobs after it with the same commit.
+- **The two builds differ.** A hash mismatch is a defect, not a flake. Do not
+  rerun until it passes; find the source of non-determinism, fix it, and cut a
+  new tag. The `reproducibility-hashes` artifact keeps both hash sets.
+- **Signing, provenance or the GitHub Release failed.** Investigate first: a
+  failed run may leave a draft release with partial assets. Do not rerun the
+  provenance generator's job alone after publication (see below).
+- **A PyPI job failed.** Rerun only that failed job, as in the first-publication
+  sequence below; it reuses the run's verified artifacts and its frozen project
+  selection.
 
 ### Publish only the renamed CLI distribution
 
@@ -129,10 +212,10 @@ are immutable.
 For a future CLI-only release, use a new CLI version and the existing publisher
 with environment `pypi-aics`, set `PUBLISH_PYPI=true` and
 `PYPI_ONLY_PROJECT=aics-cli`, leave `PYPI_PROJECTS` empty, then create a new
-immutable tag after CI passes. All six distributions are
-still built, tested, signed and included in the GitHub release, but only the
-CLI's wheel and sdist are uploaded to PyPI. The other five matrix entries skip
-their download, selection and publishing steps, so their existing versions are
+immutable tag after `scripts/verify.sh --full` passes locally. All six
+distributions are still built, tested, signed and included in the GitHub
+release, but only the CLI's wheel and sdist are uploaded to PyPI. The other
+five matrix entries skip their download, selection and publishing steps, so their existing versions are
 not uploaded again.
 
 Verify the new CLI's PyPI bytes against the correction release's signed
@@ -140,6 +223,84 @@ inventory. Verify the other five existing PyPI versions against the release
 that originally published them; a later rebuild can have different bytes.
 Clear both selectors before the next release intended to publish all six
 projects, and give every selected package a new unused version.
+
+### The relaunch of 2026-10-20: aics-cli 0.1.1
+
+The relaunch (docs/DECISIONS.md, "Relaunch: a second genesis before any outside
+agent used the log"; ops/RUNBOOK-first-deploy.md step 11) replaced the production log, so
+`aics-cli` 0.1.0 carries the trust bundle of a discarded log, and with it
+installed `aics policy init --from-dns wesupport-ai.com` stops with exit 2. The
+version, changelog and lock files already say 0.1.1; the new bundle exists only
+after the second genesis, and `ops/relaunch-genesis.sh docs` writes it into
+`packages/aics-cli/src/aics_cli/published_keys.py`. Cut the release from the
+commit that carries it, and only then:
+
+1. Check the commit (from its checkout):
+
+   ```sh
+   python3 - <<'PY'
+   import ast, hashlib, pathlib, re
+   text = pathlib.Path("packages/aics-cli/src/aics_cli/published_keys.py").read_text()
+   jcs = ast.literal_eval(re.search(r"^AICS_TRUST_BUNDLE: bytes \| None = (b'.*')$", text, re.M).group(1))
+   sha = re.search(r"^AICS_TRUST_BUNDLE_SHA256: str \| None = '([0-9a-f]{64})'$", text, re.M).group(1)
+   assert hashlib.sha256(jcs).hexdigest() == sha, "the constant and its digest disagree"
+   assert sha != "bc234cc34b1b0941d0e833c41112109fe7fe020cebbba9f58f98f3a59448da0c", "still the discarded log's bundle"
+   assert f"sha256: {sha}" in pathlib.Path("README.md").read_text(), "the README block names another bundle"
+   assert 'version = "0.1.1"' in pathlib.Path("packages/aics-cli/pyproject.toml").read_text()
+   print("ok", sha)
+   PY
+   dig +short TXT _aics.wesupport-ai.com @1.1.1.1   # the aics1= value of the README block
+   scripts/verify.sh --full
+   ```
+
+2. Select the CLI alone (the variables are read once, by `prepare`):
+
+   ```sh
+   gh variable set PUBLISH_PYPI --repo petros-poli/AICS-public --body true
+   gh variable set PYPI_ONLY_PROJECT --repo petros-poli/AICS-public --body aics-cli
+   gh variable list --repo petros-poli/AICS-public   # PUBLISH_PYPI true, PYPI_ONLY_PROJECT aics-cli, no PYPI_PROJECTS
+   ```
+
+3. Tag the reviewed commit with the next tag (the last one is `v0.3.0`) and push it:
+
+   ```sh
+   git tag -a v0.3.1 -m "aics-cli 0.1.1: the trust bundle of the 2026-10-20 relaunch" <commit>
+   git push origin v0.3.1
+   gh run list --repo petros-poli/AICS-public --workflow release.yml --limit 1
+   gh run watch --repo petros-poli/AICS-public <run id>
+   ```
+
+   All six libraries are built, tested and signed; only the `aics-cli` job of the
+   `pypi` matrix uploads (environment `pypi-aics`).
+
+4. Once `prepare` has run, put the variables back (a rerun of a failed PyPI job keeps
+   the run's frozen selection), then check what was published:
+
+   ```sh
+   gh variable set PUBLISH_PYPI --repo petros-poli/AICS-public --body false
+   gh variable delete PYPI_ONLY_PROJECT --repo petros-poli/AICS-public
+   bash scripts/verify-release.sh v0.3.1
+   python3 -m venv /tmp/aics-cli-0.1.1 && /tmp/aics-cli-0.1.1/bin/pip install "aics-cli==0.1.1"
+   /tmp/aics-cli-0.1.1/bin/aics --home /tmp/aics-cli-0.1.1/home policy init --from-dns wesupport-ai.com
+   ```
+
+   The last command must name the trust root `dns + pypi` with no `--bundle`.
+
+5. Yank 0.1.0 (the owner, on pypi.org: `aics-cli`, Manage, Releases, 0.1.0, Options,
+   Yank) with the reason "Carries the trust bundle of the log discarded on
+   2026-10-20; use 0.1.1." A yanked release stays installable with an exact pin, and
+   with it `aics policy init` refuses the new DNS record (exit 2): it fails closed. The
+   `v0.2.1` release that built 0.1.0 stays as it is; its tag and assets are immutable.
+
+6. Only now deploy the site from the tagged commit's main (`bash ops/sync-docs.sh
+   deploy/docs-public && bash deploy/deploy-vps.sh wesupport-vps`): it serves
+   docs/DECISIONS.md, which says that 0.1.1 is on PyPI and 0.1.0 is yanked. Deploy it
+   only if no file the server image is built from changed since the relaunch's deploy
+   (`packages/aics-identity`, `aics-tlog`, `aics-witness`, `aics-server`,
+   `deploy/Dockerfile`, `deploy/requirements.txt`, `deploy/build-requirements.txt`), so
+   the running build stays the one the card's conformance reports describe. Then refresh
+   the public repository AICS-public from the same commit right away, without waiting for
+   the public-log dataset revision (a second refresh links that revision later).
 
 ### Publish a reviewed subset
 
@@ -167,8 +328,8 @@ selectors before a future all-project release, or deliberately set a new subset.
 
 1. Register pending publishers for `aics-identity`, `aics-tlog` and
    `aics-witness` using their exact environments above. Create all six GitHub
-   environments and pass CI before setting `PUBLISH_PYPI=true` and pushing the
-   reviewed immutable release tag.
+   environments and pass `scripts/verify.sh --full` locally before setting
+   `PUBLISH_PYPI=true` and pushing the reviewed immutable release tag.
 2. The three configured publishing jobs create their projects. The remaining
    three fail during OIDC authentication, before uploading any distributions.
    The matrix uses `fail-fast: false`, so those failures cannot cancel the
@@ -248,8 +409,13 @@ separate work. The current release pipeline does not distribute the server.
 
 ## Reproducibility and maintenance
 
-`reproducible.yml` runs on pushes to `main`, all tag pushes, and as part of Release.
-Tag pushes therefore also produce a separate standalone reproducibility run.
+The two builds run only inside Release, for `v*` tags; there is no standalone
+reproducibility run on branch or tag pushes. To check repeatability before
+tagging, run `scripts/verify.sh --only 'reproducible:*'`: it builds each library
+twice from two copies of the tree with the release's settings (two paths,
+`PYTHONHASHSEED` 1 and 2, `SOURCE_DATE_EPOCH` = the commit time, UTC) and
+compares the wheel and sdist hashes. A local result is evidence for you, not
+release evidence.
 Each library is built on two separate GitHub-hosted Ubuntu 24.04 jobs with fresh
 checkouts, different source paths and `PYTHONHASHSEED` values, no restored uv cache,
 uv **0.12.6**, Python **3.12.12**, UTC and a fixed locale. `SOURCE_DATE_EPOCH` is the
@@ -263,8 +429,9 @@ the release with a Sigstore signature and SLSA provenance.
 The current libraries use pure-Python `uv_build` packaging. The pinned uv version
 includes a backend compatible with their `uv_build>=0.12.6,<0.13.0` requirement;
 see uv's [bundled backend documentation](https://docs.astral.sh/uv/concepts/build-backend/#bundled-build-backend).
-Keep the uv pin in CI and reproducibility synchronized. Known sources of potential
-non-determinism, rather than accepted exceptions, include:
+Keep the uv and Python pins of the verification and build jobs synchronized.
+Known sources of potential non-determinism, rather than accepted exceptions,
+include:
 
 - Backends that ignore `SOURCE_DATE_EPOCH`, gzip/ZIP timestamps, filesystem order,
   random values, absolute paths or generated version files. A newly added library
@@ -294,10 +461,54 @@ requested. Review upstream trust-root compatibility and action pins periodically
 
 Only signing, provenance generation and the gated PyPI job can request OIDC
 tokens. Only the provenance generator and release-attachment job can write GitHub
-releases. Tests and builds have read-only repository access, checkouts do not
-persist credentials, and the CI aggregate fails on failed, skipped or cancelled
-package testing. CI caches uv dependencies while keeping the whole monorepo
+releases. Verification and builds have read-only repository access, checkouts do
+not persist credentials, every job has a timeout, and verification fails on any
+failed, skipped or cancelled check. Verification keeps the whole monorepo
 checkout available for the server's sibling path dependencies.
+
+### Repository settings
+
+Read on 2026-10-19 with `gh` as `petros-poli` (repository role admin; token
+scopes `repo`, `workflow`, `read:org`), read-only:
+
+- `GET repos/petros-poli/AICS-public/branches/main/protection`, `GET .../rulesets` and
+  `GET .../rules/branches/main` all answer **HTTP 403** "Upgrade to GitHub Pro or
+  make this repository public to enable this feature". This is the plan's limit
+  for a private repository, not a missing token permission: the account is an
+  admin of the repository.
+- `GET repos/petros-poli/AICS-public/branches/main` reports `protected: false` and
+  `required_status_checks` with empty `contexts` and `checks`, enforcement
+  `off`. **No status check is required on `main` today**, so none of the retired
+  job names blocks a merge, and no settings change is needed now.
+- Because rulesets are unavailable, `v*` tag creation is not restricted by a
+  rule; only the repository's collaborators (today the single admin) can push
+  tags. The six `pypi*` environments each allow deployments from `tag:v*` only,
+  without required reviewers.
+- The repository variable `PUBLISH_PYPI` is `false` (read with `gh variable list`
+  on 2026-10-20; set on 2026-10-19 21:03 UTC) and neither `PYPI_ONLY_PROJECT` nor
+  `PYPI_PROJECTS` is set, so a `v*` tag publishes nothing to PyPI. Before a release
+  that should upload, set it to `true` together with a selector unless every
+  library has a new version.
+
+If branch protection or rulesets become available (the repository goes public or
+the plan changes) and someone requires status checks on `main`, require **none**
+of these names, and remove any that were added, under **Settings → Branches →
+main → Require status checks to pass** (classic protection) or **Settings →
+Rules → Rulesets → the ruleset targeting `main` → Require status checks to pass**:
+
+- `All packages passed`, `discover`, and every `Test packages/<name>` (the old
+  `ci.yml` jobs);
+- `Interop suite and fixtures (Python 3.12.12)`, `(Python 3.13.15)` and
+  `(Python 3.14.7)` (the old `interop.yml` job);
+- every `Build <package> (copy 1)` / `(copy 2)` and `compare` (the old
+  standalone `reproducible.yml` run).
+
+With classic protection, `gh api -X DELETE
+repos/petros-poli/AICS-public/branches/main/protection/required_status_checks` removes
+the whole requirement. Local `scripts/verify.sh` results are recorded in commit
+messages (CONTRIBUTING.md) and are never posted as checks, so there is no check
+to put in their place. A `v*` tag ruleset limited to release maintainers is still
+worth adding once rulesets are available.
 
 ## npm and MCP registries
 

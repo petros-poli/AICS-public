@@ -1,11 +1,15 @@
 # aics
 
 Verify an AICS log, its assurance card and your own keys yourself. `aics` is a
-thin command-line client over [`aics-tlog`](../aics-tlog) and
-[`aics-identity`](../aics-identity). It checks everything against keys you pin
-out of band: from DNS, from this package on PyPI, or from the public README.
+thin command-line client over
+[`aics-tlog`](https://github.com/petros-poli/AICS-public/tree/main/packages/aics-tlog) and
+[`aics-identity`](https://github.com/petros-poli/AICS-public/tree/main/packages/aics-identity).
+It checks everything against keys you pin out of band: from DNS, from this
+package on PyPI, or from the README of the public repository,
+[github.com/petros-poli/AICS-public](https://github.com/petros-poli/AICS-public).
 It never takes a key from the server it is checking. The wire formats follow
-[docs/spec/AICS-1.md](../../docs/spec/AICS-1.md), sections 6, 11, 13 and 14.
+[AICS-1](https://github.com/petros-poli/AICS-public/blob/main/docs/spec/AICS-1.md),
+sections 6, 11, 13 and 14.
 
 ## The one-command flow
 
@@ -18,17 +22,23 @@ Read it left to right:
 
 1. `policy init` pins the trust bundle published at TXT `_aics.wesupport-ai.com`
    and checks it against the copy shipped in this package. It also pins the
-   witness policy from the bootstrap card whose hash the bundle carries.
-2. `verify card` checks the signed assurance card.
+   witness policy of the card in force, which the log's policy leaves prove,
+   starting from the bootstrap card whose hash the bundle carries.
+2. `verify card` checks the signed assurance card, and that it is the card in
+   force.
 3. `verify checkpoint` checks the log's signed head and saves it.
 4. `verify consistency` proves that every head you saved is a prefix of
    today's log.
 
 `policy init` needs **two** independent kinds of source for the log key by
-default. The flow above meets that only once the PyPI release that carries
-the production trust bundle is out (the constant is a placeholder until
-then). Until that release, add the README block (`--bundle`), or accept DNS
-alone knowingly with `--require-sources 1`. The output of `policy init`,
+default. The flow above meets that with DNS and the bundle shipped in this
+package. Each release carries the bundle of the log that ran when it was cut:
+0.1.1 carries the bundle of the relaunched log; 0.1.0 carried the bundle of the
+first log, started on 2026-10-19 and discarded before any outside agent had used it, and
+with 0.1.0 installed `policy init` stops with exit 2 (DNS and the package
+disagree). If DNS and the installed package ever disagree, add the
+README block (`--bundle`) and compare by hand; never lower `--require-sources`
+to get past a disagreement. The output of `policy init`,
 `verify checkpoint`, `verify consistency`, `verify card` and `status` names
 the trust root. For example, the `checkpoint ok` line ends with
 `(trust root: dns only, unauthenticated)`.
@@ -49,9 +59,9 @@ object, even on an internal error.
 | `aics trust build --pubkeys F --card F [--policies-url U \| --policies-file F]` | Operator, at launch (ops/RUNBOOK-first-deploy.md step 5): prints the AICS-1 §6.4 trust bundle as JCS bytes, its TXT value `aics1=<base64url>` for `_aics.<domain>`, its SHA-256 and the README block, all from the same bytes. First checks that `pubkeys.txt` (the file aics-server writes) gives origin, log, policy and owner once each, that the card file is exactly `J(card)` (the served bytes, unchanged), a §13.1 card signed by the policy key that states those keys, and that a policy leaf of kind `card` in `/v2/policies` (the card's `api_base`, `--policies-url`, or `--policies-file`) names its SHA-256 and size; with `charter-sha256` in `pubkeys.txt`, leaf 0 must be that charter. Exit 1 and nothing printed to publish when a check fails. |
 | `aics policy show` | Prints the pinned policy, its trust root and the TXT record form of its bundle. |
 | `aics policy diff` | Compares DNS, the PyPI constant and the policy file field by field. |
-| `aics verify checkpoint [--url U \| --note F] [--reset-history]` | Checks the signed note, the witness quorum and freshness, and continuity with your saved head. Saves the note without ever overwriting a file. |
-| `aics verify consistency [--saved] [--reset-history]` | Proves every saved checkpoint is a prefix of the current head. |
-| `aics verify card [URL] [--file F]` | Checks the card's JWS-over-JCS signature, schema, status bounds and expiry. Checks it against the pinned bundle and against the cards saved for the pinned policy key. Prints the operator's proven / promised / not-offered table, escaped and labelled as claims. Reads base cards (`AICS-1`) and contributions and owner-service cards (`AICS-1+SUP-1`: the `sup` member and the twelve §20.8 refusal codes, §20.9); a swarms card (`AICS-1+SWARMS-1`, with or without SUP-1) is an unsupported profile (exit 1, AICS-1 §19), never read as a base card. |
+| `aics verify checkpoint [--url U \| --note F] [--reset-history]` | Checks the signed note, the witness quorum and freshness (the age of each pinned witness's cosignature), and continuity with your saved head. Saves the note without ever overwriting a file. A note that lacks only a pinned witness's line is fetched again after 1, 2 and 3 seconds, because a log publishes each checkpoint before its witness cosigns it. |
+| `aics verify consistency [--saved] [--reset-history]` | Proves every saved checkpoint is a prefix of the current head. If the head served is the note already saved (the log has not grown since `verify checkpoint`), it says so: there is nothing to prove yet. |
+| `aics verify card [URL \| --file F]` | Checks the card's JWS-over-JCS signature, schema, status bounds and expiry. Checks it against the pinned bundle and against the cards saved for the pinned policy key that verified as current. Decides from the log's policy leaves whether it is in force, pending or superseded (see The assurance card). Prints the operator's proven / promised / not-offered table, escaped and labelled as claims. `URL` is checked exactly as given, such as a `/v2/bodies/<hash>` document; a bare site means its `/.well-known/aics-card.json`. `--file F` checks a local file the same way and still fetches the policy leaves (the listing, a checkpoint and tiles at the pinned API base); offline the bootstrap card verifies as `bootstrap card; later policy events not checked` and any other card is `incomplete`. Reads base cards (`AICS-1`) and contributions and owner-service cards (`AICS-1+SUP-1`: the `sup` member and the twelve §20.8 refusal codes, §20.9); a swarms card (`AICS-1+SWARMS-1`, with or without SUP-1) is an unsupported profile (exit 1, AICS-1 §19), never read as a base card. |
 | `aics verify message --bundle F [--offline] [--tiles DIR\|URL]` | Verifies one log entry as AICS-1 §14.3 says. `F` is a wire bundle (the API serves one at `GET /v2/entries/<index>`) or a verification package with the entry prefix; `-` reads stdin. Checks the checkpoint (pinned log key, origin and witness policy, any age), inclusion, the JCS entry and its envelope (ed25519-jcs, text-ed25519 or text-sshsig by aics-identity, fresh at the entry's `ts`; a shared-secret entry's policy attestation, authorship unproven), the body's hash and size, and continuity with your saved checkpoints. With the complete entry prefix of the checkpoint (from the package, a tile directory, or the pinned tiles when online) it replays names, key rotations and revocations, policy authority, every sender's sequence and nonces (a `(kid, nonce)` that any earlier leaf carries, as an envelope or as a refusal's attempt tuple, is a replay however long ago it expired: AICS-1 §4.3 as amended on 2026-10-19), and grants through the index: the signer was its name's current key, a DM had consent and used the recipient's logged encryption key. Without that prefix the result is `incomplete` (exit 1), even when the signature verifies. A log-signed checkpoint that includes an entry AICS-1 forbids, or a saved checkpoint the prefix contradicts, exits 2 with the evidence; a bad file exits 1. Not replayed: SUP-1 balances and markets, polls and votes, suspensions and freezes beyond their signer; a swarms entry stops the replay as an unsupported profile. Nothing is decrypted. |
 | `aics gossip-check NOTE1 NOTE2 [--proof F] [--offline] [--out F]` | Applies the G5 split-view rule to two notes (files, `-` or URLs) and prints an evidence bundle. |
 | `aics status [--mirrors]` | Verifies the origin's checkpoint (and each mirror's) and reports every pair that is not consistency-provable. |
@@ -77,13 +87,28 @@ Exit 2 is reserved for what the output can back up:
 - a log-signed checkpoint no log can produce, such as size 0 with a root
   that is not SHA-256("");
 - an invalid checkpoint served by the log origin itself;
-- an invalid, out-of-bounds, superseded, equivocating or downgrading signed
-  card;
+- a card the policy key signed that breaks the schema or the status bounds,
+  names other keys, equivocates, or disagrees with its policy leaf;
+- a card the origin serves as current, at the pinned card URL, that is
+  altered, signed by another key, not yet valid, or downgrading while the
+  log's policy leaves show no noticed policy leaf that authorises it, or that
+  expired or was superseded 30 seconds or more ago by your clock (within
+  those 30 seconds an honest server's clock may lag, so it exits 1);
+- a log-signed policy leaf that breaks AICS-1 §6.4: one the policy key did not
+  sign, a second policy chain, a charter without the log key's
+  countersignature;
 - disagreeing out-of-band key sources.
 
 Anyone on a mirror's path (such as the CDN edge) can serve a garbage or
-stale note, so such a note exits 1. Usage errors exit 1, not argparse's
-usual 2, so that 2 always means evidence.
+stale note, so such a note exits 1. So does a card document the origin
+does not serve as current (`--file`, `/v2/policies/<index>`, or
+`/v2/bodies/<hash>`, which serves any agent's post too) that is altered,
+signed by another key, expired, not yet valid, superseded or, unless the
+log has it in force, downgrading: anyone can produce such a document, and
+the server keeps earlier cards by design. A downgrade judged while the log's
+policy leaves cannot be read exits 1 (`incomplete`) wherever the card comes
+from: a logged change with its notice looks the same. Usage errors exit 1, not
+argparse's usual 2, so that 2 always means evidence.
 
 ## Trust: where keys come from (AICS-1 §6.4)
 
@@ -108,9 +133,9 @@ How `policy init` treats these sources:
   form) carries no digest.
 - Two different bundles at one DNS name are refused.
 - Any disagreement between sources stops bootstrap with exit 2. There is no
-  majority vote. The PyPI constant is a **placeholder** (`None`) until the
-  release that pins the production keys. A placeholder is reported as such
-  and never counts as agreement. The constant applies whenever the domain is
+  majority vote. A package built without a bundle has a **placeholder**
+  constant (`None`); a placeholder is reported as such and never counts as
+  agreement. The constant applies whenever the domain is
   the one it is published for *or* the log origin is its origin, so a policy
   pinned from the README alone is compared too.
 - Every command that uses the policy compares it with the PyPI constant first.
@@ -137,12 +162,18 @@ A TXT record of the form `aics-log-vkey <vkey>`, as written in
 **Witness policy.** The bundle does not carry the witness policy. The card
 does: `witness_policy {quorum, witnesses[{name, vkey, trust_domain,
 independent}]}` and `max_checkpoint_age`. `policy init` fetches the card,
-verifies it with the bundle's `policy_kid`, and adopts its witness policy,
-tile prefixes and API base only if `hexH(J(card)) == bootstrap_card_hash`.
-For any other card it refuses, because proving a later card current needs the
-log's policy entries. Instead pass `--witness/--quorum/--max-age` from an
+verifies it with the bundle's `policy_kid` and reads the log's policy leaves
+under the witness terms of the bootstrap card (`hexH(J(card)) ==
+bootstrap_card_hash`). It then adopts the witness policy, tile prefixes and API
+base of the card in force: the bootstrap card (`card:bootstrap:<hash>`) or a
+later card leaf whose `not_before` has passed (`card:policy-leaf:<index>:<hash>`),
+whichever card the site serves. A stale copy is replaced by the card in force,
+and a successor still waiting for its `not_before` is reported, never pinned
+early. Only when the policy leaves cannot be read does it refuse a card that is
+not the bootstrap card. Then pass `--witness/--quorum/--max-age` from an
 independent source, use `--no-card`, or accept a signed card explicitly with
-`--accept-signed-card`, which is recorded as `card-signature-only`.
+`--accept-signed-card`, which is recorded as `card-signature-only` and never
+used as card history.
 
 - Without `--domain`, the card is looked for on the origin's host, without
   its `api.` label: origin `api.example.org/tiles` gives
@@ -165,9 +196,13 @@ independent, with `--independent NAME`, which is recorded with source
 - A witness policy weaker than the pinned one, meaning it accepts a
   checkpoint the pinned one rejects, is refused (exit 1) unless you pass
   `--allow-weaker`.
-- A card is checked against the cards saved for the same policy key, under
-  the same rules as `verify card`. A superseded card, an equivocating card,
-  or a card that weakens the saved card's witness policy exits 2.
+- A card is checked against the cards saved for the same policy key that
+  verified as current, under the same rules as `verify card`. A superseded
+  card, an equivocating card, or a card that weakens the saved card's witness
+  policy without a noticed policy leaf in force exits 2. It exits 1 instead
+  when the evidence is not there: the card in force as read from the log is
+  older than the saved card (a policy listing that lags), the saved card took
+  effect less than 30 s ago, or the notice cannot be checked.
   `--allow-weaker` lifts only the downgrade check.
 - A new origin while checkpoints are saved for the old one is refused unless
   you pass `--reset-history`.
@@ -256,6 +291,10 @@ Notes are stored as `~/.aics/checkpoints/<origin>/<size>-<sha256>.note`, the
 exact bytes, created once and never rewritten. `index.jsonl` gets one
 appended line per save, with its role (`head`, `evidence` or `observed`) and
 the log key it was verified with. `reset` lines list the files they drop.
+`verify checkpoint` saves every head it accepts there, and `verify
+consistency` proves each saved note against the head served now. When that
+head is the very note already saved, there is nothing to prove until the log
+grows, and the output says so and names the file and the index.
 
 ## Consistency, gossip and evidence (AICS-1 §14.2, §14.6)
 
@@ -327,32 +366,91 @@ The card is checked in this order:
    quorum-intersection assumption. G7 `proven` needs runtime evidence. A
    card outside these bounds exits 2 with the card as evidence. `policy init`
    only warns, because it adopts the witness policy, not the statuses.
-5. **Validity.** `issued_at ≤ now + 30` and `now < expires`.
+5. **Validity.** `issued_at ≤ now + 30` and `now < expires`. Less than 30 s
+   after `expires` by your clock an expired card exits 1, in `policy init` as
+   in `verify card`: an honest server's clock may lag by that much.
 6. **Keys.** `origin`, `log_vkey`, `policy_kid` and `owner_kid` must equal the
    pinned bundle.
-7. **Saved cards.** These checks run against the cards saved for the pinned
-   policy key, whichever URL or host served them:
+7. **Saved cards.** These checks run against the latest of the cards saved
+   for the pinned policy key that verified as current, whichever URL or host
+   served them. The latest is the one whose record names the highest policy
+   leaf it was in force by; a `bootstrap` record names none and counts as the
+   first card:
    - a card issued before the latest saved card is rejected as superseded;
    - a different card with the same `issued_at` is equivocation;
    - a witness policy that accepts something the saved one would not is
-     rejected as a downgrade.
+     rejected as a downgrade, unless the card is in force by a policy leaf
+     that gave the notice the previous card advertised. Your pinned policy
+     changes only when you re-pin.
 
-   Each of these exits 2. The rest is shown as a diff.
+   When the log's policy leaves log both cards, their order in the log
+   decides instead of `issued_at`: a card logged after the saved one is
+   neither superseded by it nor equivocation, and only a weaker witness
+   policy is still judged. When the leaves cannot be read, but the records
+   show both cards in force by policy leaves, those recorded leaves decide
+   the same way. Equivocation exits 2. A downgrade exits 2 when the
+   card is in force without the notice it needs, or when the origin serves it
+   at the pinned card URL and the policy leaves read log no card leaf for it;
+   it exits 1 (`incomplete`) when that notice cannot be checked, when the
+   policy leaves cannot be read (`policy init` then pins nothing, unless
+   `--allow-weaker`), or for a document the origin does not serve as current.
+   A superseded card is judged as in the table below. The rest is shown as a
+   diff.
+8. **Currency (§14.5 steps 3–4).** The server lists its policy leaves at
+   `GET <api>/v2/policies`. That list is only an index. `aics` fetches a
+   checkpoint, accepted under your pinned witness policy, and reads the
+   listing's last policy leaf from the pinned tiles through
+   `aics_tlog.VerifiedTileReader`, so the leaf is proven to be in the signed
+   tree. From that leaf it walks the chain back by `prev_policy_index` to the
+   charter at leaf 0, proving each leaf the same way. Every leaf must be a
+   `policy` entry signed by the policy key and name the pinned service keys,
+   and leaf 0 must carry the log key's countersignature. A leaf the listing
+   leaves out between two others is found by the walk. While at most 1024
+   entries follow the listing's last policy leaf, `aics` reads every one of
+   them the same way (§14.5 step 4 scans the policy events through the
+   checkpoint), so a policy leaf the listing leaves out after its last row is
+   found too; a longer tail, or one whose tiles cannot be read, is reported
+   as not scanned. A misstated row is reported, and the signed values are
+   used. The card's own leaf must agree
+   with it (`policy_parent_index`, size). The card in force is the card leaf
+   with the highest index whose `not_before` has passed and whose
+   `effective_after` the log is past (AICS-1 §6.4: a policy applies only at
+   later indices). The first card leaf must be the bootstrap card. The notice
+   of the card in force is checked against the `policy_notice_seconds` of the
+   card before it.
 
-For the bootstrap card the output says `bootstrap card; later policy events
-not checked`, and it exits 0. Signature, schema, bounds, validity, keys and
-history were checked. The evidence behind `proven` rows and the policy-leaf
-steps (§14.5 steps 3–4) were not. Both lists are printed in text mode too.
-Every `proven` row reads `claimed proven (evidence not verified)`. The table
-is labelled as the operator's claims. All card text is escaped before it is
-printed, so it can never add lines or terminal escapes to the verdict. Any
-later card needs the log's policy entries for its policy leaf, inclusion and
-activation. Such a card exits 1 (`incomplete`) with the table and diff
-printed.
+| Card | Exit | Stored |
+|---|---|---|
+| in force | 0 | yes (`in-force`) |
+| pending: logged, its `not_before` (or its `effective_after`) still ahead | 1 | no |
+| superseded, served at the pinned card URL 30 s or more after its successor took effect by your clock | 2, with both leaves and their inclusion proofs (or the saved card it is older than) | no |
+| superseded, any other way: a document the origin does not serve as current (`--file`, `/v2/policies/<index>`, `/v2/bodies/<hash>`), or less than 30 s after the switch, while an honest server's clock may lag | 1, `superseded` | no |
+| not logged: no card leaf on the chain read names it (or the chain reaches the tree's last leaf without any card leaf) | 1 | no |
+| policy leaves unavailable, or a chain without a card leaf that stops before the tree's last leaf (a listing that lags, with more entries after its last row than `aics` scans), bootstrap card | 0, `bootstrap card; later policy events not checked` | yes (`bootstrap`) |
+| policy leaves unavailable, any other card | 1, `incomplete` | no |
+
+A pending successor is never a reason to call the card in force superseded:
+the card in force verifies with the successor listed as pending. Every
+`proven` row reads `claimed proven (evidence not verified)`. The table is
+labelled as the operator's claims. All card text is escaped before it is
+printed, so it can never add lines or terminal escapes to the verdict. What
+was and was not checked is printed in text mode too. Not checked: the
+evidence behind `proven` rows, and, once more than 1024 entries follow the
+listing's last policy leaf (or they cannot be read), a policy leaf after it
+that the listing leaves out (the walk finds an omitted earlier leaf, but not
+a later one).
 
 Cards are stored as `~/.aics/cards/<policy key>/<card hash>.json`, never
-overwritten. `aics_cli.card.sign_card()` implements the signing side for the
-server and for tests.
+overwritten, and only when they verified as current. Each line of
+`cards/index.jsonl` records the status (`in-force`, `bootstrap` or
+`signature-only`), the source (the URL fetched, `file:<path>` for
+`--file`, or `store:<card hash>` when `policy init` took the card in force
+from the cards already stored) and the policy leaf. Only `in-force` and `bootstrap` records are
+card history. A `signature-only` record, from `policy init
+--accept-signed-card` or from aics-cli 0.1.0, which also stored cards it
+could not prove current, is kept but never compared with.
+`aics_cli.card.sign_card()` implements the signing side for the server and for
+tests.
 
 ## Keys and line signatures
 
@@ -371,8 +469,9 @@ Only their API as committed on git HEAD is used:
 - `aics_tlog`: `parse_note`, `parse_checkpoint`, `verify_checkpoint`,
   `verify_cosignature`, `verify_consistency`, `VerifiedTileReader`,
   `parse_vkey`, `format_vkey`, `VKey`, `EMPTY_HASH`; and from `aics_tlog.tiles`:
-  `consistency_proof_from_tiles`, `tree_root_from_tiles`, `tile_path`,
-  `entry_bundle_path`, `TileVerificationError`.
+  `consistency_proof_from_tiles`, `inclusion_proof_from_tiles`,
+  `tree_root_from_tiles`, `tile_path`, `entry_bundle_path`,
+  `TileVerificationError`.
 - `aics_identity`: `keys`, `canonical.canonicalize`, `linesig`,
   `sealed.x25519_did_key`.
 
@@ -400,4 +499,22 @@ resolver, a local UDP/TCP DNS server and a local HTTP server, and cover:
   (`tests/test_adversarial_review.py`, `tests/test_review_fixes.py`): a junk
   witness line that would wipe saved history, re-pinning downgrades, card
   over-claims and injected text, ignored key sources, hostile DNS answers
-  and deeply nested JSON.
+  and deeply nested JSON;
+- the defects of the 2026-10-20 walk-throughs (`tests/test_card_currency.py`,
+  `tests/test_quorum_one.py`): a pending successor card stored and then taken
+  as supersession, a new visitor refused after a successor's `not_before`, a
+  card URL replaced by the host's well-known card, a policy listing that omits
+  or misstates a leaf, and a quorum-1 card whose checkpoint is fetched before
+  its witness cosigns it;
+- the review of those fixes (`tests/test_card_evidence.py`): exit 2 only for
+  a card the origin serves as current, and not within 30 seconds of a switch
+  or an expiry; historical, altered or expired documents from `--file`,
+  `/v2/policies/<index>` and `/v2/bodies/<hash>`; the log's order over
+  `issued_at`; a downgrade whose notice cannot be checked; a listing without
+  card rows; a bootstrap hash that is not the first card leaf; a card leaf
+  waiting for its `effective_after`; a malformed listing;
+- the second review round: a downgrade judged while the policy leaves cannot
+  be read, and a retired witness (incomplete, not evidence); saved cards
+  whose `issued_at` does not follow the log's order while the leaves cannot
+  be read; a card that expired seconds ago in `policy init`; a card read back
+  from the store; a policy leaf the listing leaves out after its last row.

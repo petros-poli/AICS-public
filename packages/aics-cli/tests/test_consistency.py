@@ -46,7 +46,40 @@ def test_first_run_has_nothing_to_compare(h):
     h.serve(log)
     code, out = h.run("verify", "consistency")
     assert code == 0
-    assert out["checked"] == [] and out["saved_latest"]["new"]
+    assert out["checked"] == [] and out["saved_latest"]["new"] and out["unchanged"] == []
+    code, text = h.run_text("verify", "consistency")
+    assert code == 0 and "the one already saved" in text  # the first run saved it
+
+
+def test_consistency_right_after_verify_checkpoint_names_the_saved_head(h):
+    """The 2026-10-20 walk-through: verify consistency, run right after verify checkpoint, said "no earlier
+    checkpoint saved" although verify checkpoint had saved that very note; nothing had changed to prove yet."""
+    log = Log(5)
+    make_policy(h.home, log)
+    h.serve(log)
+    code, first = h.run("verify", "checkpoint")
+    assert code == 0 and first["saved"]["new"] and first["saved"]["role"] == "head"
+    code, out = h.run("verify", "consistency")
+    assert code == 0, out
+    assert out["checked"] == [] and [c["sha256"] for c in out["unchanged"]] == [first["note_sha256"]]
+    assert out["saved_latest"] == {"path": first["saved"]["path"], "new": False, "role": "head"}
+    assert out["state"]["index"] == str(h.home / "checkpoints" / "index.jsonl")
+    code, text = h.run_text("verify", "consistency")
+    assert code == 0 and "no earlier checkpoint" not in text
+    assert text.startswith(f"consistent: the checkpoint served now ({log.origin} size 5) is the one already saved")
+    assert f"saved      {first['saved']['path']} (already saved, head; index " in text
+    log.grow(9)
+    h.serve(log)
+    code, text = h.run_text("verify", "consistency")
+    assert code == 0 and text.startswith(f"consistent: 1 saved checkpoint(s) are prefixes of {log.origin} size 9")
+
+
+def test_a_first_consistency_run_says_nothing_was_saved_before(h):
+    log = Log(5)
+    make_policy(h.home, log)
+    h.serve(log)
+    code, text = h.run_text("verify", "consistency")
+    assert code == 0 and text.startswith(f"first checkpoint saved for {log.origin}: none was saved before")
 
 
 def test_rewritten_history_is_proven_with_both_notes(h):

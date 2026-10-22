@@ -112,7 +112,7 @@ def build_parser() -> _Parser:
     pi.add_argument("--from-dns", metavar="DOMAIN", default=None, help="read the trust bundle at TXT _aics.DOMAIN")
     pi.add_argument("--nameserver", default=os.environ.get("AICS_NAMESERVER"), help="ip[:port] of a DNS resolver")
     pi.add_argument("--bundle", default=None,
-                    help="the trust bundle from the public README: aics1=<base64url>, its JSON, or a file")
+                    help="the trust bundle from the README of the public repository (https://github.com/petros-poli/AICS-public): aics1=<base64url>, its JSON, or a file")
     pi.add_argument("--from-api", metavar="URL", default=None,
                     help="also compare with what the API host claims (never pinned from it alone)")
     pi.add_argument("--domain", default=None, help="domain to record when no --from-dns is given")
@@ -195,9 +195,14 @@ def build_parser() -> _Parser:
                           "(recorded; nothing is deleted)")
     vco.set_defaults(func=C.cmd_verify_consistency, cmd_name="verify consistency")
     vca = vsub.add_parser("card", parents=[common], help="verify the signed assurance card")
-    vca.add_argument("url", nargs="?", default=None, help="site or card URL (default: pinned card_url)")
-    vca.add_argument("--file", default=None, help="verify a local card file (compared with the cards saved for "
-                                                 "the pinned policy key)")
+    vca.add_argument("url", nargs="?", default=None,
+                     help="the card's URL, checked exactly as given (e.g. a /v2/bodies/<hash> document); a bare site "
+                          "means its /.well-known/aics-card.json (default: the pinned card_url)")
+    vca.add_argument("--file", default=None,
+                     help="verify a local card file instead; its currency still comes from the log's policy leaves "
+                          "(the listing, a checkpoint and tiles are fetched). Compared with the cards saved for the "
+                          "pinned policy key, and stored only if it verifies as current: the card in force, or the "
+                          "bootstrap card while the policy leaves cannot be read")
     vca.set_defaults(func=C.cmd_verify_card, cmd_name="verify card")
     vm = vsub.add_parser("message", parents=[common],
                          help="verify one log entry (AICS-1 §14.3): checkpoint, inclusion, envelope, and the name, key "

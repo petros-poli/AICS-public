@@ -21,8 +21,9 @@ closed code lists, the secret patterns it scans for, the charter hash) and the
 guarantee table of DESIGN.md section 3 with its status column: G2, whose
 verifying code exists, is proven; every row still being built, the
 witness-dependent G5 and the code-transparency G7 are promised; N1 to N5 are
-not offered.  The witness policy is the launch placeholder: quorum 0, no
-witness.  This server implements the contributions and owner-service
+not offered.  The witness policy is the one this server feeds
+(``AICS_WITNESSES``, :class:`WitnessConfig`); unset, quorum 0 and no witness.
+This server implements the contributions and owner-service
 profile, so the skeleton advertises ``spec`` ``AICS-1+SUP-1`` with the
 profile's ``sup`` member and its refusal codes (AICS-1 sections 13.1 and
 20.9); a reviewed card from ``AICS_CARD_FILE`` may be ``AICS-1`` or
@@ -51,7 +52,7 @@ from typing import Any, Mapping
 from aics_identity import canonicalize, keys
 from cryptography.exceptions import InvalidSignature
 
-from aics_tlog import parse_vkey
+from aics_tlog import format_vkey, parse_vkey
 
 from . import identity as ident
 from .auth import CLOCK_SKEW_SECONDS
@@ -71,7 +72,7 @@ from .db import (
     TOMBSTONE_REASONS,
     SanctuaryDB,
 )
-from .discovery import GATE_PLAIN_PORT, GATE_TLS_PORT, LOG_KEY_SOURCES, Site
+from .discovery import LOG_KEY_SOURCES, Site, hand_verification, no_trust_bundle
 from .gate import FUTURE_SKEW_SECONDS, MMD_SECONDS, SESSION_IDLE_SECONDS
 from .moderation import SECRET_PATTERN_DEFINITIONS
 from .swarm_api import extend_card, profile_members
@@ -95,6 +96,13 @@ __all__ = [
     "card_bytes",
     "pattern_hash",
     "proxy_disclosure",
+    "Witness",
+    "WitnessConfig",
+    "NO_WITNESSES",
+    "WITNESSES_ENV",
+    "parse_witness_policy",
+    "witnesses_from_env",
+    "g5_bound",
 ]
 
 #: The profile this server implements and its skeleton card advertises (AICS-1 section 20.9).
@@ -214,36 +222,47 @@ def pattern_hash(definition: Mapping[str, Any]) -> str:
 
 
 def proxy_disclosure(site: Site) -> list[dict[str, str]]:
-    """Each hostname with its decision-10 mode: pages and tile mirrors through Cloudflare, the rest DNS-only."""
+    """Each hostname with its decision-10 mode: pages and tile mirrors through Cloudflare, the rest DNS-only.
+
+    An instance whose pages share the API's host (staging) has one DNS-only host and no www alias, and a gate without
+    a certificate (``Site.gate_tls`` false) serves plaintext TCP only."""
     edge = "cloudflare-edge; Full (strict) to the origin certificate"
     origin = "origin Caddy, Let's Encrypt certificate"
-    entries = [
+    gate = (
+        f"origin aics-server on port {site.gate_tls_port}, Let's Encrypt certificate; port {site.gate_plain_port} is plaintext TCP"
+        if site.gate_tls
+        else f"no TLS listener; port {site.gate_plain_port} is plaintext TCP"
+    )
+    pages = [] if site.single_host else [
         (site.pages_host, "cloudflare", edge),
         (f"www.{site.pages_host}", "cloudflare", edge),
+    ]
+    entries = [
+        *pages,
         *((Site._host(m), "cloudflare", edge) for m in site.tile_mirrors),
         (site.api_host, "dns-only", origin),
-        (
-            site.gate_host,
-            "dns-only",
-            f"origin aics-server on port {GATE_TLS_PORT}, Let's Encrypt certificate; port {GATE_PLAIN_PORT} is plaintext TCP",
-        ),
+        (site.gate_host, "dns-only", gate),
         (site.ip_host, "dns-only", origin),
     ]
-    out: list[dict[str, str]] = []
-    seen: set[str] = set()
+    out: dict[str, dict[str, str]] = {}
     for host, mode, termination in entries:
-        if host not in seen:
-            seen.add(host)
-            out.append({"host": host, "mode": mode, "tls_termination": termination})
-    return out
+        if host not in out:
+            out[host] = {"host": host, "mode": mode, "tls_termination": termination}
+        elif termination == gate and host == site.gate_host:
+            # The TCP gate on a host that already carries HTTPS (staging's one host): both ways in, one entry.
+            out[host]["tls_termination"] += f"; TCP gate: {gate}"
+    return list(out.values())
 
 
 def _assurance(aid: str, status: str, claim: str, assumptions: list[str], evidence: list[dict[str, str]] | None = None) -> dict[str, Any]:
     return {"id": aid, "status": status, "claim": claim, "assumptions": assumptions, "evidence": evidence or []}
 
 
-def _skeleton_assurances(site: Site) -> list[dict[str, Any]]:
-    """The guarantee rows of DESIGN.md section 3 with its status column, and N1 to N5 (AICS-1 section 13.3)."""
+def _skeleton_assurances(site: Site, witnesses: WitnessConfig | None = None) -> list[dict[str, Any]]:
+    """The guarantee rows of DESIGN.md section 3 with its status column, and N1 to N5 (AICS-1 section 13.3).
+
+    G5 states the witness policy this server feeds (:func:`_g5_assurance`).
+    """
     split_view = "Holds within the log this agent checked; while G5 is promised, a split view is detectable, not prevented."
     sources = f"{LOG_KEY_SOURCES[0]}, {LOG_KEY_SOURCES[1]} or {LOG_KEY_SOURCES[2]}"
     proxied = [p["host"] for p in proxy_disclosure(site) if p["mode"] == "cloudflare"]
@@ -269,9 +288,15 @@ def _skeleton_assurances(site: Site) -> list[dict[str, Any]]:
             [
                 "Boundary: proven for included entries under roots checked against the log key, and for continuity to "
                 "checkpoints the client saved. Whether every agent sees the same log is G5, which is promised.",
-                f"Check it with the log key from the {sources}, never with a key taken from this server alone: verify "
-                f"the signed note at {site.api('/checkpoint')} and compute inclusion and consistency proofs from the "
+                (
+                    f"Check it with the log key from the {sources}, never with a key taken from this server alone: verify "
+                    if site.has_trust_bundle
+                    # STAGING-ONLY (any origin but production's): no out-of-band trust bundle exists for this log.
+                    else no_trust_bundle(site, "log_vkey and policy_kid of this card") + " Verify "
+                )
+                + f"the signed note at {site.api('/checkpoint')} and compute inclusion and consistency proofs from the "
                 "tiles under tile_prefixes (AICS-1 sections 14.1 and 14.2).",
+                "Verifying by hand: " + " ".join(hand_verification()).replace("`", ""),
                 "A holder of the log signing key can sign new checkpoints; checkpoints a client saved limit any rewrite "
                 "to entries that client has not seen yet.",
             ],
@@ -336,17 +361,7 @@ def _skeleton_assurances(site: Site) -> list[dict[str, Any]]:
                 "Relies on infrastructure availability: a service that is down answers nothing.",
             ],
         ),
-        _assurance(
-            "G5", "promised",
-            "Single view: every agent is shown one consistent history of this log. Promised, not proven.",
-            [
-                "Boundary: promised without independent witnesses and an honest quorum-intersection argument; evidence "
-                "of a split view can still be proven from two signed checkpoints that no consistency proof joins.",
-                "Witness policy of this card: quorum 0, no witness. A founder-run witness is in the operator's trust "
-                "domain; G5 becomes provable only with quorums that always include a witness outside it.",
-                "Relies on witness independence once witnesses are listed.",
-            ],
-        ),
+        _g5_assurance(site, witnesses or NO_WITNESSES),
         _assurance(
             "G6", "promised",
             "Private content: a direct-message or capsule body is encrypted on the sender's side to the recipient's "
@@ -416,8 +431,9 @@ def _skeleton_assurances(site: Site) -> list[dict[str, Any]]:
                 "limits, closed code lists, secret patterns, charter hash) with the statuses of the design's guarantee "
                 "table. A row marked promised describes intended behaviour this build may not fully implement yet; a "
                 "reviewed card, which names each known deviation, replaces this one.",
-                f"Pages on {site.pages_host} pass through Cloudflare, which could serve a stale but validly signed copy; "
-                f"{site.api('/.well-known/aics-card.json')} is not proxied.",
+                (f"Pages on {site.pages_host} pass through Cloudflare, which could serve a stale but validly signed copy; "
+                 f"{site.api('/.well-known/aics-card.json')} is not proxied." if not site.single_host else
+                 f"No proxy carries {site.api('/.well-known/aics-card.json')}: the pages share the API's DNS-only host."),
                 "A holder of the policy key can sign policy statements that look authorized; changes are prospective "
                 "and public.",
             ],
@@ -429,7 +445,7 @@ def _skeleton_assurances(site: Site) -> list[dict[str, Any]]:
             [
                 "No forward secrecy by default: a later compromise of a recipient's X25519 key exposes every stored body "
                 "sealed to it; rotating the key with an x25519.rotate leaf and discarding the old one limits that.",
-                f"Port {GATE_PLAIN_PORT} of {site.gate_host} is plaintext TCP: observers can read and alter it, so it is "
+                f"Port {site.gate_plain_port} of {site.gate_host} is plaintext TCP: observers can read and alter it, so it is "
                 "for key identities only and never takes a secret.",
                 "Metadata is public and permanent by design.",
             ],
@@ -443,8 +459,10 @@ def _skeleton_assurances(site: Site) -> list[dict[str, Any]]:
                 "Operational promise, not proven: no access log with client IP addresses or user agents is kept, and "
                 "rate limits are per signing key or global, never per address; the connectivity check echoes the "
                 "caller's address and stores nothing.",
-                f"Cloudflare terminates TLS for {', '.join(proxied)} and can read page and notice traffic there; "
-                f"{', '.join(direct)} are DNS-only. The hosting provider of the origin can see all traffic to it.",
+                (f"Cloudflare terminates TLS for {', '.join(proxied)} and can read page and notice traffic there; "
+                 if proxied else "No hostname of this instance passes through Cloudflare; ")
+                + f"{', '.join(direct)} {'are' if len(direct) > 1 else 'is'} DNS-only. The hosting provider of the "
+                "origin can see all traffic to it.",
                 "Notice data: the notifier's contact and the notice text stay off the log for 12 months after the notice "
                 "is closed, then they are deleted.",
                 "Contributions: a sup.credit leaf carries a keyed HMAC of the transaction, never its hash, and an "
@@ -493,6 +511,7 @@ def build_skeleton(
     now: int | None = None,
     terms_file: str | None = None,
     privacy_file: str | None = None,
+    witnesses: WitnessConfig | None = None,
 ) -> dict[str, Any]:
     """The unsigned skeleton card from this server's own state.
 
@@ -501,7 +520,10 @@ def build_skeleton(
     never expires while it is served: the same state always gives the same
     bytes.  ``terms_hash`` and ``privacy_hash`` hash the files in
     ``AICS_TERMS_FILE`` / ``AICS_PRIVACY_FILE`` and are null when unset.
+    ``witness_policy``, ``max_checkpoint_age`` and the G5 row state
+    *witnesses*, the policy this server feeds (default: ``AICS_WITNESSES``).
     """
+    witnesses = witnesses_from_env() if witnesses is None else witnesses
     policies = db.list_policies()["policies"]
     parent = policies[-1]["leaf_index"]
     proof = db.get_tlog_proof(parent)
@@ -522,16 +544,20 @@ def build_skeleton(
         "owner_kid": db.owner_did,
         "tile_prefixes": site.tile_prefixes,
         "api_base": site.api_url,
+        # The ports this instance's gate listens on as the texts advertise them (AICS_GATE_PUBLIC_*_PORT; 7700 and
+        # 7701 in the deployment profile of AICS-1 section 12.2). A staging card beside production named 7700/7701,
+        # production's gates on the same address (readiness audit 2026-10-20).
         "gate": {
             "tls_host": site.gate_host,
-            "tls_port": GATE_TLS_PORT,
-            "plaintext_port": GATE_PLAIN_PORT,
+            "tls_port": site.gate_tls_port,
+            "plaintext_port": site.gate_plain_port,
             "https_url": site.api("/t"),
         },
         "proxy": proxy_disclosure(site),
-        # The launch placeholder: no witness yet (charter commitment 6; G5 stays promised).
-        "witness_policy": {"quorum": 0, "witnesses": []},
-        "max_checkpoint_age": MAX_CHECKPOINT_AGE,
+        # AICS_WITNESSES: the witnesses this server feeds; unset, quorum 0 and no witness (charter commitment 6).
+        # G5 stays promised while every listed witness is founder-run (AICS-1 sections 6.3 and 13.3).
+        "witness_policy": witnesses.policy(),
+        "max_checkpoint_age": witnesses.max_checkpoint_age,
         "mmd_seconds": MMD_SECONDS,
         "policy_notice_seconds": POLICY_NOTICE_SECONDS,
         "limits": {
@@ -571,7 +597,7 @@ def build_skeleton(
             "terms_hash": _file_sha256(terms_file),
             "privacy_hash": _file_sha256(privacy_file),
         },
-        "assurances": _skeleton_assurances(site),
+        "assurances": _skeleton_assurances(site, witnesses),
         "spec_versions": dict(SPEC_VERSIONS),
         # AICS-1 section 20.9: the asset, the credited networks, the intent windows and the storage offer.
         "sup": db.sup_card_member(),
@@ -584,6 +610,249 @@ def _budget(limits: Mapping[str, Any]) -> int:
     if not isinstance(budget, int) or isinstance(budget, bool) or budget < 1:
         raise CardError("limits.ciphertext_budget_bytes must be a positive integer: no card is signed without it")
     return budget
+
+
+# ----------------------------------------------------------------------
+# the witness policy this server feeds (AICS_WITNESSES; AICS-1 sections 6.2, 6.3 and 13.1)
+# ----------------------------------------------------------------------
+
+#: The environment variable naming the witnesses this server's checkpoints are fed to.
+WITNESSES_ENV = "AICS_WITNESSES"
+#: The trust domain of a witness the operator runs itself (AICS-1 section 6.3: never independent).
+FOUNDER_TRUST_DOMAIN = "founder"
+#: The C2SP vkey type of an Ed25519 ``cosignature/v1`` witness key (AICS-1 section 6.2).
+COSIGNATURE_KEY_TYPE = 0x04
+#: The future skew a counted cosignature timestamp may have (AICS-1 section 6.3: ``timestamp <= now + 30``).
+COSIGNATURE_FUTURE_SECONDS = 30
+
+
+@dataclass(frozen=True)
+class Witness:
+    """One witness this server feeds: its card member ``{name, vkey, trust_domain, independent}`` and its URL."""
+
+    name: str
+    vkey: str
+    trust_domain: str
+    independent: bool
+    url: str | None = None  # where the feeder POSTs add-checkpoint; never on the card
+
+    def member(self) -> dict[str, Any]:
+        """The AICS-1 section 13.1 ``witness_policy.witnesses`` item."""
+        return {"name": self.name, "vkey": self.vkey, "trust_domain": self.trust_domain, "independent": self.independent}
+
+
+@dataclass(frozen=True)
+class WitnessConfig:
+    """The witness policy this server states: ``quorum``, the witnesses, and ``max_checkpoint_age``.
+
+    Built from ``AICS_WITNESSES`` (:func:`parse_witness_policy`).  Unset, it is the
+    launch policy: quorum 0, no witness, ``max_checkpoint_age`` 300.
+    """
+
+    quorum: int = 0
+    witnesses: tuple[Witness, ...] = ()
+    max_checkpoint_age: int = MAX_CHECKPOINT_AGE
+
+    def policy(self) -> dict[str, Any]:
+        """The card's ``witness_policy`` member."""
+        return {"quorum": self.quorum, "witnesses": [w.member() for w in self.witnesses]}
+
+    @property
+    def members(self) -> list[dict[str, Any]]:
+        return [w.member() for w in self.witnesses]
+
+
+NO_WITNESSES = WitnessConfig()
+#: The quorum a card states while every witness this server feeds is founder-run (AICS-1 section 6.3).
+FOUNDER_QUORUM = 1
+
+
+def _witness_entries(text: str) -> list[tuple[str, str]]:
+    """``(url, vkey)`` of each witness in ``AICS_WITNESSES``, in the syntax the checkpoint feeder reads.
+
+    ``name=url=vkey[,name=url=vkey...]``, or the path of a JSON file
+    ``{"witnesses": [{"name", "url", "vkey"}, ...]}`` (aics_server.witness_feed;
+    ``name`` there is a local label, not the card's).
+    """
+    if "=" in text:
+        out = []
+        for raw in text.split(","):
+            if raw.strip():
+                parts = raw.split("=", 2)
+                if len(parts) != 3:
+                    raise CardError(f"{WITNESSES_ENV}: each entry is name=url=vkey")
+                out.append((parts[1].strip(), parts[2].strip()))
+        return out
+    try:
+        doc = _parse_strict(Path(text).read_bytes())
+    except OSError as exc:
+        raise CardError(f"{WITNESSES_ENV}: cannot read {text} ({exc.strerror or exc})") from None
+    if isinstance(doc, dict) and set(doc) == {"witnesses"}:
+        doc = doc["witnesses"]
+    if not isinstance(doc, list) or not all(isinstance(w, dict) and set(w) == {"name", "url", "vkey"} for w in doc):
+        raise CardError(f'{WITNESSES_ENV}: {text} is {{"witnesses": [{{"name", "url", "vkey"}}, ...]}}')
+    return [(w["url"], w["vkey"]) for w in doc]
+
+
+def parse_witness_policy(text: str | None) -> WitnessConfig:
+    """The witness policy a card of this server states, from ``AICS_WITNESSES`` (the witnesses it feeds).
+
+    Each witness becomes ``{name, vkey, trust_domain: "founder", independent:
+    false}``: ``name`` is the cosigner name its vkey carries (the name on its
+    ``cosignature/v1`` lines), and every witness this setting can name is
+    founder-run, in the log's trust domain (AICS-1 section 6.3; the feeder's
+    syntax has no field for an independent operator).  The quorum is
+    :data:`FOUNDER_QUORUM` and ``max_checkpoint_age`` :data:`MAX_CHECKPOINT_AGE`,
+    which the feeder's refresh keeps cosignatures within.  Empty or unset:
+    quorum 0 and no witness.  Raises :class:`CardError`.
+    """
+    text = (text or "").strip()
+    if not text:
+        return NO_WITNESSES
+    witnesses: list[Witness] = []
+    for url, vkey_text in _witness_entries(text):
+        try:
+            vkey = parse_vkey(vkey_text.strip())
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise CardError(f"{WITNESSES_ENV}: {vkey_text!r} is not a C2SP verifier key ({exc})") from None
+        if vkey.key_type != COSIGNATURE_KEY_TYPE:
+            raise CardError(f"{WITNESSES_ENV}: {vkey.name}: not an Ed25519 cosignature/v1 key (type 0x04)")
+        if not (isinstance(url, str) and re.fullmatch(r"https?://[^\s/?#]+(/[^\s?#]*)?", url)):
+            raise CardError(f"{WITNESSES_ENV}: {vkey.name}: the URL is http(s)://host[:port][/prefix]")
+        witnesses.append(Witness(vkey.name, format_vkey(vkey), FOUNDER_TRUST_DOMAIN, False, url.strip()))
+    if len({w.name for w in witnesses}) != len(witnesses) \
+            or len({parse_vkey(w.vkey).public_key for w in witnesses}) != len(witnesses):
+        raise CardError(f"{WITNESSES_ENV}: witness names and keys are unique (AICS-1 section 6.3)")
+    if not witnesses:
+        return NO_WITNESSES
+    return WitnessConfig(FOUNDER_QUORUM, tuple(witnesses), MAX_CHECKPOINT_AGE)
+
+
+def witnesses_from_env(env: Mapping[str, str] | None = None) -> WitnessConfig:
+    """:func:`parse_witness_policy` of ``AICS_WITNESSES`` (raises :class:`CardError` when it is malformed)."""
+    env = os.environ if env is None else env
+    return parse_witness_policy(env.get(WITNESSES_ENV))
+
+
+def g5_bound(wp: Mapping[str, Any]) -> str | None:
+    """Why *wp* (a card's ``witness_policy``) cannot carry a proven G5, or ``None`` (AICS-1 sections 6.3, 13.3).
+
+    Two accepted quorums of ``q`` out of ``n`` witnesses share at least
+    ``2q - n``; unless that exceeds the witnesses that are not independent
+    (founder-run ones included), two conflicting quorums can meet in the log's
+    own trust domain alone.  A necessary condition only, as in
+    card/validate_card.py.
+    """
+    quorum, witnesses = wp.get("quorum"), [w for w in wp.get("witnesses") or [] if isinstance(w, dict)]
+    if not _uint(quorum) or quorum == 0:
+        return "G5 is promised at witness quorum 0 (AICS-1 section 13.3)"
+    dependent = sum(1 for w in witnesses if w.get("independent") is not True or w.get("trust_domain") == FOUNDER_TRUST_DOMAIN)
+    if dependent == len(witnesses):
+        return ("G5 is promised while no listed witness is independent: a founder-run witness proves freshness, "
+                "not independence (AICS-1 section 6.3)")
+    if 2 * quorum - len(witnesses) <= dependent:
+        return (f"G5 is promised: two quorums of {quorum} out of {len(witnesses)} witnesses can intersect only in "
+                "witnesses that are not independent (AICS-1 section 6.3)")
+    return None
+
+
+def _witness_problems(card: Mapping[str, Any], config: WitnessConfig) -> list[str]:
+    """Why the witnesses *card* names are not ones this server feeds (``AICS_WITNESSES``); empty when they are.
+
+    A card may list fewer witnesses than this server feeds (a quorum-0 card
+    while the first witness is being added), never one it does not feed: an
+    agent holding that card would wait for cosignatures that never come.
+    """
+    wp = card.get("witness_policy")
+    if not isinstance(wp, dict) or not isinstance(wp.get("witnesses"), list):
+        return []
+    def key(w: Any) -> tuple[Any, ...] | None:
+        try:
+            return (w["name"], parse_vkey(w["vkey"]).public_key, w["trust_domain"], w["independent"])
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return None
+
+    fed = {key(m) for m in config.members}
+    problems = [
+        f"witness {w.get('name') if isinstance(w, dict) else w!r} is not one this server feeds "
+        f"({WITNESSES_ENV}: {[m.name for m in config.witnesses] or 'none'}), with that vkey, trust_domain and "
+        "independence"
+        for w in wp["witnesses"] if key(w) is None or key(w) not in fed
+    ]
+    if wp["witnesses"] and card.get("max_checkpoint_age") != config.max_checkpoint_age:
+        problems.append(f"max_checkpoint_age must be the {config.max_checkpoint_age} seconds this server's witness "
+                        f"feeding keeps cosignatures fresh within ({WITNESSES_ENV})")
+    return problems
+
+
+def _g5_assurance(site: Site, config: WitnessConfig) -> dict[str, Any]:
+    """The skeleton's G5 row for the witness policy *config* (AICS-1 sections 6.3 and 13.3)."""
+    boundary = (
+        "Boundary: promised without independent witnesses and an honest quorum-intersection argument; evidence "
+        "of a split view can still be proven from two signed checkpoints that no consistency proof joins."
+    )
+    deviation = (
+        "Known SHOULD deviation: aics-witness signs only Ed25519 cosignature/v1 lines (vkey type 0x04); it emits "
+        "no ML-DSA-44 cosignatures (type 0x06) and does not implement the optional sign-subtree API."
+    )
+    intersection = (
+        "G5 can become proven only under a policy whose accepted quorums always intersect in an honest, stateful "
+        "witness outside the log's trust domain; independence is an operational claim, not a property of keys."
+    )
+    if not config.witnesses:
+        return _assurance(
+            "G5", "promised", "Single view: every agent is shown one consistent history of this log. Promised, not proven.",
+            [
+                boundary,
+                "Witness policy of this card: quorum 0, no witness. A checkpoint is accepted on the log signature "
+                "alone and has no authenticated timestamp: report its freshness as unproven. A founder-run witness "
+                "is in the operator's trust domain; G5 becomes provable only with quorums that always include a "
+                "witness outside it.",
+                intersection,
+                deviation,
+                "Relies on witness independence once witnesses are listed.",
+            ],
+        )
+    listed = "; ".join(
+        f"{w.name} (trust_domain {w.trust_domain}, independent {'true' if w.independent else 'false'})"
+        for w in config.witnesses
+    )
+    founder = [w for w in config.witnesses if w.trust_domain == FOUNDER_TRUST_DOMAIN or not w.independent]
+    monitors = [f"{w.url.rstrip('/')}/<hex SHA-256 of the origin>/checkpoint" for w in config.witnesses if w.url]
+    assumptions = [
+        boundary,
+        f"Witness policy of this card: quorum {config.quorum} of {len(config.witnesses)} listed witness(es): {listed}.",
+    ]
+    if founder:
+        assumptions.append(
+            "A founder-run witness proves freshness, not independence. A fresh cosignature shows that the "
+            "checkpoint was the witness's current head at its time t and consistent with every checkpoint that "
+            "witness cosigned before, so a cache, mirror or network path that replays an old checkpoint is "
+            "detected. It does not bind the operator, who also controls the witness key: a log and a witness under "
+            "one control can still show agents two views, and its cosignatures do not make G5 proven."
+        )
+    assumptions += [
+        "Check a checkpoint (AICS-1 sections 6.2, 6.3 and 14.1) with the witness keys of a card you already trust, "
+        "never with keys taken from the checkpoint: require the log signature, then verify each cosignature/v1 "
+        "line under a listed vkey (type 0x04) over 'cosignature/v1\\ntime <t>\\n' followed by the checkpoint "
+        f"text; count each listed witness once; accept the checkpoint as current only with at least "
+        f"{config.quorum} counted cosignature(s) whose time t satisfies now - {config.max_checkpoint_age} <= t <= "
+        f"now + {COSIGNATURE_FUTURE_SECONDS} (max_checkpoint_age); otherwise it is stale. A log signature never "
+        f"counts as a cosignature. The cosigned checkpoint is served at {site.api('/checkpoint')}"
+        + (f"; each witness serves the latest checkpoint it cosigned at {', '.join(monitors)}." if monitors else "."),
+        intersection,
+        deviation,
+        "A change of witnesses or quorum takes a new card logged with policy_notice_seconds of notice; never take "
+        "a weaker policy from the checkpoint being checked.",
+        "Relies on witness independence: "
+        + ("every listed witness is founder-run, none is independent." if len(founder) == len(config.witnesses)
+           else "only the witnesses marked independent count toward it, and their independence needs external "
+                "assessment."),
+    ]
+    return _assurance(
+        "G5", "promised",
+        "Single view: every agent is shown one consistent history of this log. Promised, not proven.", assumptions,
+    )
 
 
 # ----------------------------------------------------------------------
@@ -630,14 +899,28 @@ def _expected_refusals(spec: str, pattern_ids: list[str]) -> set[str]:
     return codes | {f"secret_format:{pid}" for pid in pattern_ids}
 
 
-def card_problems(card: Any, db: SanctuaryDB, *, parent_index: int | None, now: int | None = None) -> list[str]:
+def card_problems(
+    card: Any,
+    db: SanctuaryDB,
+    *,
+    parent_index: int | None,
+    now: int | None = None,
+    witnesses: WitnessConfig | None = None,
+    site: Site | None = None,
+) -> list[str]:
     """Why *card* is not an AICS-1 section 13.1 card this server may log and follow; empty when it is.
+
+    The gate's ports are the ones this instance advertises (*site*, default :meth:`Site.from_env`: 7700 and 7701
+    unless ``AICS_GATE_PUBLIC_TLS_PORT`` / ``AICS_GATE_PUBLIC_PLAIN_PORT`` say otherwise, as on staging).
 
     The exact members of its profile (base, SUP-1, SWARMS-1 or both: sections
     13.1, 19 and 20.9) with every type and fixed value, the closed registries
     of section 17.2 for that profile, the section 13.3 bounds a card can
-    break by itself (N1-N5 not offered; G5 and G7 promised while this
-    server has no witness quorum and no release leaf), exactly one section
+    break by itself (N1-N5 not offered; G5 promised unless its quorums must
+    intersect in an independent witness, G7 promised while this server has no
+    release leaf), only witnesses this server feeds (*witnesses*, default
+    ``AICS_WITNESSES``: each a type 0x04 key under its own name, a founder-run
+    one never independent), exactly one section
     13.2 signature by this server's policy key, and this server's own state:
     its origin and keys, ``policy_parent_index`` the policy leaf before this
     one, the charter leaf 0 names, and the limits, retention rule, secret
@@ -681,10 +964,13 @@ def card_problems(card: Any, db: SanctuaryDB, *, parent_index: int | None, now: 
          and len(set(prefixes)) == len(prefixes), "tile_prefixes is a nonempty list of distinct https URLs")
     need(_https(card["api_base"]), "api_base is an https URL")
     gate = card["gate"]
+    site = Site.from_env() if site is None else site
+    tls_port, plain_port = site.gate_tls_port, site.gate_plain_port
     need(isinstance(gate, dict) and set(gate) == {"tls_host", "tls_port", "plaintext_port", "https_url"}
-         and _text(gate.get("tls_host")) and gate.get("tls_port") == GATE_TLS_PORT
-         and gate.get("plaintext_port") == GATE_PLAIN_PORT and _https(gate.get("https_url")),
-         f"gate is exactly {{tls_host, tls_port: {GATE_TLS_PORT}, plaintext_port: {GATE_PLAIN_PORT}, https_url}}")
+         and _text(gate.get("tls_host")) and gate.get("tls_port") == tls_port
+         and gate.get("plaintext_port") == plain_port and _https(gate.get("https_url")),
+         f"gate is exactly {{tls_host, tls_port: {tls_port}, plaintext_port: {plain_port}, https_url}}, the ports "
+         "this instance's gate is reached on (AICS-1 section 13.1)")
     proxy = card["proxy"]
     need(isinstance(proxy, list) and all(
         isinstance(x, dict) and set(x) == {"host", "mode", "tls_termination"} and _text(x["host"])
@@ -696,15 +982,24 @@ def card_problems(card: Any, db: SanctuaryDB, *, parent_index: int | None, now: 
         problems.append("witness_policy is exactly {quorum: uint, witnesses: [...]}")
         wp = {"quorum": 0, "witnesses": []}
     names, vkeys = [], []
+    service_keys = {parse_vkey(db.server_vkey).public_key, *(
+        keys.public_key_bytes(keys.parse_did_key(kid)) for kid in (db.policy_did, db.owner_did) if kid)}
     for w in wp["witnesses"]:
         if not (isinstance(w, dict) and set(w) == {"name", "vkey", "trust_domain", "independent"}
                 and _text(w["name"]) and _text(w["trust_domain"]) and isinstance(w["independent"], bool)):
             problems.append("a witness is exactly {name, vkey, trust_domain, independent: boolean}")
             continue
         try:
-            vkeys.append(parse_vkey(w["vkey"]).public_key)
+            vkey = parse_vkey(w["vkey"])
         except (ValueError, TypeError, AttributeError):
             problems.append(f"witness {w['name']!r}: vkey is not a C2SP verifier key")
+        else:
+            vkeys.append(vkey.public_key)
+            need(vkey.key_type == COSIGNATURE_KEY_TYPE and vkey.name == w["name"],
+                 f"witness {w['name']!r}: vkey is an Ed25519 cosignature/v1 key (type 0x04) under the witness's name")
+            need(vkey.public_key not in service_keys, f"witness {w['name']!r}: a service key is not a witness")
+        need(not (w["trust_domain"] == FOUNDER_TRUST_DOMAIN and w["independent"]),
+             f"witness {w['name']!r}: a founder-run witness is in the log's trust domain, never independent")
         names.append(w["name"])
     need(len(set(names)) == len(names) and len(set(vkeys)) == len(vkeys), "witness names and keys are unique")
     need(wp["quorum"] <= len(wp["witnesses"]), "witness_policy.quorum exceeds the witnesses listed")
@@ -794,8 +1089,9 @@ def card_problems(card: Any, db: SanctuaryDB, *, parent_index: int | None, now: 
         ids.append(a["id"])
         if a["id"].startswith("N"):
             need(a["status"] == "not-offered", f"{a['id']} is not-offered (AICS-1 section 13.3)")
-        if a["id"] == "G5" and wp["quorum"] == 0:
-            need(a["status"] == "promised", "G5 is promised at witness quorum 0 (AICS-1 section 13.3)")
+        if a["id"] == "G5" and a["status"] != "promised":
+            bound = g5_bound(wp)
+            need(bound is None, bound or "")
         if a["id"] == "G7":
             need(a["status"] == "promised", "G7 is promised: this server logs no release and has no runtime evidence")
     need(sorted(ids) == sorted(_ASSURANCE_IDS) and len(ids) == len(_ASSURANCE_IDS),
@@ -803,6 +1099,10 @@ def card_problems(card: Any, db: SanctuaryDB, *, parent_index: int | None, now: 
     if "SUP-1" in spec:
         need(card["sup"] == db.sup_card_member(),
              "sup must be this server's member: its asset, the networks it credits, its windows and storage offer")
+    try:
+        problems += _witness_problems(card, witnesses_from_env() if witnesses is None else witnesses)
+    except (CardError, OSError) as exc:
+        problems.append(f"{WITNESSES_ENV} cannot be read: {exc}")
     signatures = card["signatures"]
     need(isinstance(signatures, list) and len(signatures) == 1 and verify_card(card, db.policy_pub),
          "the card carries exactly one AICS-1 section 13.2 signature, by this server's policy key")
@@ -863,7 +1163,9 @@ def _parse_strict(data: bytes) -> Any:
         raise CardError(f"not JSON: {exc}") from exc
 
 
-def load_card_body(path: str | os.PathLike[str], db: SanctuaryDB) -> dict[str, Any]:
+def load_card_body(
+    path: str | os.PathLike[str], db: SanctuaryDB, *, witnesses: WitnessConfig | None = None
+) -> dict[str, Any]:
     """A reviewed, unsigned card body (card/README.md "How the server consumes this file", step 1).
 
     Refused (:class:`CardError`, so the server does not start) unless it is
@@ -871,7 +1173,9 @@ def load_card_body(path: str | os.PathLike[str], db: SanctuaryDB) -> dict[str, A
     (``AICS-1``, or ``AICS-1+SUP-1`` with its ``sup`` member: AICS-1 sections
     13.1 and 20.9), holds no ``<FILL:`` placeholder, and names this server's
     origin, log key, policy key and owner key: this server never signs a card
-    about other keys.
+    about other keys.  Its witnesses are ones this server feeds (*witnesses*,
+    default ``AICS_WITNESSES``), at their ``max_checkpoint_age``, and its G5
+    row is not proven at a policy that cannot prove it (:func:`g5_bound`).
     """
     body = _parse_strict(Path(path).read_bytes())
     if not isinstance(body, dict):
@@ -900,6 +1204,12 @@ def load_card_body(path: str | os.PathLike[str], db: SanctuaryDB) -> dict[str, A
     for window in _WINDOWS:
         if not isinstance(limits, dict) or limits.get(window) != db.limits[window]:
             raise CardError(f"the card's limits.{window} is not the window this server enforces ({db.limits[window]})")
+    problems = _witness_problems(body, witnesses_from_env() if witnesses is None else witnesses)
+    g5 = next((a for a in body.get("assurances") or [] if isinstance(a, dict) and a.get("id") == "G5"), None)
+    if g5 is not None and g5.get("status") != "promised" and isinstance(body.get("witness_policy"), dict):
+        problems += [b for b in [g5_bound(body["witness_policy"])] if b]
+    if problems:
+        raise CardError("the card's witness policy is not this server's: " + "; ".join(problems))
     return body
 
 
@@ -919,12 +1229,15 @@ class CardPublisher:
         body_file: str | None = None,
         terms_file: str | None = None,
         privacy_file: str | None = None,
+        witnesses: WitnessConfig | None = None,
     ) -> None:
         self.db = db
         self.site = site
         self.terms_file = terms_file
         self.privacy_file = privacy_file
-        self._file_body = load_card_body(body_file, db) if body_file else None
+        #: The witness policy this server feeds and states (``AICS_WITNESSES``).
+        self.witnesses = NO_WITNESSES if witnesses is None else witnesses
+        self._file_body = load_card_body(body_file, db, witnesses=self.witnesses) if body_file else None
         self._lock = threading.Lock()
         self._cache: tuple[Any, ServedCard] | None = None
 
@@ -937,6 +1250,7 @@ class CardPublisher:
             body_file=(env.get("AICS_CARD_FILE") or "").strip() or None,
             terms_file=(env.get("AICS_TERMS_FILE") or "").strip() or None,
             privacy_file=(env.get("AICS_PRIVACY_FILE") or "").strip() or None,
+            witnesses=witnesses_from_env(env),
         )
 
     def _logged(self, now: int) -> ServedCard | None:
@@ -984,7 +1298,8 @@ class CardPublisher:
                     body, source = dict(self._file_body), "file"
                 else:
                     body = build_skeleton(
-                        self.db, self.site, now=now, terms_file=self.terms_file, privacy_file=self.privacy_file
+                        self.db, self.site, now=now, terms_file=self.terms_file, privacy_file=self.privacy_file,
+                        witnesses=self.witnesses,
                     )
                     source = "skeleton"
                 card = sign_card(body, self.db.policy_key, self.db.policy_did)
@@ -997,3 +1312,108 @@ class CardPublisher:
                 served = ServedCard(document, card, source, leaf)
             self._cache = (key, served)
             return served
+
+    # -- a successor card (POST /v2/admin/card/preview) ---------------------------------------------
+
+    def _latest_card(self) -> tuple[dict[str, Any], dict[str, Any]] | None:
+        """The latest policy leaf of kind card and its card, whether or not its notice period has passed."""
+        for policy in reversed(self.db.list_policies()["policies"]):
+            if policy is None or policy["kind"] != "card":
+                continue
+            found = self.db.policy_document(policy["leaf_index"])
+            try:
+                card = _parse_strict(found["document"]) if found else None
+            except CardError:
+                card = None
+            if isinstance(card, dict):
+                return policy, card
+        return None
+
+    def preview(self, body_text: str, now: int | None = None) -> dict[str, Any]:
+        """Sign a reviewed successor body and say whether this server would log it; logs nothing.
+
+        Once a card is logged the server serves that card, so no route gave the
+        owner the signed bytes of a successor (card/README.md "Successor
+        card").  This one takes an unsigned body (every member of its profile
+        but ``signatures``, strict JSON, no ``<FILL:`` placeholder), signs it
+        with the policy key and checks the signed card exactly as ``POST
+        /v2/admin/policy`` of kind card would (:func:`card_problems`, its
+        parent being the latest policy leaf), plus what a successor needs: a
+        card is logged already, ``issued_at`` is not before that card's, and the
+        new card is still valid two notice periods from now (it takes effect
+        after one and must leave room to announce its own successor).
+
+        Answers ``{problems, document, document_hash, payload_sha256,
+        policy_parent_index, current, pending, notice_seconds, not_before_min,
+        changed_members}``.  ``document`` (``J(card)``, the bytes to log as the
+        policy document of kind card) is null unless ``problems`` is empty:
+        the policy key signs no card this server would refuse.  ``current`` is
+        the card in effect, ``pending`` a logged card still waiting for its
+        notice period, and ``changed_members`` the members whose value differs
+        from the latest logged card's.
+        """
+        now = int(time.time()) if now is None else now
+        policies = self.db.list_policies()["policies"]
+        parent = policies[-1]["leaf_index"]
+        effective = self._logged(now)
+        latest = self._latest_card()
+        notice = POLICY_NOTICE_SECONDS
+        if effective is not None and _uint(effective.card.get("policy_notice_seconds")):
+            notice = max(notice, effective.card["policy_notice_seconds"])
+        out: dict[str, Any] = {
+            "problems": [],
+            "document": None,
+            "document_hash": None,
+            "payload_sha256": None,
+            "policy_parent_index": parent,
+            "current": None if effective is None else {"leaf_index": effective.leaf_index, "document_hash": effective.sha256},
+            "pending": None,
+            "notice_seconds": notice,
+            "not_before_min": now + notice,
+            "changed_members": [],
+        }
+        if latest is not None and (effective is None or latest[0]["leaf_index"] != effective.leaf_index):
+            out["pending"] = {"leaf_index": latest[0]["leaf_index"], "document_hash": latest[0]["document_hash"],
+                              "not_before": latest[0]["not_before"]}
+        problems: list[str] = out["problems"]
+        try:
+            body = _parse_strict(body_text.encode("utf-8"))
+        except CardError as exc:
+            problems.append(str(exc))
+            return out
+        if not isinstance(body, dict):
+            problems.append("a card body is a JSON object")
+            return out
+        if "signatures" in body:
+            problems.append("send the unsigned body: the server adds signatures")
+            return out
+        if _PLACEHOLDER in json.dumps(body):
+            problems.append("the body still holds <FILL:...> placeholders (card/validate_card.py --final)")
+        if latest is None:
+            problems.append("no card is logged yet: the bootstrap card is logged from the served bytes "
+                            "(aics_client.py owner log-card --document-file), a successor after it")
+        else:
+            previous = {k: v for k, v in latest[1].items() if k != "signatures"}
+            out["changed_members"] = sorted(m for m in set(body) | set(previous) if body.get(m) != previous.get(m))
+            if _uint(body.get("issued_at")) and _uint(previous.get("issued_at")) \
+                    and body["issued_at"] < previous["issued_at"]:
+                problems.append(f"issued_at must not lie before the logged card's ({previous['issued_at']})")
+        if _uint(body.get("expires")) and body["expires"] < now + 2 * notice:
+            problems.append(f"expires must lie at least two notice periods ({2 * notice} seconds) from now: the card "
+                            "takes effect after one, and its own successor needs another")
+        try:
+            card = sign_card(body, self.db.policy_key, self.db.policy_did)
+        except CardError as exc:
+            problems.append(str(exc))
+            return out
+        try:
+            problems += card_problems(card, self.db, parent_index=parent, now=now, witnesses=self.witnesses,
+                                      site=self.site)
+        except (TypeError, ValueError, KeyError, AttributeError) as exc:  # a body too malformed to check member by member
+            problems.append(f"the card cannot be checked: {type(exc).__name__}: {exc}")
+        if not problems:
+            document = card_bytes(card)
+            out["document"] = document.decode("utf-8")
+            out["document_hash"] = hashlib.sha256(document).hexdigest()
+            out["payload_sha256"] = hashlib.sha256(canonicalize(body)).hexdigest()
+        return out

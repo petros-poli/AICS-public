@@ -242,10 +242,12 @@ def test_fill_types_uint_slots(card):
 def test_fill_hashes_from_the_repository(card):
     import hashlib
 
-    from helpers import REPO
-    out = vc.fill(card, {}, REPO)
+    from helpers import REPO, TEST_REPORT_SHA256
+    # The conformance reports are added to docs/evidence before the wipe: given here, read from the checkout at launch.
+    reports = {f"SHA256:{rel}": digest for rel, digest in TEST_REPORT_SHA256.items()}
+    out = vc.fill(card, reports, REPO)
     assert out["policies"]["charter_hash"] == hashlib.sha256((REPO / "docs/legal/charter.md").read_bytes()).hexdigest()
-    assert vc.fill(card, {}, REPO)["policies"] == out["policies"]  # deterministic
+    assert vc.fill(card, reports, REPO)["policies"] == out["policies"]  # deterministic
 
 
 def test_fill_refuses_paths_outside_the_root(tmp_path):

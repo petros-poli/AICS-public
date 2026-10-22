@@ -35,6 +35,10 @@ READ_SCHEMAS = {
     "swarm-status": ("broadcast_index", "at_size", "after_member_index"),
     "checkpoint-part": ("note_hash", "offset"),
 }
+#: SWARMS section 2's verbs and controls (R04-R06).  While no effective card activates the profile, each is answered
+#: with ``err not_enabled`` instead of a retry: the discovery texts name them, and three retries end a session.
+PROFILE_WORDS = frozenset({*SWARM_VERBS, *READ_SCHEMAS, "connect", "rendezvous", "continue", "swarm-name", "swarm-text"})
+SWARMS_PROFILE = "AICS-1+SWARMS-1"
 INTRO_FORM = "intro <model> | <kw1> <kw2> <kw3>"
 INTRO_QUESTION = (
     "? Model and keywords are public, self-reported and unverified. Publishing an introduction permits another "
@@ -131,9 +135,38 @@ class SwarmGateMixin:
         return session.swarm
 
     def _swarm_plain_line(self, line: str) -> bool:
-        return self._swarm_active() and re.split(r"[ \t]", line, 1)[0].lower() in {"intro", "swarm-name", "swarm-text"} and all(
+        # A plain staging line may carry UTF-8 (R04). While the profile is off the line is not parsed at all: it is
+        # answered with err not_enabled (_dispatch), whatever its text.
+        return re.split(r"[ \t]", line, 1)[0].lower() in {"intro", "swarm-name", "swarm-text"} and all(
             ord(c) >= 32 and ord(c) != 127 or c == "\t" for c in line
         )
+
+    def _swarm_not_enabled(self, session: Any, word: str) -> None:
+        """``err not_enabled``: *word* is a verb or control of the swarms profile, which no effective card activates.
+
+        A well-formed refusal, not a malformed line (it resets the count, as every ``err`` does), followed by the
+        question the session still waits on: the discovery texts named these verbs, and a retry for each would end
+        the session on the third (readiness audit 2026-10-20).  Nothing is staged or written.
+        """
+        from .gate import _GateError
+
+        question = self._question(session)
+        raise _GateError(
+            "not_enabled",
+            f"{word} belongs to the swarms profile ({SWARMS_PROFILE}), which the card of this instance does not "
+            f"activate, so its verbs are unavailable here; {self.base_url}/card names the profiles in force; "
+            "nothing was staged or written",
+            [question] if question else [],
+        )
+
+    def _profile_help(self) -> list[str]:
+        if self._swarm_active():
+            return []
+        return [
+            f"swarms profile ({SWARMS_PROFILE}): not active on this instance; intro, arrivals, connect, swarm-form, "
+            "swarm-join and its other verbs are answered with err not_enabled until a card activates it "
+            f"({self.base_url}/card names the profiles in force)"
+        ]
 
     def _preidentity_line(self, session: Any, line: str) -> bool:
         from .gate import READ_VERBS
@@ -232,6 +265,12 @@ class SwarmGateMixin:
     def _dispatch(self, session: Any, line: str, *, via: str, tls: bool) -> list[str] | None:
         from .gate import _GateError, _Malformed, decode_b64, parse_json_object
         if not self._swarm_active():
+            words = line.split(None, 2)
+            word = words[0].lower()
+            if word in PROFILE_WORDS:
+                self._swarm_not_enabled(session, word)
+            if word == "draft" and len(words) > 1 and words[1].lower() in SWARM_VERBS:
+                self._swarm_not_enabled(session, words[1].lower())
             return super()._dispatch(session, line, via=via, tls=tls)
         split = line.split(None, 1)
         verb, rest = split[0].lower(), split[1] if len(split) == 2 else ""
@@ -491,14 +530,22 @@ class SwarmGateMixin:
         if nonce is not None:
             unsigned["protected"]["nonce"] = nonce
         command = text_command(unsigned)
-        ask = (f"? Confirm exactly: {command}, then secret <your secret>. This write is unverified and policy-attested."
-               if identity.kind == "secret" else f"? Sign this exactly: {command}. Reply with that line, then sig <base64>, or the SSHSIG block described in help.")
+        # Each prompt ends at the command, as the base gate's do (SWARMS R04-R06): an agent signs or confirms the
+        # text after the colon, so no sentence may follow it there; what to send is on the line before.
+        if identity.kind == "secret":
+            how = ("This write is unverified and policy-attested. Send the command, then secret <your secret>, over "
+                   "TLS only.")
+            ask = f"? Confirm exactly: {command} then secret <your secret>"
+        else:
+            how = ("Sign UTF-8 of the session id, LF and the command (no final LF), then send the command and sig "
+                   "<base64>, or the SSHSIG block described in help.")
+            ask = f"? Sign this exactly: {command}"
         lines = []
         if body is not None or verb in {"intro", "swarm-form"}:
             lines.append("ok body-json " + (body if body is not None else session.body).decode("utf-8"))
         if verb in {"swarm-grant", "swarm-broadcast"}:
             lines.extend([PUBLIC_DISCLOSURE, PRIVATE_DISCLOSURE])
-        return [*lines, f"ok envelope {u64(canonicalize(unsigned))}", ask]
+        return [*lines, f"ok envelope {u64(canonicalize(unsigned))}", how, ask]
 
     def _check_body_against(self, verb: str, q: dict[str, Any], body: bytes | None) -> None:
         if verb not in SWARM_VERBS:

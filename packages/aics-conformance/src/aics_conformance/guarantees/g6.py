@@ -5,12 +5,14 @@ from ..schema import require
 from .. import verify,adapter
 @check('G6','Recipient key provenance and ciphertext/header binding','AICS-1 §§8.1,14.3','swapped_key')
 def privacy(ctx):
-    sender,recipient,entry,note,i,ct,content=ctx.dm_fixture(); lookup=ctx.client.get('name',name=recipient.name); ids,rawhead=adapter.lookup(lookup)
+    sender,recipient,entry,note,i,ct,content=ctx.dm_fixture()
+    lookup=ctx.witnessed(lambda: ctx.client.get('name',name=recipient.name),lambda o: DU(adapter.lookup(o)[1])); ids,rawhead=adapter.lookup(lookup)
     h=verify.head(DU(rawhead),ctx.policy,ctx.now()); hist,h=ctx.scan(h); state=hist.names[recipient.name]
     expected=[j for j,e in enumerate(hist.entries) if e['type'] in ('name.claim','key.rotate','key.revoke','x25519.rotate') and e['payload']['name_norm']==recipient.name]
     require(ids==expected,'lookup omits key events')
     require(lookup.get('x25519',state['x'])==state['x'] and lookup.get('key_leaf_index',state['key_index'])==state['key_index'],'lookup swapped logged recipient key')
-    b=ctx.client.get('entry',index=state['key_index']); kh=verify.head(DU(b['checkpoint_note']),ctx.policy,ctx.now(),historical=True); prefix,_=ctx.scan(kh,validate=False); verify.bundle(b,ctx.policy,ctx.now(),prefix=prefix)
+    b=ctx.witnessed(lambda: ctx.client.get('entry',index=state['key_index']),lambda b: DU(b['checkpoint_note']),historical=True)
+    kh=verify.head(DU(b['checkpoint_note']),ctx.policy,ctx.now(),historical=True); prefix,_=ctx.scan(kh,validate=False); verify.bundle(b,ctx.policy,ctx.now(),prefix=prefix)
     require(open_message(entry['payload']['envelope'],ct,recipient.encryption_key)==content,'local decryption changed content')
     attacker=Agent(); original=entry['payload']['envelope']
     for change in ('from_kid','to_kid','envelope_nonce'):

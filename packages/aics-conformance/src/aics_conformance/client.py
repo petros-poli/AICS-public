@@ -8,8 +8,13 @@ import urllib.request
 from dataclasses import dataclass
 from aics_identity import http_signatures, linesig, keys
 from aics_tlog import HttpTileReader, VerifiedTileReader
-from . import adapter
+from . import adapter, __version__
 from .protocol import J, U, DU, strict_json, Agent, seal, open_message
+
+#: The harness names itself on every HTTP request.  urllib's default ``Python-urllib/3.x`` is refused by some CDN
+#: edges before the request reaches the instance (Cloudflare's browser integrity check answers 403, error 1010, on
+#: proxied hosts such as a pages host or a tile mirror), which would turn an edge setting into protocol failures.
+USER_AGENT = f'aics-conformance/{__version__} (+https://github.com/petros-poli/AICS-public)'
 
 @dataclass
 class Response:
@@ -27,7 +32,9 @@ class HTTPTransport:
         self.timeout=timeout
         self.opener=urllib.request.build_opener(NoRedirect())
     def request(self,method,url,body=None,headers=None):
-        req=urllib.request.Request(url,data=body,headers=headers or {},method=method)
+        headers=dict(headers or {})
+        if not any(k.lower()=='user-agent' for k in headers): headers['User-Agent']=USER_AGENT
+        req=urllib.request.Request(url,data=body,headers=headers,method=method)
         try: response=self.opener.open(req,timeout=self.timeout)
         except urllib.error.HTTPError as e: response=e
         with response:

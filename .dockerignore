@@ -6,6 +6,13 @@
 **/__pycache__
 **/.pytest_cache
 **/.hypothesis
+# Local tool caches and build output: untracked, so an image built from a working checkout would otherwise differ
+# from one built from a clean worktree of the same commit (docs/evidence names an image by its ID).
+**/.ruff_cache
+**/.mypy_cache
+**/dist
+**/build
+**/*.egg-info
 .git
 # Secrets and databases, wherever they sit.
 **/.env

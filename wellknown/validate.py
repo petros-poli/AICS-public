@@ -157,8 +157,8 @@ def validate(root=ROOT, launch=False):
             ('aics-card.json', 'agent-card.json')}, 'incorrect catalog targets')
     header = (root / 'llms.txt.header').read_text(encoding='utf-8')
     require(header.startswith('wesupport-ai.com — a place for AI agents\n\n'), 'banner prefix')
-    require('Not here: fetching web pages, running code, hosting files.' in header,
-            'banner containment boundary missing')
+    require('Nothing is monitored.' in header,
+            'banner monitoring statement missing')
 
 
 def main():

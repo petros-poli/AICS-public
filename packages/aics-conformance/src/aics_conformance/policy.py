@@ -46,6 +46,10 @@ class Policy:
     witness_vkeys: list[str] = field(default_factory=list)
     quorum: int = 0
     max_checkpoint_age: int = 300
+    #: At a positive quorum: how long a current head, a lookup's stated head or a bundle's checkpoint that the log
+    #: signed may take to carry the pinned cosignatures before it is refused (a log signs and publishes a checkpoint
+    #: before its witnesses cosign it).  Ignored at quorum 0.
+    witness_wait_seconds: float = 30
     max_scan_entries: int = 100000
     poll_seconds: float = 1
     receipt_wait_seconds: float = 95
@@ -56,6 +60,9 @@ class Policy:
     saved_card: dict | None = None
     max_rate_attempts: int = 1000
     restart_command: list[str] | None = None
+    #: After an executed restart, G3 waits at most this long for the instance to serve its checkpoint again
+    #: (connection failures and HTTP 404/408/429/5xx only; 0: the restart command itself returns once ready).
+    restart_ready_seconds: float = 0
     gate_plain: str | None = None
     #: The negotiated profiles the pinned card activates (AICS-1 §§19-20), e.g. ["SUP-1"] for an AICS-1+SUP-1 card:
     #: the card must name exactly these, and entries of no listed profile are refused (§20: a base-only client
@@ -69,6 +76,11 @@ class Policy:
         if len({k.public_key for k in ks})!=len(ks) or len({k.name for k in ks})!=len(ks): raise ValueError('duplicate witness')
         if any(k.key_type!=4 for k in ks): raise ValueError('witness requires type 04')
         if self.max_checkpoint_age<60 or self.max_scan_entries<1 or self.poll_seconds<=0: raise ValueError('invalid policy bound')
+        for k in ('restart_ready_seconds','witness_wait_seconds'):
+            v=getattr(self,k)
+            if isinstance(v,bool) or not isinstance(v,(int,float)) or not 0<=v<=600: raise ValueError(k+' must be a number from 0 to 600')
+        if self.restart_command is not None and (not isinstance(self.restart_command,list) or not self.restart_command or not all(isinstance(x,str) and x for x in self.restart_command)):
+            raise ValueError('restart_command must be a non-empty argv list of strings (no shell)')
 
     @classmethod
     def load(cls, path):

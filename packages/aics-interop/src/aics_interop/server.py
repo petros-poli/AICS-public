@@ -4,7 +4,9 @@
 operator starts a production log: ``AICS_PRODUCTION=1``, an explicit charter file and the owner key, so leaf 0 is
 written by the production genesis path (no development waiver).  Requests go through FastAPI's TestClient to the
 ASGI app (no network, no client address); the TCP text gate is the server's own ``TcpGate`` on loopback ports, TLS
-with a self-signed certificate.  The service keys are read from the key file the server writes for out-of-band
+with a self-signed certificate.  The names the instance advertises (the banner, /llms.txt, the card's hosts, the
+gate's TLS hints) are production's (:data:`ADVERTISED`), so its banner is the published one byte for byte; no
+request goes to them.  The service keys are read from the key file the server writes for out-of-band
 publication, never from its API.  :meth:`ServerInstance.restart` stops and re-creates the app on the same database
 and tiles, as a restart of the operator's process does.
 
@@ -42,13 +44,21 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from . import spec
 
-#: The instance's log origin and hosts (AICS-1 §12.2 shape, test names).  The TCP gate's TLS name is localhost,
-#: the name its self-signed certificate carries.
+#: The instance's log origin and the hosts its requests are routed to (AICS-1 §12.2 shape, test names): the
+#: TestClient's base URL, the authority requests are signed for, the harness's API and pages bases.  The TCP gate's
+#: TLS name is localhost, the name its self-signed certificate carries.
 ORIGIN = "api.server.interop.test/tiles"
 API = "https://api.server.interop.test"
 PAGES = "https://server.interop.test"
 TILES = API + "/tiles"
 GATE_HOST = "localhost"
+#: The names the instance advertises (aics_server.discovery.Site): production's, as docs/BANNER.md names them, with
+#: the default public gate ports (AICS_GATE_PUBLIC_*_PORT unset, 7700/7701).  Since 1bec621 the server renders its
+#: banner, /llms.txt and gate texts from these, and aics-conformance's gate.banner compares the served banner with
+#: the published bytes (dialogue.BANNER); with the test names above it would name another gate and API.  They are
+#: only text here: the TestClient routes every host in process and the TCP gate listens on loopback.
+ADVERTISED = {"AICS_BASE_URL": "https://wesupport-ai.com", "AICS_API_URL": "https://api.wesupport-ai.com",
+              "AICS_GATE_HOSTNAME": "gate.wesupport-ai.com"}
 #: The owner key (decision 3) of every instance: a public test seed, like the suite's other keys.
 OWNER_SEED = 0xA0
 #: Limits the instance publishes: the default per-key write window (the conformance rate check consumes it), and
@@ -62,9 +72,11 @@ PRIVACY = b"AICS interop test privacy and retention statement.\n"
 PROFILES = ["SUP-1"]
 #: The variables the server reads at start-up: each is set (or removed, None) while the app is built, then restored.
 SERVER_ENV = ("AICS_ORIGIN", "AICS_CHARTER_FILE", "AICS_PRODUCTION", "AICS_DEV_GENESIS", "AICS_BASE_URL",
-              "AICS_API_URL", "AICS_GATE_HOSTNAME", "AICS_IP_URL", "AICS_TILE_MIRRORS", "AICS_TERMS_FILE",
+              "AICS_API_URL", "AICS_GATE_HOSTNAME", "AICS_GATE_PUBLIC_TLS_PORT", "AICS_GATE_PUBLIC_PLAIN_PORT",
+              "AICS_IP_URL", "AICS_TILE_MIRRORS", "AICS_TERMS_FILE",
               "AICS_PRIVACY_FILE", "AICS_CARD_FILE", "AICS_SERVER_SEED_HEX", "AICS_TILES_DIR", "AICS_TILES_AUDIT",
-              "AICS_PUBKEYS_OUT", "AICS_ALLOWED_HOSTS", "AICS_LIMITS_FILE", "AICS_OWNER_PUBKEY", "AICS_DB_PATH")
+              "AICS_PUBKEYS_OUT", "AICS_ALLOWED_HOSTS", "AICS_LIMITS_FILE", "AICS_OWNER_PUBKEY", "AICS_DB_PATH",
+              "AICS_GATE_TLS_CERT", "AICS_GATE_TLS_KEY", "AICS_GATE_TLS_PORT")
 
 
 @contextlib.contextmanager
@@ -212,11 +224,16 @@ class ServerInstance:
 
     def env(self) -> dict[str, str | None]:
         values: dict[str, str | None] = {k: None for k in SERVER_ENV}
+        values.update(ADVERTISED)
         values.update(AICS_ORIGIN=ORIGIN, AICS_CHARTER_FILE=str(self.root / "charter.md"), AICS_PRODUCTION="1",
-                      AICS_BASE_URL=PAGES, AICS_API_URL=API, AICS_GATE_HOSTNAME=GATE_HOST, AICS_TILE_MIRRORS="",
-                      AICS_TERMS_FILE=str(self.root / "terms.md"), AICS_PRIVACY_FILE=str(self.root / "privacy.md"))
+                      AICS_TILE_MIRRORS="", AICS_TERMS_FILE=str(self.root / "terms.md"),
+                      AICS_PRIVACY_FILE=str(self.root / "privacy.md"))
         if (self.root / "card.json").exists():
             values["AICS_CARD_FILE"] = str(self.root / "card.json")
+        if self.tcp_enabled:
+            # The TCP gate below opens its TLS listener with this certificate, so the site the app describes has
+            # one (aics_server.discovery.Site.gate_tls), as an operator's deploy/gate-tls.yml sets it.
+            values.update(AICS_GATE_TLS_CERT=str(self.cert), AICS_GATE_TLS_KEY=str(self.cert_key))
         return values
 
     def boot(self) -> None:

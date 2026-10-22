@@ -9,12 +9,15 @@ header, ``jku``, embedded key, ``b64=false`` or other algorithm is allowed,
 and no default-value elision happens: every §13.1 member is required.
 
 The policy key comes only from the pinned trust bundle.  The first card is
-identified by ``hexH(J(card)) == bootstrap_card_hash``; for later cards the
-policy leaf, its inclusion and activation (§14.5 steps 3-4) need the log's
-policy entries, which the server does not ship yet - such a card is reported
-as signature-valid but ``incomplete``.  Even for the bootstrap card, later
-policy events (supersession) and the evidence behind ``proven`` assurances
-are not checked; the output says so.
+identified by ``hexH(J(card)) == bootstrap_card_hash``.  Which card is in
+force - its policy leaf, the leaf's inclusion and activation, and supersession
+by later policy events (§14.5 steps 3-4) - comes from the log's policy leaves
+(:mod:`aics_cli.currency`); when they cannot be read, a later card is reported
+as signature-valid but ``incomplete`` and the bootstrap card as "later policy
+events not checked".  A card that did not verify as current is never stored,
+and only stored cards that did (``bootstrap``, ``in-force``) are the history
+a later card is compared with.  The evidence behind ``proven`` assurances is
+not checked; the output says so.
 
 Everything in the card is the operator's own statement.  Statuses must stay
 inside the AICS-1 §13.3 boundaries (:func:`assurance_problems`), and free
@@ -492,8 +495,14 @@ def schema_problems(card: Any) -> list[str]:
     gate = card["gate"]
     if s.obj(gate, "$.gate", ("tls_host", "tls_port", "plaintext_port", "https_url")):
         s.string(gate["tls_host"], "$.gate.tls_host")
-        s.uint(gate["tls_port"], "$.gate.tls_port", equals=7700)
-        s.uint(gate["plaintext_port"], "$.gate.plaintext_port", equals=7701)
+        # §13.1: the instance's own two distinct TCP ports (7700 and 7701 in the §12.2 deployment profile; a
+        # staging instance beside production names its own).
+        for key in ("tls_port", "plaintext_port"):
+            port = gate[key]
+            if isinstance(port, bool) or not isinstance(port, int) or not 1 <= port <= 65535:
+                s.bad(f"$.gate.{key}", "must be a TCP port, an integer from 1 to 65535")
+        if gate["tls_port"] == gate["plaintext_port"]:
+            s.bad("$.gate.plaintext_port", "must differ from $.gate.tls_port")
         s.https(gate["https_url"], "$.gate.https_url")
     if not isinstance(card["proxy"], list):
         s.bad("$.proxy", "must be an array")
@@ -804,15 +813,29 @@ def json_diff(old: Any, new: Any, path: str = "$") -> list[dict[str, Any]]:
 
 
 def resolve_url(arg: str | None, policy: Policy | None) -> str:
+    """The URL whose body is checked as the card: the pinned ``card_url`` without an argument; for a bare site
+    (``example.org``, ``https://example.org/``) its ``/.well-known/aics-card.json``; any other URL exactly as given,
+    such as a ``/v2/bodies/<hash>`` or ``/v2/policies/<index>`` document (never silently replaced)."""
     if not arg:
         if policy is None or not policy.card_url:
             raise AicsError("no card URL: pass one or pin card_url in the policy")
         return policy.card_url
     url = arg if "://" in arg else f"https://{arg}"
     parts = urllib.parse.urlsplit(url)
-    if parts.path.endswith(".json") or "/.well-known/" in parts.path:
-        return url
-    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, WELL_KNOWN, "", ""))
+    if parts.path in ("", "/") and not parts.query:
+        return urllib.parse.urlunsplit((parts.scheme, parts.netloc, WELL_KNOWN, "", ""))
+    return url
+
+
+_BODY_PATH = re.compile(r"/v2/bodies/([0-9a-f]{64})")
+
+
+def check_body_digest(url: str, raw: bytes) -> None:
+    """A ``/v2/bodies/<hash>`` URL names its body by SHA-256: refuse bytes that do not hash to it."""
+    m = _BODY_PATH.fullmatch(urllib.parse.urlsplit(url).path)
+    if m and hashlib.sha256(raw).hexdigest() != m.group(1):
+        raise AicsError(f"the body served at {url} does not hash to the digest its path names; nothing was checked",
+                        body_sha256=hashlib.sha256(raw).hexdigest())
 
 
 def fetch_card(fetcher: Any, url: str) -> bytes:
@@ -838,6 +861,20 @@ def store_key(policy_kid: str) -> str:
         return policy_kid
 
 
+#: Index statuses of cards that verified as current when they were stored: the bootstrap card the trust bundle pins,
+#: and a card the log's policy leaves showed in force.  Only these are the history later cards are compared with.
+#: ``signature-only`` (a card taken with ``policy init --accept-signed-card``, or one aics-cli 0.1.0 stored after an
+#: ``incomplete`` verdict) is kept on file but never used as history: its currency was never proven.
+VERIFIED_STATUSES = ("bootstrap", "in-force")
+
+
+def recorded_leaf(meta: dict[str, Any]) -> int | None:
+    """The policy leaf a card record says the card was in force by (``in-force`` records name it; ``bootstrap``
+    records, stored while the policy leaves could not be read, do not)."""
+    v = meta.get("policy_leaf")
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 0 else None
+
+
 class CardStore:
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -846,44 +883,82 @@ class CardStore:
     def index(self) -> Path:
         return self.root / "index.jsonl"
 
-    def latest(self, policy_kid: str) -> StoredCard | None:
-        """The stored card with the latest ``issued_at`` for this policy key
-        (the order of the index does not matter: storing an older card later
-        cannot reset the history)."""
+    def _records(self, policy_kid: str, statuses: tuple[str, ...]):
         key = store_key(policy_kid)
-        best: tuple[int, int, StoredCard] | None = None
         for pos, rec in enumerate(_home.read_jsonl(self.index)):
-            if rec.get("policy_kid") != key or not isinstance(rec.get("file"), str):
+            if rec.get("policy_kid") != key or not isinstance(rec.get("file"), str) \
+                    or rec.get("status") not in statuses:
                 continue
             try:
                 card = loads_strict((self.root / rec["file"]).read_bytes())
             except (OSError, ValueError, UnicodeDecodeError):
                 continue
-            if not isinstance(card, dict):
-                continue
-            issued = card.get("issued_at")
-            rank = issued if isinstance(issued, int) and not isinstance(issued, bool) else -1
-            if best is None or (rank, pos) >= best[:2]:
-                best = (rank, pos, StoredCard(card=card, meta=rec))
-        return best[2] if best else None
+            if isinstance(card, dict):
+                yield pos, rec, card
 
-    def save(self, policy_kid: str, url: str, card: dict[str, Any], *, now: int, status: str) -> tuple[Path, bool]:
-        """Store ``J(card)`` under its own hash (never overwritten) and log the check."""
+    def latest(self, policy_kid: str, statuses: tuple[str, ...] = VERIFIED_STATUSES) -> StoredCard | None:
+        """The stored card latest in the log's order for this policy key among the records whose status is in
+        ``statuses``: a record that names the policy leaf its card was in force by ranks by that leaf, above every
+        record that names none (a ``bootstrap`` record: the first card); records without a leaf rank by the card's
+        ``issued_at``, which aics-server does not require to grow from card to card.  The order of the index does not
+        matter: storing an older card later cannot reset the history."""
+        best: tuple[tuple[bool, int, int, int], StoredCard] | None = None
+        for pos, rec, card in self._records(policy_kid, statuses):
+            leaf = recorded_leaf(rec)
+            issued = card.get("issued_at")
+            rank = (leaf is not None, -1 if leaf is None else leaf,
+                    issued if isinstance(issued, int) and not isinstance(issued, bool) else -1, pos)
+            if best is None or rank >= best[0]:
+                best = (rank, StoredCard(card=card, meta=rec))
+        return best[1] if best else None
+
+    def leaf_of(self, policy_kid: str, digest: str, statuses: tuple[str, ...] = VERIFIED_STATUSES) -> int | None:
+        """The latest policy leaf a record of the card with this hash says it was in force by (None: no such
+        record)."""
+        leaves = []
+        for _pos, rec, card in self._records(policy_kid, statuses):
+            leaf = recorded_leaf(rec)
+            try:
+                if leaf is not None and card_hash(card) == digest:
+                    leaves.append(leaf)
+            except ValueError:  # a stored file that is no longer canonicalisable: not this card
+                continue
+        return max(leaves) if leaves else None
+
+    def document(self, policy_kid: str, digest: str) -> bytes | None:
+        """The stored ``J(card)`` bytes of the card with this hash, if the store holds them (any status)."""
+        if not _HEX64.fullmatch(digest):
+            return None
+        try:
+            return (self.root / _home.slug(store_key(policy_kid)) / f"{digest}.json").read_bytes()
+        except OSError:
+            return None
+
+    def save(self, policy_kid: str, source: str, card: dict[str, Any], *, now: int, status: str,
+             extra: dict[str, Any] | None = None) -> tuple[Path, bool]:
+        """Store ``J(card)`` under its own hash (never overwritten) and log the check.  ``source`` is where the
+        bytes came from: the URL fetched, ``file:<path>`` for ``verify card --file``, or ``store:<card hash>`` for
+        a card ``policy init`` read back from this store (:data:`aics_cli.currency.STORE_SOURCE`).  Call it only for
+        a card that verified as current (``status`` in :data:`VERIFIED_STATUSES`), or one the user took on its
+        signature alone (``signature-only``)."""
         key = store_key(policy_kid)
         h = card_hash(card)
         path = self.root / _home.slug(key) / f"{h}.json"
         created = _home.write_new(path, canonicalize(card))
+        is_url = "://" in source
         _home.append_jsonl(self.index, {
             "verified_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(now)),
             "policy_kid": key,
-            "host": urllib.parse.urlsplit(url).hostname or url,
-            "url": url,
+            "host": (urllib.parse.urlsplit(source).hostname or source) if is_url else None,
+            "url": source if is_url else None,
+            "source": source,
             "card_hash": h,
             "file": str(path.relative_to(self.root)),
             "new": created,
             "status": status,
             "issued_at": card.get("issued_at"),
             "expires": card.get("expires"),
+            **(extra or {}),
         })
         return path, created
 
@@ -895,8 +970,11 @@ class History:
     previous: StoredCard | None = None
     diff: list[dict[str, Any]] | None = None
     witness: str | None = None  # same | stronger | weaker (vs the saved card), None if not comparable
-    superseded: bool = False  # issued before the saved card
+    superseded: bool = False  # before the saved card: in the log's order as recorded, else by issued_at
     equivocation: bool = False  # same issued_at, different card: the policy key signed two cards for one moment
+    #: (this card's policy leaf, the saved card's), as their records say, when both verified in force before: the
+    #: log's order then decides ``superseded`` and rules out ``equivocation``, not ``issued_at``
+    order: tuple[int, int] | None = None
 
     def problem(self) -> str | None:
         if self.equivocation:
@@ -907,8 +985,26 @@ class History:
             return "witness-downgrade"
         return None
 
+    def precedes(self) -> str:
+        """How the card was found to precede the saved card, in words."""
+        if self.order is not None:
+            return (f"the card is logged before the card saved earlier (policy leaf {self.order[0]}, then leaf "
+                    f"{self.order[1]}, as recorded when each verified as current)")
+        issued = self.previous.card.get("issued_at") if self.previous is not None else None
+        when = (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(issued))
+                if isinstance(issued, int) and not isinstance(issued, bool) else repr(issued))
+        return f"the card was issued before the card saved earlier ({when})"
+
+    def message(self, problem: str) -> str:
+        if problem == "superseded":
+            return f"{self.precedes()}: a superseded card"
+        return HISTORY_MESSAGES[problem]
+
 
 def compare_with_saved(store: CardStore, policy_kid: str, card: dict[str, Any]) -> History:
+    """``card`` compared with the saved card latest in the log's order (:meth:`CardStore.latest`).  When records
+    show both cards in force by policy leaves, those leaves order them; otherwise ``issued_at`` does: earlier is
+    superseded, equal (another card) is equivocation."""
     prev = store.latest(policy_kid)
     hist = History(previous=prev)
     if prev is None:
@@ -918,8 +1014,14 @@ def compare_with_saved(store: CardStore, policy_kid: str, card: dict[str, Any]) 
     try:
         hist.witness = compare_witness(witness_terms(prev.card), witness_terms(card))
         before, now_issued = prev.card["issued_at"], card["issued_at"]
-        hist.superseded = now_issued < before
-        hist.equivocation = now_issued == before and card_hash(prev.card) != card_hash(card)
+        h, saved_h = card_hash(card), card_hash(prev.card)
+        mine, saved = store.leaf_of(policy_kid, h), recorded_leaf(prev.meta)
+        if h != saved_h and mine is not None and saved is not None and mine != saved:
+            hist.order = (mine, saved)
+            hist.superseded = mine < saved
+        else:
+            hist.superseded = now_issued < before
+            hist.equivocation = now_issued == before and saved_h != h
     except (KeyError, TypeError, ValueError, PolicyError):  # a saved card from an older schema
         hist.witness = None
     return hist
@@ -928,6 +1030,7 @@ def compare_with_saved(store: CardStore, policy_kid: str, card: dict[str, Any]) 
 HISTORY_MESSAGES = {
     "equivocation": "the policy key signed two different cards with the same issued_at: equivocation",
     "superseded": "the card was issued before the card saved earlier: a superseded card",
-    "witness-downgrade": "the card weakens the witness policy of the card saved earlier; its authorisation and notice "
-                         "cannot be checked yet, so it is rejected (AICS-1 §6.3, §14.5 step 5)",
+    "witness-downgrade": "the card weakens the witness policy of the card saved earlier, and no logged policy leaf in "
+                         "force with the advertised notice authorises the change, so it is rejected (AICS-1 §6.3, "
+                         "§14.5 step 5)",
 }

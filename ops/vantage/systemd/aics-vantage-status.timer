@@ -1,0 +1,10 @@
+[Unit]
+Description=Send the AICS daily status summary at 06:30 UTC
+
+[Timer]
+OnCalendar=*-*-* 06:30:00 UTC
+Persistent=true
+Unit=aics-vantage-status.service
+
+[Install]
+WantedBy=timers.target

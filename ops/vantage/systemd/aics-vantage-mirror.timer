@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the AICS vantage mirror and witness check hourly
+
+[Timer]
+OnCalendar=hourly
+RandomizedDelaySec=5min
+Persistent=true
+Unit=aics-vantage-mirror.service
+
+[Install]
+WantedBy=timers.target

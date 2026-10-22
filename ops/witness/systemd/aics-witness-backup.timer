@@ -1,0 +1,16 @@
+# Daily schedule for aics-witness-backup.service: 04:10 UTC, ±30 min jitter
+# (after the VPS's own 03:30 backup); a run missed while the host was off fires
+# after the next boot.
+
+[Unit]
+Description=Run the AICS witness backup daily
+
+[Timer]
+OnCalendar=*-*-* 04:10:00 UTC
+RandomizedDelaySec=30min
+AccuracySec=1min
+Persistent=true
+Unit=aics-witness-backup.service
+
+[Install]
+WantedBy=timers.target

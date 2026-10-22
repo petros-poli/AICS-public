@@ -3,33 +3,47 @@ name: Interop
 # Cross-implementation suite (packages/aics-interop): AICS-1 artifacts produced
 # by one package and verified by another, and the generated fixtures that
 # other implementations consume.
+#
+# Reusable only: the Release workflow calls it once per v* tag, for the
+# supported Python releases other than the one scripts/verify.sh --full already
+# ran the suite on (ci.yml). Routine pushes and pull requests start no jobs.
+# Each leg runs the interop check of scripts/verify.sh (the same command a
+# contributor runs), under the matrix Python: setup-uv exports UV_PYTHON.
 
 on:
-  push:
-  pull_request:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: JSON array of exact Python releases to run the suite on
+        type: string
+        required: false
+        # requires-python is >=3.12; 3.12.12 is covered by ci.yml's verify.sh --full
+        default: '["3.13.15", "3.14.7"]'
+    outputs:
+      verified-commit:
+        description: The commit the suite and fixture check passed on (git rev-parse HEAD)
+        value: ${{ jobs.interop.outputs.commit }}
 
 permissions:
   contents: read
 
-concurrency:
-  group: interop-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
 defaults:
   run:
     shell: bash
-    working-directory: packages/aics-interop
 
 jobs:
   interop:
     name: Interop suite and fixtures (Python ${{ matrix.python }})
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
     strategy:
       fail-fast: false
       matrix:
-        # requires-python is >=3.12; exact patch releases, as the setup-uv pin below
-        python: ["3.12.12", "3.13.15", "3.14.7"]
+        python: ${{ fromJSON(inputs.python-versions) }}
+    outputs:
+      commit: ${{ steps.commit.outputs.commit }}
     env:
       # The openssl, ssh-keygen and git tests fail instead of skipping, so a
       # runner image without one of the tools cannot drop them silently.
@@ -44,21 +58,33 @@ jobs:
         with:
           version: "0.12.6"
           python-version: ${{ matrix.python }}
-          enable-cache: true
-          cache-suffix: aics-interop-py${{ matrix.python }}
-          cache-dependency-glob: |
-            packages/*/pyproject.toml
-            packages/*/uv.lock
+          # A release never restores a cache another ref could have written.
+          enable-cache: false
       - name: Tools the suite drives (required)
         run: |
-          for tool in openssl ssh-keygen git; do
+          for tool in uv openssl ssh-keygen git; do
             command -v "$tool" || { echo "::error::$tool is not installed"; exit 1; }
           done
+          uv --version
           openssl version
           ssh -V
-      - name: Install from the lock file
-        run: uv sync --locked --dev
-      - name: Interop tests (open findings are strict xfails; skips and xfails are listed)
-        run: uv run --locked pytest -q -rsx
-      - name: Fixtures match a fresh generation
-        run: uv run --locked aics-interop-fixtures --check
+          git --version
+      - name: Record the verified commit
+        id: commit
+        run: echo "commit=$(git rev-parse 'HEAD^{commit}')" >> "$GITHUB_OUTPUT"
+      - name: scripts/verify.sh interop check (suite with -rsx, then fixtures --check)
+        env:
+          MATRIX_PYTHON: ${{ matrix.python }}
+        run: |
+          set -o pipefail
+          [[ "${UV_PYTHON:-}" == "$MATRIX_PYTHON" ]] || { echo "::error::UV_PYTHON is '${UV_PYTHON:-}', expected $MATRIX_PYTHON"; exit 1; }
+          bash scripts/verify.sh --full --only interop --strict --verbose 2>&1 | tee "$RUNNER_TEMP/interop.log"
+          # Second guard: no SKIPPED check and no missing tool this run needs
+          # (node and npm are not needed by the interop check).
+          if grep -E '^[[:space:]]*(PREREQ|SKIPPED)([^[:alnum:]_]|$)' "$RUNNER_TEMP/interop.log" \
+              | grep -v 'needed by: no check in this run$'; then
+            echo "::error::scripts/verify.sh skipped the interop check or missed a prerequisite"
+            exit 1
+          fi
+          grep -Eq "^interop +PASS .*Python $MATRIX_PYTHON\b" "$RUNNER_TEMP/interop.log" || {
+            echo "::error::the interop check did not report a pass on Python $MATRIX_PYTHON"; exit 1; }

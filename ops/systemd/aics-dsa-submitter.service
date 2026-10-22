@@ -1,0 +1,49 @@
+# One-shot service unit for the DSA Transparency Database submitter
+# (tools/dsa-submitter, ops/README.md "dsa-submitter"). Install on the VPS:
+#   mkdir -p /etc/aics && touch /etc/aics/dsa-decisions.jsonl && chmod 0600 /etc/aics/dsa-decisions.jsonl
+#   cd /opt/wesupport-ai/tools/dsa-submitter && uv sync --no-dev
+#   cp ops/systemd/aics-dsa-submitter.{service,timer} /etc/systemd/system/
+#   systemctl daemon-reload && systemctl enable --now aics-dsa-submitter.timer
+# Paths assume the checkout lives at /opt/wesupport-ai (deploy-vps.sh's target).
+# Without DSA_TRANSPARENCY_TOKEN the run is dormant: it prints what it would
+# submit, writes nothing remotely or locally, and exits 0 — so the timer is
+# safe to install before the operator onboards with the sandbox. The token
+# belongs in /etc/default/aics-dsa (EnvironmentFile below), never in this
+# unit, never in a commit, and never in the decisions file; the submitter
+# scrubs it from every log line and from the state file.
+#
+# The decisions file /etc/aics/dsa-decisions.jsonl is operator-kept: one JSON
+# line per restriction leaf (example in ops/README.md). A restriction without
+# a line is listed as "needs operator input" and never submitted.
+
+[Unit]
+Description=AICS DSA Transparency Database submitter (dormant without a token)
+Documentation=file:///opt/wesupport-ai/ops/README.md
+After=network-online.target
+Wants=network-online.target
+# Like aics-backup.service: skipped plainly if the venv was never synced.
+# (Debian 13's systemd ignores this key — runbook item 79 — but it documents
+# the precondition and works where supported.)
+ConditionPathIsExecutable=/opt/wesupport-ai/tools/dsa-submitter/.venv/bin/dsa-submitter
+
+[Service]
+Type=oneshot
+User=root
+EnvironmentFile=-/etc/default/aics-dsa
+StateDirectory=aics-dsa
+StateDirectoryMode=0700
+ExecStart=/opt/wesupport-ai/tools/dsa-submitter/.venv/bin/dsa-submitter submit
+# Be a polite citizen on a 2-vCPU box that also serves the log.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+# Hardening: the submitter only reads the public API and /etc/aics, and writes
+# nothing but its StateDirectory (kept writable under ProtectSystem=strict).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+UMask=0077
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

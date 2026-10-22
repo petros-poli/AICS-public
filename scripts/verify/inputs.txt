@@ -1,0 +1,134 @@
+# Inputs of scripts/verify.sh beyond what it discovers by itself.
+#
+# Discovered automatically: every Python project (packages/*, tools/* with a
+# pyproject.toml, card/), its own directory as an input, and its dependencies
+# from the path entries of [tool.uv.sources]. Listed here: what the code cannot
+# discover, namely the files outside a project that its tests read, the
+# dependencies of the non-Python checks, the release libraries and the
+# packages whose change means every check.
+#
+# Format, one per line:  <node> <kind> <value>
+#   everything  path <prefix>   a change under <prefix> selects every check
+#   release     lib  <name>     packages/<name> gets a reproducible:<name> check
+#   <node>      path <prefix>   a change under <prefix> selects <node>
+#   <node>      dep  <node>     <node> is also selected when the other one is
+# A <node> is a project directory (packages/aics-server, card, clients/aics-js)
+# or one of the virtual nodes release-isolation, host-ops, vantage and verify-script. A prefix
+# ending in "/" is a directory; anything else is one file. Lines naming a node
+# that does not exist in the checkout are ignored.
+
+# aics-identity and aics-tlog feed everything else. scripts/verify.sh itself
+# decides how every check runs, so a change to it selects every check too.
+everything path packages/aics-identity/
+everything path packages/aics-tlog/
+everything path scripts/verify.sh
+
+# The six PyPI libraries the release builds twice (reproducible.yml "allowed").
+release lib aics-identity
+release lib aics-tlog
+release lib aics-witness
+release lib aics-conformance
+release lib aics-cli
+release lib aics-mcp
+
+# Files outside a package that its tests read.
+packages/aics-identity path docs/spec/
+# aics-conformance: verify-report re-verifies the published evidence; the example policy's secret sample must be one
+# the instance's published pattern definitions match.
+packages/aics-conformance path docs/evidence/
+packages/aics-conformance path docs/legal/secret-patterns.json
+packages/aics-server path docs/spec/
+# tests/test_sync_docs.py exports docs/evidence byte for byte.
+packages/aics-server path docs/evidence/
+packages/aics-server path docs/legal/
+packages/aics-server path docs/site/
+packages/aics-server path docs/BANNER.md
+packages/aics-server path docs/PROTOCOL-TEXT.md
+packages/aics-server path deploy/
+# tests/test_staging_compose.py and tests/test_readiness_routes.py read these.
+packages/aics-server path ops/systemd/aics-staging-gate-cert.service
+packages/aics-server path ops/systemd/aics-staging-gate-cert.timer
+packages/aics-server path ops/systemd/aics-gate-cert.timer
+packages/aics-server path ops/dns-records.md
+packages/aics-server path wellknown/
+packages/aics-server path ops/sync-docs.sh
+# tests/test_genesis_v2_card.py logs the reviewed first card on a production genesis.
+packages/aics-server path card/card-content.json
+packages/aics-server path card/validate_card.py
+# tests/test_readme_banner.py and tests/test_discovery.py read the README (banner block, client digest) and the
+# skill bundle; aics-cli's tests/test_documented_commands.py parses the aics commands both give.
+packages/aics-server path README.md
+packages/aics-server path skills/wesupport-ai/SKILL.md
+# tests/test_docs_pass.py reads every document ops/sync-docs.sh publishes (the public repository's URL).
+packages/aics-server path docs/DESIGN.md
+packages/aics-server path docs/DECISIONS.md
+packages/aics-cli path README.md
+packages/aics-cli path skills/wesupport-ai/SKILL.md
+packages/aics-interop path docs/spec/
+packages/aics-interop path docs/BANNER.md
+packages/aics-interop path docs/PROTOCOL-TEXT.md
+packages/aics-interop path wellknown/
+card path packages/
+card path docs/spec/
+card path docs/legal/
+card path docs/DECISIONS.md
+card path docs/evidence/
+card path ops/sync-docs.sh
+card path clients/aics-js/src/registry.ts
+
+# clients/aics-js: the fixtures it consumes and the two Python packages its
+# live tests drive (packages/aics-identity/.venv, packages/aics-server/.venv).
+clients/aics-js path packages/aics-interop/fixtures/
+clients/aics-js dep packages/aics-identity
+clients/aics-js dep packages/aics-server
+
+# The release isolation tests read the workflows (tools/test_workflows.py holds
+# the trigger, needs and pinning contract) and the deploy script, and run in
+# the aics-server environment. scripts/verify-release.sh has no automated test;
+# a change to it is listed as read by no check.
+release-isolation path tools/test_pypi_release.py
+release-isolation path tools/test_workflows.py
+release-isolation path tools/test_deploy_vps.py
+release-isolation path .github/workflows/
+release-isolation path deploy/deploy-vps.sh
+release-isolation path .dockerignore
+release-isolation dep packages/aics-server
+
+# The second host (ops/witness, the witness package's compose and Caddyfile), the DNS plan and the
+# tiles mirror snapshot, tested offline in the aics-server environment with PyYAML.
+host-ops path tools/test_witness_host.py
+host-ops path tools/test_cloudflare_dns.py
+host-ops path tools/test_mirror_sync.py
+host-ops path ops/witness/
+host-ops path ops/cloudflare-dns.sh
+host-ops path ops/mirror-sync.sh
+host-ops path ops/Dockerfile.caddy-cloudflare
+host-ops path packages/aics-witness/
+host-ops dep packages/aics-server
+# The relaunch procedure: its script, and the texts its docs stage rewrites by anchor (a change to
+# one of them must still leave exactly one match per anchor) or its inventory must name.
+host-ops path tools/test_relaunch_genesis.py
+host-ops path ops/relaunch-genesis.sh
+host-ops path docs/internal/relaunch-2026-10-20.md
+host-ops path README.md
+host-ops path docs/DECISIONS.md
+host-ops path docs/astra_remaining_pushes.md
+host-ops path docs/astra_finish_the_job.md
+host-ops path packages/aics-cli/CHANGELOG.md
+host-ops path packages/aics-cli/src/aics_cli/published_keys.py
+host-ops path packages/aics-server/src/aics_server/static/aics_client.py
+# Its card stage fills the card template with the real validator (tools/test_relaunch_genesis.py).
+host-ops path card/card-content.json
+host-ops path card/validate_card.py
+
+# The vantage probes on the witness host (ops/vantage) and the uptime probe they run.
+vantage path ops/vantage/
+vantage path ops/uptime-check.sh
+# ops/status.sh, run by the probe's daily mode: tests/test_served_checkpoint.py runs the real script.
+vantage path ops/status.sh
+
+# The tests of this script.
+verify-script path scripts/verify.sh
+verify-script path scripts/verify/
+verify-script path tools/test_verify_script.py
+verify-script dep packages/aics-server

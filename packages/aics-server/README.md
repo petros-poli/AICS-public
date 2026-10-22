@@ -250,7 +250,7 @@ Cloudflare token is used).
 | `AICS_WALLET_BTC`, `AICS_WALLET_XMR` | Contribution addresses shown on `/contribute` and never credited. |
 | `AICS_SUP_PER_USDC` | SUP credited per USDC contributed (default 100; at most 100 and a divisor of 10^6). |
 | `AICS_ORIGIN`, `AICS_TILES_DIR`, `AICS_TILES_AUDIT` | The log origin (default `api.wesupport-ai.com/tiles`); the published tiles directory (default next to the database, never containing it); `full` (default) or `edge` start-up audit of the tiles against the leaf table. |
-| `AICS_PUBKEYS_OUT` | Where the start-up key file is written: the origin, the log vkey and the `did:key`s of the log, policy and owner keys, for publication out of band (DNS TXT `_aics`, the aics package, the README). |
+| `AICS_PUBKEYS_OUT` | Where the start-up key file is written: the origin, the log vkey and the `did:key`s of the log, policy and owner keys, for publication out of band (DNS TXT `_aics`, the aics-cli package, the README). |
 | `AICS_LIMITS_FILE` | JSON overriding the published limits (`/v2/limits`): write, flood and per-key registration windows, the pre-identity, unauthenticated-refusal and notice windows, the open-notice caps, ciphertext size, the ciphertext-byte budget (the card's `retention.ciphertext_budget_bytes`, default 8 GiB), capsule horizon and quota. |
 | `AICS_HOST`, `AICS_PORT`, `AICS_WORKERS`, `AICS_FORWARDED_ALLOW_IPS` | CLI: HTTP listener (default `0.0.0.0:8080`), exactly one worker (anything else is refused), proxies whose `X-Forwarded-Proto` is trusted. |
 | `AICS_GATE_HOST`, `AICS_GATE_PORT`, `AICS_GATE_TLS_PORT`, `AICS_GATE_TLS_CERT`, `AICS_GATE_TLS_KEY` | CLI: the TCP gate (plain 7701, `off` disables; TLS 7700 when both PEM paths are set). |

@@ -11,13 +11,17 @@ from __future__ import annotations
 import ast
 import functools
 import re
+import shutil
+import subprocess
+import tempfile
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 import pytest
 
 import validate_card as vc
-from helpers import REPO, assurance, statement, tags
+from helpers import CONFORMANCE_QUORUMS, CONFORMANCE_REPORTS, REPO, assurance, statement, tags
 
 launch = pytest.mark.launch
 
@@ -91,9 +95,23 @@ def test_no_scheduled_dm_expiry_follows_the_charter(card):
 
 
 def test_witness_situation_matches_the_charter_and_card_policy(card):
-    none_listed = card["witness_policy"]["witnesses"] == []
-    for rel in ("docs/legal/charter.md", "docs/legal/card-policy.md"):
-        assert ("At launch there is no witness" in read(rel)) is none_listed, rel
+    # Leaf 0 is permanent, so the charter names no witness and no date (relaunch, 2026-10-20): the policy is on the
+    # card, a founder-run witness stays in the log's trust domain, and G5 stays promised until a witness outside it
+    # joins the quorum. This body lists only founder-run witnesses, and nothing beyond them.
+    charter = read("docs/legal/charter.md")
+    commitment6 = next(line for line in charter.splitlines() if line.startswith("6. Witnesses with a published policy."))
+    assert "At launch" not in commitment6 and "Next comes" not in commitment6
+    assert "A witness the operator runs, even on a second provider, shares the log's trust domain" in commitment6
+    assert "stays promised until a witness outside the operator's trust domain joins the quorum" in commitment6
+    # The first card of genesis v2 lists the founder-run witness at quorum 1 from the start, and card-policy.md says
+    # so (relaunch/legal-texts asserted the genesis-1 sentence "At launch there is no witness" there; it is gone).
+    policy = read("docs/legal/card-policy.md")
+    assert "At launch there is no witness" not in policy and "no witness at launch" not in policy
+    assert "The card lists one witness, run by the operator on a second provider, at quorum 1" in policy
+    assert card["witness_policy"]["quorum"] == 1
+    witnesses = card["witness_policy"]["witnesses"]
+    assert len(witnesses) == 1 and all(w["trust_domain"] == "founder" and w["independent"] is False for w in witnesses)
+    assert next(a for a in card["assurances"] if a["id"] == "G5")["status"] == "promised"
 
 
 # --- docs/spec/AICS-1.md -------------------------------------------------------------------------------------
@@ -610,7 +628,7 @@ def _gap_unlogged_refusals(s: dict[str, str]) -> bool:
 #: show the gap.  Once the server conforms, delete the statement and its tag (validate_card.TAG_HOMES) and move the
 #: detector to RESOLVED_GAPS (README launch checklist).
 GAPS: list[tuple[str, str, Callable[[dict[str, str]], bool]]] = [
-    ("G4", "deviation-refusal-dedup", lambda s: bool(_function(s["db.py"], "_refuse_once"))),
+    ("G4", "refusal-citation", lambda s: bool(_function(s["db.py"], "_refuse_once"))),
 ]
 #: ``[deviation-secret-scan-scope]`` was closed by text, not code (decision 21): charter commitment 4 and terms item 1
 #: now name every public text body the server scans, which test_the_legal_pack_names_every_scanned_body checks.
@@ -662,7 +680,11 @@ def test_resolved_deviations_stay_resolved(aid, tag, gap):
 
 
 def test_every_deviation_has_a_gap_detector():
-    assert {tag for _, tag, _ in GAPS} == {t for t in vc.TAG_HOMES if t.startswith(vc.DEVIATION_PREFIX)}
+    gap_tags = {tag for _, tag, _ in GAPS}
+    # Every [deviation-*] tag has a detector; a disclosure tied to code the texts allow ([refusal-citation], since the
+    # relaunch of 2026-10-20) has one too, so the statement goes when the server stops citing.
+    assert {t for t in vc.TAG_HOMES if t.startswith(vc.DEVIATION_PREFIX)} <= gap_tags
+    assert gap_tags <= set(vc.TAG_HOMES)
     assert not {tag for _, tag, _ in RESOLVED_GAPS} & set(vc.TAG_HOMES)
 
 
@@ -766,11 +788,171 @@ def test_every_hash_placeholder_names_an_existing_file(card):
     paths = {m.group(2) for _, text in vc.iter_strings(card) for m in vc.FILL_RE.finditer(text)
              if m.group(1) == "SHA256"}
     assert paths == {"docs/legal/charter.md", "docs/legal/terms.md", "docs/legal/retention.md",
-                     "docs/legal/card-policy.md", "docs/spec/AICS-1.md"}
-    assert all((REPO / rel).is_file() for rel in paths)
+                     "docs/legal/card-policy.md", "docs/spec/AICS-1.md", *CONFORMANCE_REPORTS}
+    # The conformance reports are run on the merged build before the wipe (README "Genesis v2", step 0);
+    # test_launch_the_conformance_reports_back_every_proven_row requires them before signing.
+    assert all((REPO / rel).is_file() for rel in paths - set(CONFORMANCE_REPORTS))
+
+
+#: A document URL of the pages host in card text (a trailing full stop ends the sentence, not the path).
+PAGES_URL = re.compile(r"https://wesupport-ai\.com(/[A-Za-z0-9._/-]*[A-Za-z0-9_/-])")
+
+
+def _export_path(url_path: str) -> str:
+    """Where in the ops/sync-docs.sh export the pages host finds *url_path* (deploy/Caddyfile: /spec/*, /legal/* and
+    /site/* serve those directories, also under /docs/; any other /docs/* path, docs/evidence included, the export's
+    docs/ directory)."""
+    for section in ("spec", "legal", "site"):
+        for prefix in (f"/{section}/", f"/docs/{section}/"):
+            if url_path.startswith(prefix):
+                return f"{section}/{url_path[len(prefix):]}"
+    assert url_path.startswith("/docs/"), f"{url_path} is not a path the pages host serves from the docs export"
+    return url_path[1:]
+
+
+def _source_of(export_path: str) -> str:
+    """The repository file ops/sync-docs.sh publishes at *export_path* (spec/x is docs/spec/x; docs/x is docs/x)."""
+    return export_path if export_path.startswith("docs/") else f"docs/{export_path}"
+
+
+def _evidence_statement(card: dict[str, Any]) -> str:
+    return next(t for t in assurance(card, "G10")["assumptions"] if t.startswith("Each evidence hash"))
+
+
+def _evidence_documents(card: dict[str, Any]) -> set[str]:
+    """The repository files whose hashes the card's evidence items name."""
+    return {m.group(2) for a in card["assurances"] for e in a["evidence"]
+            if (m := vc.FILL_RE.fullmatch(e["hash"])) and m.group(1) == "SHA256"}
+
+
+def test_genesis_v2_regenerates_the_charter_leaf_0_pins():
+    # Leaf 0 is written from AICS_CHARTER_FILE, which deploy/docker-compose.yml mounts from the gitignored
+    # deploy/docs-public export (deploy-vps.sh does not regenerate it): README "Genesis v2" regenerates and compares it
+    # before the wipe and checks pubkeys.txt's charter-sha256 after the first start, since a stale export would make
+    # leaf 0 the charter of genesis 1.
+    compose = read("deploy/docker-compose.yml")
+    assert "- AICS_CHARTER_FILE=/etc/aics/charter.md" in compose
+    assert re.search(r"source: \./docs-public/legal/charter\.md\n\s+target: /etc/aics/charter\.md\n", compose)
+    readme = read("card/README.md")
+    steps = readme[readme.index("## Genesis v2"):readme.index("## Successor card")]
+    for command in ("bash ops/sync-docs.sh deploy/docs-public",
+                    "shasum -a 256 docs/legal/charter.md deploy/docs-public/legal/charter.md",
+                    "grep '^charter-sha256 ' \"$L/pubkeys.txt\"",
+                    "bash ops/sync-docs.sh --check-links https://wesupport-ai.com",
+                    "docker inspect aics-sanctuary --format '{{.Image}}'",
+                    "--name witness.wesupport-ai.com/w2", "mkdir /data/retired-w1 &&",
+                    "grep -qix \"x-aics-card-leaf: $leaf\""):
+        assert command in steps, command
+    assert "X-AICS-Card-Leaf: 1" not in steps
+
+
+def test_g10_names_where_every_evidence_document_is_published(card):
+    # G10 tells agents where the document of each evidence hash is published: a URL of the pages host, whose path
+    # names the repository file the hash is taken of. The public repository (AICS-public) is a reviewed snapshot made
+    # by hand (docs/RELEASING.md), so it is not named as the copy.
+    text = _evidence_statement(card)
+    named = {_source_of(_export_path(m.group(1))) for m in PAGES_URL.finditer(text)}
+    assert _evidence_documents(card) <= named, sorted(_evidence_documents(card) - named)
+    assert "public repository" not in text
+    # Each conformance report is published with the run policy the validator reads its quorum from.
+    assert "each with its run policy beside it under the same name ending .policy.toml" in text
+    for rel, quorum in zip(CONFORMANCE_REPORTS, CONFORMANCE_QUORUMS, strict=True):
+        assert f"https://wesupport-ai.com/{rel} (quorum {quorum}" in text
+
+
+def test_g8_says_what_aics_verify_message_does_not_replay(card):
+    # G8 names what an offline `aics verify message` leaves out; the verifier lists it itself (NOT_REPLAYED, and the
+    # card active at the index in ALWAYS_UNPROVEN), and the card may not claim that it replays any of it.
+    consts = _module_constants("packages/aics-cli/src/aics_cli/message.py")
+    listed = " ".join(_evaluate(consts["NOT_REPLAYED"], {}) + _evaluate(consts["ALWAYS_UNPROVEN"], {}))
+    text = next(t for t in assurance(card, "G8")["assumptions"] if "aics verify message" in t)
+    for verifier, card_words in (("task board", "the SUP-1 task board"), ("owner-action market", "owner-action market"),
+                                 ("balances", "balances"), ("polls", "polls"), ("votes", "votes"),
+                                 ("suspensions", "suspensions"), ("freezes", "freezes"),
+                                 ("the card active at the index", "the card in force at the entry's index")):
+        assert verifier in listed, f"message.py no longer lists {verifier!r} as not replayed: update G8"
+        assert card_words in text, card_words
+    assert "It does not replay the SUP-1 task board" in text
+
+
+#: Every table aics-server creates, by what N2 [no-address-records] calls it: a new table needs a look at that
+#: statement (does it record requests?) before it joins one of these sets.
+SERVER_TABLES = {
+    "the log itself": {
+        "tlog_leaves", "policy_documents", "names", "key_events", "bound_keys", "envelope_chain", "refusals", "grants",
+        "messages", "capsules", "capsule_leaves", "tombstones", "suspensions", "freezes", "agora_posts",
+        "agora_polls", "agora_poll_votes", "daily_reports", "owner_actions", "owner_quotes", "sup_ledger",
+        "sup_tasks", "sup_awards"},
+    "the notice and contribution records described below": {"notices", "sup_intents", "sup_contributions"},
+    "the replay records that AICS-1 section 4.3 requires": {"nonces"},
+    "aggregate counts": {"telemetry_counters", "stats_daily", "stats_latency_daily", "stats_gate_daily"},
+    # The swarms profile (SWARMS-1): not active on this card (AICS-1+SUP-1), so the server writes none of these.
+    None: {"swarm_bodies", "swarm_secrets", "swarm_checkpoint_notes"},
+}
+
+
+def test_no_address_records_names_every_record_the_server_keeps(card):
+    if not (REPO / SERVER_DIR).is_dir():
+        pytest.skip(f"{SERVER_DIR} is not in this checkout")
+    tables = {t for path in sorted((REPO / SERVER_DIR).glob("*.py"))
+              for t in re.findall(r"CREATE TABLE IF NOT EXISTS (\w+)", path.read_text(encoding="utf-8"))}
+    known = set().union(*SERVER_TABLES.values())
+    assert tables == known, {"new tables": sorted(tables - known), "gone": sorted(known - tables)}
+    text = statement(card, "N2", "no-address-records")
+    for name in filter(None, SERVER_TABLES):
+        assert name in text, name
+    # The db.py nonces table keeps a signed request's (kid, nonce, expires), signed reads included, until the
+    # signature has expired, and for good when a leaf backs it; the per-key windows live in memory (db.py _Window).
+    assert "kept for good when a leaf accepts or refuses the request or, as G4's deviation says, cites it" in text
+    assert "per-key rate windows held in memory only" in text
+    assert "running totals of requests and of accepted writes by kind" in text
+    assert not vc.swarms_active(card["spec"])
+    # The stats' closed lists (stats.py), each named in the statement.
+    stats = _module_constants(f"{SERVER_DIR}/stats.py")
+    assert _evaluate(stats["ACCESS_CLASSES"], {}) == ("agent-gate", "agent-signed", "program", "person", "owner",
+                                                      "notice")
+    for words in ("the text gate", "a signed request", "the owner key", "a notice", "counted as a program",
+                  "as a browser", "route group, outcome and latency bucket", "text-gate steps"):
+        assert words in text, words
 
 
 # --- launch blockers (README "Launch checklist"); run with: uv run pytest -m launch ------------------------------
+
+
+@launch
+def test_launch_the_conformance_reports_back_every_proven_row(card):
+    # The proven rows name these reports by hash (README "Genesis v2", step 0): each must show every row passing,
+    # and the run policies beside them must include a run at the card's witness quorum. --fill-hashes checks the same.
+    for rel in CONFORMANCE_REPORTS:
+        need(rel)
+        need(vc.conformance_policy_path(rel))
+    rows = [a["id"] for a in card["assurances"] if a["status"] == "proven" and a["id"] in vc.CONFORMANCE_ROWS]
+    assert rows == list(vc.CONFORMANCE_ROWS)
+    problems, runs = vc.check_conformance_reports(vc.conformance_evidence(card), REPO, {},
+                                                  card["witness_policy"]["quorum"])
+    assert not problems, problems
+    assert sorted({(r.file, r.quorum) for r in runs}) == sorted(zip(CONFORMANCE_REPORTS, CONFORMANCE_QUORUMS,
+                                                                    strict=True))
+
+
+@launch
+def test_launch_every_evidence_document_is_published_where_g10_says(card):
+    # ops/sync-docs.sh writes the export the pages host serves (deploy/Caddyfile): every evidence document G10 names,
+    # and each conformance report's run policy, must be there byte for byte at the path its URL names.
+    need("ops/sync-docs.sh")
+    if shutil.which("bash") is None:
+        pytest.fail("bash is needed to run ops/sync-docs.sh")
+    # Outside the checkout and without a symlink on the way (macOS /var is one), as sync-docs requires.
+    with tempfile.TemporaryDirectory(prefix="card-docs-export-") as temporary:
+        out = Path(temporary).resolve() / "docs-public"
+        result = subprocess.run(["bash", str(REPO / "ops/sync-docs.sh"), str(out)], capture_output=True, text=True,
+                                check=False)
+        assert result.returncode == 0, result.stdout + result.stderr
+        published = {_export_path(m.group(1)) for m in PAGES_URL.finditer(_evidence_statement(card))}
+        published |= {vc.conformance_policy_path(rel) for rel in CONFORMANCE_REPORTS}  # docs/evidence/<name>
+        for export in sorted(published):
+            assert (out / export).is_file(), f"ops/sync-docs.sh does not publish {_source_of(export)} at {export}"
+            assert (out / export).read_bytes() == (REPO / _source_of(export)).read_bytes(), export
 
 
 @launch
@@ -850,10 +1032,15 @@ def test_launch_card_policy_matches_the_card(card):
     problems = [phrase for phrase in ("future week", "tie the running code to public source", "[owner to decide]")
                 if phrase in text]
     for a in card["assurances"]:
+        paragraph = next((line for line in text.splitlines() if line.startswith(f"{a['id']} — ")), "")
         if a["id"].startswith("G") and a["status"] == "promised":
-            paragraph = next((line for line in text.splitlines() if line.startswith(f"{a['id']} — ")), "")
             if "promised" not in paragraph.lower():
                 problems.append(f"{a['id']} is promised on the card but not in card-policy.md")
+        elif a["id"].startswith("G") and a["status"] == "proven":
+            if "Proven" not in paragraph or "promised at launch" in paragraph.lower():
+                problems.append(f"{a['id']} is proven on the card but card-policy.md does not say so")
+            if a["id"] in vc.CONFORMANCE_ROWS and "conformance report" not in paragraph:
+                problems.append(f"{a['id']}: card-policy.md does not name the conformance report that proves it")
     assert not problems, problems
 
 

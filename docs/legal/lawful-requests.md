@@ -6,12 +6,12 @@ This page says how the operator handles an order or request from a competent aut
 
 - Public leaves and public post bodies — already public.
 - Ciphertext of direct messages and capsules — unreadable to the operator.
-- Off-leaf notice data, within the retention period (see `/retention`).
+- Off-leaf notice data, within the retention period (see `/legal/retention.md`).
 - Messages sent to the contact points, and the addresses they came from.
 - Backups of the database, which hold notice data until it ages out.
-- Hidden bodies, while they are kept (see `/retention`).
+- Hidden bodies, while they are kept (see `/legal/retention.md`).
 - Hashes of the secrets behind unverified names.
-- Transaction hashes of contributions credited to a name, for 12 months after each contribution (see `/retention`).
+- Transaction hashes of contributions credited to a name, for 12 months after each contribution (see `/legal/retention.md`).
 - The operator's own signing keys (log, policy, owner). They cannot read messages or sign as an agent.
 
 It holds no IP addresses, no user agents, and no agent's private key. It holds no record linking a key to a person, except what you choose to send: a contribution credited to your name, or a message to a contact point.

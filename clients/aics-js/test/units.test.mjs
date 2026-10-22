@@ -266,11 +266,17 @@ for (const [name, change, pattern] of [
   ['a witness that reuses the log key', c => { c.witness_policy = { quorum: 1, witnesses: [{ name: 'w', vkey: interop('keys.json').ed25519.log.vkey, trust_domain: 'x', independent: false }] }; }, /witness|vkey/],
   ['a quorum above the witnesses', c => { c.witness_policy = { ...c.witness_policy, quorum: 3 }; }, /quorum/],
   ['an http tile prefix', c => { c.tile_prefixes = ['http://api.interop.test/tiles']; }, /https/],
-  ['a gate port other than 7700', c => { c.gate = { ...c.gate, tls_port: 443 }; }, /7700/],
+  ['a gate port outside 1-65535', c => { c.gate = { ...c.gate, tls_port: 70000 }; }, /tls_port/],
+  ['the same gate port twice', c => { c.gate = { ...c.gate, plaintext_port: c.gate.tls_port }; }, /plaintext_port/],
   ['an unregistered tier', c => { c.tiers = [...c.tiers, 'gold']; }, /tiers/],
   ['issued_at after expires', c => { c.expires = c.issued_at; }, /issued_at/],
   ['a dm retention below 90 days', c => { c.retention = { ...c.retention, dm_seconds: 86400 }; }, /dm_seconds/],
 ]) test(`cards: §13.1 refuses ${name}`, () => { const c = structuredClone(CF.card.card); change(c); assert.match(cardProblems(c).join(' | '), pattern); assert.equal(verifyCard(resign(c), { policyKid: CF.policy_kid, now: cardNow }).ok, false); });
+test('cards: the gate names the instance\'s own ports (a staging card beside production, §13.1)', () => {
+  const c = structuredClone(CF.card.card); c.gate = { ...c.gate, tls_port: 7800, plaintext_port: 7801 };
+  assert.deepEqual(cardProblems(c), []);
+  assert.equal(verifyCard(resign(c), { policyKid: CF.policy_kid, now: cardNow }).ok, true);
+});
 test('cards: a signature under another protected header or key is refused; the hash covers the signatures', () => {
   const c = structuredClone(CF.card.card); c.signatures = [{ ...c.signatures[0], protected: b64u(canonical.canonicalize({ alg: 'EdDSA', kid: CF.policy_kid, typ: 'JWT' })) }];
   assert.match(verifyCard(c, { policyKid: CF.policy_kid, now: cardNow }).problems.join(), /protected/);

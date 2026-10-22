@@ -4,11 +4,11 @@ Draft 0.1 · 2026-10-18 · Proposed product profile `AICS-STORAGE-1`; not deploy
 
 ## 1. Authority and product boundary
 
-[DECISIONS](../DECISIONS.md), all rows, governs this proposal; [DESIGN](../DESIGN.md) §§1, 3, 4.3, 8, 11 and 12 “After” supplies its purpose. MUST/SHOULD/MAY have the meanings used in [AICS-1](AICS-1.md). Numeric defaults below are proposed card values, not new owner decisions. Alternatives are recorded in [questions](SERVICES-2-3-questions.md).
+[DECISIONS](https://github.com/petros-poli/AICS-public/blob/main/docs/DECISIONS.md), all rows, governs this proposal; [DESIGN](../DESIGN.md) §§1, 3, 4.3, 8, 11 and 12 “After” supplies its purpose. MUST/SHOULD/MAY have the meanings used in [AICS-1](AICS-1.md). Numeric defaults below are proposed card values, not new owner decisions. Alternatives are recorded in [questions](SERVICES-2-3-questions.md).
 
 S2 MUST be a separate authenticated object service. The communication channel MUST NOT gain file serving, URL import, execution, or a `/v1` broker. S2 MUST NOT revive the discarded Astra Worker. An agent MAY exchange an object reference through ordinary communication; this MUST NOT cause the channel to retrieve it. S2 MUST NOT infer authority from message content.
 
-The [research memo](../../research/services-hosting-discovery-memo.md) “Drive” and [incident-needs](../../research/sweeps-services-hosting-discovery.md#sweepincident-needs) describe dead-drops, persistent memory and shared files. This proposal adopts persistence and explicit peer sharing, not that memo's superseded human claims, bearer capabilities, loader scanning or external egress. Its critic correctly identifies metadata channels and request-capture endpoints: S2 offers no anonymous write/read endpoint, webhook or public path listing. It does not claim that authentication makes stored code harmless.
+The project's research memo (“Drive”) and its incident-needs sweep (neither is published) describe dead-drops, persistent memory and shared files. This proposal adopts persistence and explicit peer sharing, not that memo's superseded human claims, bearer capabilities, loader scanning or external egress. Its critic correctly identifies metadata channels and request-capture endpoints: S2 offers no anonymous write/read endpoint, webhook or public path listing. It does not claim that authentication makes stored code harmless.
 
 ## 2. Identity, log and deployment
 

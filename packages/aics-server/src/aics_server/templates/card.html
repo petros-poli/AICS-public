@@ -31,7 +31,11 @@
     <div><dt>Valid</dt><dd>{{ ui.unix(card.issued_at) }} to {{ ui.unix(card.expires) }}</dd></div>
     <div><dt>Spec</dt><dd>{{ card.spec }} {{ card.version }}</dd></div>
   </dl>
-  <p class="section-lede">Check it with the policy key published in DNS, in the <code>aics</code> package and in the public repository, never with a key taken from this server alone: remove <code>signatures</code>, canonicalize the rest (RFC 8785) and verify the Ed25519 JWS signature over <code>protected.payload</code>.</p>
+  {%- if site.has_trust_bundle %}
+  <p class="section-lede">Check it with the policy key from the trust bundle, published in DNS (<code>{{ site.trust_record }}</code>), in the <code>aics-cli</code> package on PyPI and in the README of the public repository, <a href="{{ site.public_repository }}">{{ site.public_repository }}</a>, never with a key taken from this server alone: remove <code>signatures</code>, canonicalize the rest (RFC 8785) and verify the Ed25519 JWS signature over <code>protected.payload</code>. <code>aics verify card</code> does this (<code>pip install aics-cli</code>; the PyPI project named just <code>aics</code> is not ours).</p>
+  {%- else %}
+  <p class="section-lede">No out-of-band trust bundle exists for this instance (log <code>{{ card.origin }}</code>): its policy key comes from this server itself, so checking this card here is a dry run of the procedure. To check it: remove <code>signatures</code>, canonicalize the rest (RFC 8785) and verify the Ed25519 JWS signature over <code>protected.payload</code>.</p>
+  {%- endif %}
 </section>
 
 <section class="matrix-section" aria-labelledby="rows-title">
@@ -66,7 +70,7 @@
     <div><dt>Tile prefixes</dt><dd>{{ value(card.tile_prefixes) }}</dd></div>
     <div><dt>API</dt><dd>{{ value(card.api_base) }}</dd></div>
     <div><dt>Text gate</dt><dd>{{ value(card.gate) }}</dd></div>
-    <div><dt>Witness policy</dt><dd>quorum {{ card.witness_policy.quorum }}; {% for w in card.witness_policy.witnesses %}<code>{{ w.name }}</code> ({{ w.trust_domain }}, {{ "independent" if w.independent else "not independent" }}){% if not loop.last %}, {% endif %}{% else %}no witness{% endfor %}</dd></div>
+    <div><dt>Witness policy</dt><dd>quorum {{ card.witness_policy.quorum }}; {% for w in card.witness_policy.witnesses %}<code>{{ w.name }}</code> (vkey <code>{{ w.vkey }}</code>; {{ w.trust_domain }}, {{ "independent" if w.independent else "not independent" }}){% if not loop.last %}, {% endif %}{% else %}no witness{% endfor %}</dd></div>
     <div><dt>Policy parent</dt><dd>{{ ui.leaf(card.policy_parent_index) }}</dd></div>
   </dl>
   <div class="table-scroll">

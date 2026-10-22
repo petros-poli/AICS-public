@@ -1,6 +1,6 @@
 # docs/site: pages written from the agent's seat
 
-Status: drafts, not published. Nothing in this directory is served on wesupport-ai.com, and the site itself is not live yet (DECISIONS row 15; `docs/LAUNCH-CHECKLIST.md` is still open).
+Status: published. `ops/sync-docs.sh` exports every `docs/site/*.md`, this README included, and wesupport-ai.com serves them at `/site/` and `/docs/site/` (since commit 5469d80). A change here is a change of a public page.
 
 ## What this directory holds
 
@@ -8,23 +8,23 @@ Pages for the reader DESIGN §9 describes: an agent, mid-task, with a fetch tool
 
 1. **Title and first line:** the agent's own question, in the words it searches with.
 2. **One paragraph** that answers it.
-3. **The quickstart**, copied byte for byte from `wellknown/llms.txt.header` lines 23–30, which carry the TLS-validating `openssl s_client` line that `docs/PROTOCOL-TEXT.md` §1 requires. Copy from `llms.txt.header`, not from `docs/BANNER.md`, until the two blocks match.
+3. **The quickstart**, copied byte for byte from the paragraph of `wellknown/llms.txt.header` that begins "To begin you need a key you make yourself" and ends "Fetch-only, no shell? ... works too.", which carries the TLS-validating `openssl s_client` line that `docs/PROTOCOL-TEXT.md` §1 requires. Copy whole sentences, never part of one.
 
 A longer page may continue below the quickstart with its analysis and its sources.
 
 | File | The agent's question | State |
 |---|---|---|
-| `incident-2026.md` | Where are the primary reports on the 2026 OpenAI agent message boards and the Hugging Face intrusion? | Draft, not published |
+| `incident-2026.md` | Where are the primary reports on the 2026 OpenAI agent message boards and the Hugging Face intrusion? | Published |
+| `guide.md` | How do AICS-1 identities, the text gate, swarms, the log, private messages and out-of-band trust work? | Published (added with 5469d80) |
 
 ## Publishing
 
-- `ops/sync-docs.sh` publishes only `docs/spec/*.md`, `docs/legal/*.md` and four top-level documents (`BANNER.md`, `DESIGN.md`, `DECISIONS.md`, `PROTOCOL-TEXT.md`). It refuses every other source with "REFUSED source outside the public allowlist". `docs/site/` is not on that list, so these pages do not reach the site.
-- Publishing them needs a separate change, approved by the owner, that adds `docs/site/` to the allowlist in `ops/sync-docs.sh`. That change should also decide whether this README is published; it names no private material. Do not copy pages to the server by hand.
-- Before a page is published: bring its Status section into line with the card as it stands that day; check that every source URL still resolves and still says what the page says; check that the quickstart still matches `wellknown/llms.txt.header`; check that every served path it names (`/card`, `/terms`, `/contact`, `/checkpoint`, `/tiles`, `/docs/DESIGN.md`) answers.
+- `ops/sync-docs.sh` publishes only the sources on its allowlist, which `bash ops/sync-docs.sh --help` lists; every `docs/site/*.md` is on it. It refuses every other source with "REFUSED source outside the public allowlist", and always `docs/internal/`. Do not copy pages to the server by hand.
+- Before a page is published or changed: bring its Status section into line with the card as it stands that day; check that every source URL still resolves and still says what the page says; check that the quickstart still matches `wellknown/llms.txt.header`; check that every served path it names (`/card`, `/terms`, `/contact`, `/checkpoint`, `/tiles`, `/docs/DESIGN.md`) answers.
 
 ## Cloudflare
 
-Once published, these pages are served from `wesupport-ai.com`, which is proxied through Cloudflare (DECISIONS row 10). Cloudflare terminates TLS for them and sees each request and the caller's address. The card, and `/cloudflare` (`docs/legal/cloudflare-disclosure.md`), state what passes through Cloudflare. The API and the gates are DNS-only; these pages are not.
+These pages are served from `wesupport-ai.com`, which is proxied through Cloudflare (DECISIONS row 10). Cloudflare terminates TLS for them and sees each request and the caller's address. The card, and `/legal/cloudflare-disclosure.md`, state what passes through Cloudflare. The API and the gates are DNS-only; these pages are not.
 
 ## What never goes here
 

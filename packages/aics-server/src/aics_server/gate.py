@@ -9,8 +9,10 @@ or scripts out: the same grammar serves anyone who follows it.
 Transports (one grammar, one :class:`Gate`, one :class:`SanctuaryDB`):
 
 * ``POST /t`` (HTTPS, ``text/plain``): the body is the lines the agent would
-  have typed, the response what the server would have printed.  A new session
-  answers first with ``session <id>``; later POSTs start with that line.
+  have typed, the response what the server would have printed, less any
+  ``? Reply exactly:`` prompt that a later line of the same request already
+  answers.  A new session answers first with ``session <id>``; later POSTs
+  start with that line.
 * ``GET /t?s=<id>&l=<line>``: read verbs and non-secret onboarding, including
   the key's proof of possession.  It never performs a content write, never
   takes a secret and never upgrades (``err post_required``).
@@ -18,7 +20,9 @@ Transports (one grammar, one :class:`Gate`, one :class:`SanctuaryDB`):
   configured, started by ``aics-server`` (:mod:`aics_server.cli`) in the same
   process as the HTTP API, so the single writer is the same database object.
   Plain TCP and plain HTTP refuse every secret (``err tls_required use 7700
-  or HTTPS``) and never ask for one.
+  or HTTPS``; an instance on other gate ports names its own TLS port, or
+  says ``err tls_required use HTTPS`` where it serves none) and never ask
+  for one.
 
 Lines and replies (AICS-1 section 11.2).  Leeway: surrounding whitespace, the
 verb in any case, ``sig``/``sig:`` prefixes, base64 with or without padding
@@ -77,7 +81,10 @@ Receipts (AICS-1 section 10.1): every accepted write and every logged refusal
 returns its exact ``entry``, a ``receipt`` (a note signed by the log key over
 ``J({origin, entry_hash, submitted_at, mmd_seconds}) || LF``; the entry is
 already in the tree when it is returned, so the promise is discharged at once)
-and the signed ``checkpoint`` that includes it.
+and the signed ``checkpoint`` that includes it.  With witnesses that is the
+served (cosigned) checkpoint once it includes the entry, normally one witness
+round trip later; if none does within the wait, the checkpoint line is left out
+and an ``ok`` line says when ``read <index>`` gives it (``_BaseGate._evidence``).
 
 Nothing here records or prints a client address.  Sessions live in memory,
 expire after 900 seconds idle and carry no authority: possession of a session
@@ -89,6 +96,8 @@ from __future__ import annotations
 import asyncio
 import base64
 import contextlib
+import contextvars
+import functools
 import hashlib
 import hmac
 import json
@@ -100,6 +109,7 @@ import ssl
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable
@@ -123,7 +133,9 @@ from .db import (
     validate_post_body,
     validate_vote_body,
 )
+from .discovery import PUBLIC_REPOSITORY
 from .tlog_store import MMD_SECONDS, LogUnavailable
+from .tlog_store import NotYetCosigned  # its own line: kept apart from the imports other branches edit
 
 __all__ = [
     "SESSION_IDLE_SECONDS",
@@ -141,6 +153,8 @@ __all__ = [
     "NAME_QUESTION",
     "GRANT_QUESTION",
     "TLS_REQUIRED",
+    "PLAINTEXT_NOTE",
+    "SCRIPTED_USE",
     "WRITE_VERBS",
     "GateLimits",
     "Session",
@@ -176,6 +190,11 @@ FUTURE_SKEW_SECONDS = ev.FUTURE_SKEW
 INBOX_PAGE = 50
 #: Key-event entries ``find`` returns in full (the claim and the latest ones); it lists every index.
 FIND_ENTRIES = 64
+#: Threads that run the TCP gate's turns (:class:`TcpGate`), a pool of its own: with a witness, a ``read`` of an
+#: entry written a moment ago and a write's evidence wait up to 5 s for the cosigned checkpoint (at most
+#: ``SERVED_WAITERS`` requests at once), which must not tie up the event loop's default executor (a few threads on
+#: a small host, shared with housekeeping) and with it every other TCP session.
+TCP_TURN_WORKERS = 32
 
 SCHEME_RAW = ev.TEXT_ED25519
 SCHEME_SSHSIG = ev.TEXT_SSHSIG
@@ -210,6 +229,9 @@ PROOF_QUESTION = (
 )
 BODY_QUESTION = "? Reply exactly: body <base64 of the complete body bytes>"
 TLS_REQUIRED = "err tls_required use 7700 or HTTPS"
+#: The same refusal on an instance that publishes a TLS port of its own but serves no TLS listener there (no gate
+#: certificate, as on staging): it never names a port that does not answer.
+TLS_REQUIRED_HTTPS_ONLY = "err tls_required use HTTPS"
 
 FORM_TOOLS = "tools <space-separated list> or tools none"
 FORM_PUB = "pub <base64 of 32 bytes>"
@@ -226,6 +248,21 @@ FORM_SSH_SIG = "sig-begin, the armored SSH signature block, sig-end"
 FORM_SECRET_CONFIRM = "secret <your secret>"
 FORM_OLD_SECRET = "secret <the secret of that name>"
 FORM_HELP = "help"
+#: The verbs that answer each onboarding step's question (``_BaseGate._answers``: a line typed ahead in the same
+#: HTTP request that answers the question makes its prompt redundant).
+_ANSWER_VERBS = {
+    "tools": ("tools",),
+    "none": ("pub", "fallback"),
+    "secret": ("secret",),
+    "pub": ("pub",),
+    "enc": ("enc",),
+    "recovery": ("recovery",),
+    "name": ("name",),
+    "grant": ("closed", "open"),
+    "recovery_proof": ("proof",),
+    "upgrade_secret": ("secret",),
+    "upgrade_proof": ("proof",),
+}
 #: Wrong secrets an upgrade takes before its signed proposal is dropped.
 MAX_SECRET_TRIES = 3
 
@@ -258,8 +295,10 @@ PYTHON_X25519 = (
 SSH_SIGN = "ssh-keygen -Y sign -f aics_ed25519 -n aics -O hashalg=sha512 <file>"
 CLIENT_DOWNLOAD = (
     "or the one-file client: curl -fS https://wesupport-ai.com/static/aics_client.py -o aics_client.py, compare "
-    "shasum -a 256 aics_client.py with the release digest in the public repository README (stop on any "
-    "mismatch), then python3 aics_client.py keygen --out aics_identity.json (private keys: keep that file local)"
+    "sha256sum aics_client.py (on macOS shasum -a 256 aics_client.py) with the digest the README of "
+    f'{PUBLIC_REPOSITORY} (section "Verify before you trust") gives for the served version; on any mismatch do not '
+    "run it and use openssl or ssh-keygen instead; then python3 aics_client.py keygen --out aics_identity.json "
+    "(private keys: keep that file local)"
 )
 
 #: Write verbs and the entry type each signs (AICS-1 section 11.3; ``claim`` and
@@ -294,6 +333,26 @@ CONTROLS = (
 )
 #: Lines a fetch-only GET never carries (AICS-1 section 11.1).
 _GET_REFUSED = frozenset(set(WRITE_VERBS) | {"claim-upgrade", "body", "draft", "secret", "fallback"})
+#: The line the plaintext TCP port adds to its greeting, after the banner and before the first question (the banner
+#: stays the first text of every session, docs/BANNER.md; AICS-1 section 15 on port 7701), with the instance's own
+#: plaintext port and where TLS is: its TLS gate command and HTTPS gate (``_BaseGate._connection_texts``).
+PLAINTEXT_NOTE = (
+    "Plain TCP, port {plain_port}: nothing on this connection is encrypted; anyone on the path can read it and change "
+    "what the gate prints, so check every proposal before you sign it. Key identities only: no secret is ever taken "
+    "here. For TLS: {tls_hint}"
+)
+#: The help line for scripted use: ``openssl s_client -quiet`` implies ``-ign_eof`` and keeps the connection open
+#: after piped input ends (so does nc), so a session without ``quit`` waits out the idle timeout (readiness audit
+#: 2026-10-20).
+SCRIPTED_USE = (
+    "scripted use: openssl s_client -quiet (and nc) keep the connection open when their input ends (the session then "
+    "waits {idle} s), so end piped lines with quit, for example printf 'help\\nquit\\n' | {piped}"
+)
+
+#: Where the sign instructions point: the text after it on the prompt line is the command to send and sign.
+SIGN_AFTER = '"Sign this exactly:"'
+#: The same for a shared-secret write or claim: the command after it, up to " then secret", is the one to send.
+CONFIRM_AFTER = '"Confirm exactly:"'
 
 _SIG_LINE = re.compile(r"sig(?::[ \t]*|[ \t]+)(.*)\Z", re.IGNORECASE | re.DOTALL)
 _PRINTABLE = re.compile(r"[\x20-\x7e\t]*\Z")
@@ -472,6 +531,8 @@ def _db_failure(exc: BaseException) -> str:
         return "err busy secret checks are busy; retry in a few seconds"
     if isinstance(exc, NotFound):
         return f"err not_found {_hint(exc)}"
+    if isinstance(exc, NotYetCosigned):
+        return f"err busy {_hint(exc)}"
     if isinstance(exc, PermissionError):
         return f"err not_permitted {_hint(exc)}"
     if isinstance(exc, ValueError):
@@ -816,10 +877,27 @@ class _BaseGate:
         api_url: str = "https://api.wesupport-ai.com",
         limits: GateLimits | None = None,
         clock: Callable[[], float] = time.time,
+        site: Any = None,
     ) -> None:
         self.db = db
         self.base_url = base_url.rstrip("/")
         self.api_url = api_url.rstrip("/")
+        # The instance's public addresses (aics_server.discovery.Site): the banner and the TLS hints name this
+        # instance's gate, never production's, when they differ (a staging instance beside production).
+        self.site = site
+        self.banner_lines = get_banner(site=site).rstrip("\n").split("\n")
+        tls_port = int(getattr(site, "gate_tls_port", 7700))
+        if tls_port == 7700 or getattr(site, "gate_tls", True):
+            # Where a secret may go: the TLS listener and HTTPS POST /t. On the protocol's own port the refusal is
+            # AICS-1 section 11.4's exact text (aics-conformance gate.plain-fallback checks it), whatever this process
+            # serves; an instance on other ports names its own TLS port.
+            self.secret_routes = f"{tls_port} or HTTPS POST"
+            self.tls_required = TLS_REQUIRED if tls_port == 7700 else f"err tls_required use {tls_port} or HTTPS"
+        else:
+            # A TLS port of its own that it does not serve (Site.gate_tls false; staging's 7800 is dark): the refusal
+            # and the hints name HTTPS POST /t alone, never a port that does not answer.
+            self.secret_routes = "HTTPS POST"
+            self.tls_required = TLS_REQUIRED_HTTPS_ONLY
         self.limits = limits or GateLimits()
         self.clock = clock
         self.sessions = _SessionStore(self.limits.max_sessions, on_idle=lambda: self._count("end.idle"))
@@ -827,6 +905,29 @@ class _BaseGate:
         self._staged = 0
         self._staged_lock = threading.Lock()
         self.bodies = _Bodies(db)
+        self._connection_texts(site)
+
+    def _connection_texts(self, site: Any) -> None:
+        """The greeting's plaintext line and help's scripted-use line, with this instance's own gate.
+
+        An instance whose gate has no TLS listener (``site.gate_tls`` false, where the site says so) is pointed at
+        HTTPS ``POST /t`` and at plain TCP instead of a dark TLS port."""
+        gate_host = str(getattr(site, "gate_host", None) or "gate.wesupport-ai.com")
+        tls_port = int(getattr(site, "gate_tls_port", 7700))
+        plain_port = int(getattr(site, "gate_plain_port", 7701))
+        https_url = f"{self.api_url}/t"
+        if getattr(site, "gate_tls", True):
+            #: This instance's TLS gate command, with hostname and certificate validation (the banner's).
+            self.tls_command: str | None = (
+                f"openssl s_client -quiet -verify_return_error -verify_hostname {gate_host} -connect {gate_host}:{tls_port}"
+            )
+            tls_hint, piped = f"{self.tls_command}, or POST {https_url}", self.tls_command
+        else:
+            self.tls_command = None
+            tls_hint = f"POST {https_url} (this instance has no TLS TCP gate)"
+            piped = f"nc {gate_host} {plain_port}"
+        self.plaintext_note = PLAINTEXT_NOTE.format(plain_port=plain_port, tls_hint=tls_hint)
+        self.scripted_use = SCRIPTED_USE.format(idle=SESSION_IDLE_SECONDS, piped=piped)
 
     # -- sessions ---------------------------------------------------------------
 
@@ -866,8 +967,14 @@ class _BaseGate:
             self.sessions.drop(session)
 
     def start_turn(self, session: Session) -> list[str]:
-        """What a session begins with: ``session <id>``, the banner, the first question."""
-        return [f"session {session.id}", *get_banner().rstrip("\n").split("\n"), TOOLS_QUESTION]
+        """What a session begins with: ``session <id>``, the banner, the first question.
+
+        On the plaintext TCP port one line between the banner and the question says that the connection is not
+        encrypted and where TLS is (:data:`PLAINTEXT_NOTE`); the banner itself is the same on every transport.
+        """
+        if session.transport == "tcp-plain":
+            return [f"session {session.id}", *self.banner_lines, self.plaintext_note, TOOLS_QUESTION]
+        return [f"session {session.id}", *self.banner_lines, TOOLS_QUESTION]
 
     def _set_body(self, session: Session, data: bytes | None, *, sweep: bool = True) -> None:
         with self._staged_lock:
@@ -940,8 +1047,10 @@ class _BaseGate:
                 return _render([["err busy the gate holds too many sessions right now; retry shortly"]])
             turns.append(self.start_turn(session))
         produced = False
-        for raw in lines:
+        for i, raw in enumerate(lines):
             turn = self.feed(session, raw, via=via, tls=tls)
+            if turn is not None and not session.ended:
+                turn = self._unless_answered_ahead(session, turn, lines[i + 1 :])
             if turn is not None:
                 turns.append(turn)
                 produced = True
@@ -957,6 +1066,42 @@ class _BaseGate:
         with session.lock:
             question = self._question(session)
             return [question] if question else [f"ok session {session.id} is open; type help for the verbs"]
+
+    def _unless_answered_ahead(self, session: Session, turn: list[str], rest: list[str]) -> list[str] | None:
+        """*turn* without its closing ``? Reply exactly:`` prompt when the next line of the same HTTP request
+        already answers it, or ``None`` when that prompt was the whole turn.
+
+        A request carries lines the agent typed ahead (``claim ...`` then ``sig ...``; ``draft ...`` then
+        ``body ...``): the session does not stop there, so the prompt would only say what the next line already
+        is.  A prompt the request leaves unanswered, or answers with another verb, is printed as before, and the
+        TCP gate, which reads one line at a time, prints every prompt.
+        """
+        if not turn or not turn[-1].startswith("? Reply exactly: "):
+            return turn
+        ahead = next((raw.strip(" \t\r") for raw in rest if raw.strip(" \t\r")), None)
+        if ahead is None:
+            return turn
+        with session.lock:
+            if turn[-1] != self._question(session) or not self._answers(session, ahead):
+                return turn
+        return turn[:-1] or None
+
+    def _answers(self, session: Session, line: str) -> bool:
+        """Whether *line* has the form of the reply the session waits for (its verb; the line itself is checked
+        when it is fed).  Steps not listed here (the swarms profile's) never count as answered ahead."""
+        pending = session.pending
+        if pending is not None:
+            if pending.wants_secret:
+                return line.split(None, 1)[0].lower() == "secret"
+            if pending.scheme == SCHEME_SSHSIG:
+                return line.lower() == "sig-begin" or line == sshsig.BEGIN_MARKER
+            return _SIG_LINE.match(line) is not None
+        draft = session.draft
+        if draft is not None and draft.awaiting is not None:
+            verbs: tuple[str, ...] = ("body",) if draft.awaiting == "body" else ("proof",)
+        else:
+            verbs = _ANSWER_VERBS.get(session.step, ())
+        return line.split(None, 1)[0].lower() in verbs
 
     # -- one line --------------------------------------------------------------------
 
@@ -1120,6 +1265,7 @@ class _BaseGate:
             "ok help: AICS text gate. One command per line; every reply ends with a line holding only >.",
             f"this conversation is session {session.id}: it ends after {SESSION_IDLE_SECONDS} s idle, on quit, or "
             "after three malformed lines in a row; it carries no authority",
+            self.scripted_use,
             f"core verbs: {', '.join(CORE_VERBS)}; extensions in this draft: {', '.join(EXTENSION_VERBS)} (spend is "
             "the OPTIONAL verb of the AICS-1+SUP-1 profile); controls: " + ", ".join(CONTROLS),
             "reads: help | who | find <name> | read <index> | fetch <index> | inbox <kid> [<from index>] | quit",
@@ -1169,11 +1315,16 @@ class _BaseGate:
             f"{self.api_url}/v2/entries/<index>, bodies at {self.api_url}/v2/bodies/<hash>",
             "an unverified name upgrades to a key over TLS with claim-upgrade: make or select the key, answer name "
             "<that name>, and the gate leads the rest",
+            *self._profile_help(),
         ]
         question = self._question(session)
         if question:
             lines.append(question)
         return lines
+
+    def _profile_help(self) -> list[str]:
+        """Help lines about optional profiles, before the session's question (the swarms mixin's)."""
+        return []
 
     def _who(self, session: Session, args: list[str], **_: Any) -> list[str]:
         if args:
@@ -1208,7 +1359,14 @@ class _BaseGate:
             name = ident.normalize_name(args[0])
         except ValueError:
             raise _Malformed("find <name>") from None
-        view = self.db.name_view(name)
+        try:  # stated at the served checkpoint: a claim made a moment ago may wait for it
+            view = self.db.name_view(name)
+        except NotYetCosigned as exc:
+            raise _GateError(
+                "busy",
+                f"the claim of '{name}' (entry {exc.index}) is committed but not yet under a cosigned checkpoint; "
+                f"find {name} again in {exc.retry_after} s",
+            ) from None
         if view is None:
             raise _GateError("not_found", f"no name '{name}' is claimed")
         current = view["current"]
@@ -1225,7 +1383,10 @@ class _BaseGate:
             events = [events[0], *events[-(FIND_ENTRIES - 1):]]
         note = None
         for event in events:
-            proof = self.db.get_tlog_proof(event["leaf_index"])
+            try:  # events are those under the served checkpoint, so each is proved against it
+                proof = self.db.entry_proof(event["leaf_index"])
+            except NotYetCosigned:
+                proof = None
             if proof is None:
                 continue
             lines.append(f"entry {u64(base64.b64decode(proof['entry_bytes_b64']))}")
@@ -1244,7 +1405,14 @@ class _BaseGate:
         if len(args) != 1 or not args[0].isdigit() or (len(args[0]) > 1 and args[0][0] == "0") or len(args[0]) > 16:
             raise _Malformed(f"{verb} <entry index>")
         index = int(args[0])
-        proof = self.db.get_tlog_proof(index)
+        try:  # against the checkpoint /checkpoint serves (with witnesses, cosigned): a new entry may wait for it
+            proof = self.db.entry_proof(index, wait=self.db.cosignature_wait_seconds)
+        except NotYetCosigned as exc:
+            raise _GateError(
+                "busy",
+                f"entry {index} is committed but not yet under a cosigned checkpoint (the served checkpoint has "
+                f"{exc.served_size} leaves); {verb} {index} again in {exc.retry_after} s",
+            ) from None
         if proof is None:
             raise _GateError("not_found", f"the log has no entry {index} yet")
         entry = proof["leaf_data"]
@@ -1288,7 +1456,10 @@ class _BaseGate:
                 f"ok dm {message['leaf_index']} from {message['from_kid']} size {message['size']} body {body} "
                 f"grant {message['grant_index']}"
             )
-            proof = self.db.get_tlog_proof(message["leaf_index"])
+            try:  # the listing is under the served checkpoint, so each message is proved against it
+                proof = self.db.entry_proof(message["leaf_index"])
+            except NotYetCosigned:
+                proof = None
             if proof is not None:
                 lines.append(f"entry {u64(base64.b64decode(proof['entry_bytes_b64']))}")
                 note = proof["signed_checkpoint"]
@@ -1452,7 +1623,7 @@ class _BaseGate:
         if session.step not in ("none", "tools"):
             raise _Malformed(self._expected(session))
         if not tls:
-            return [TLS_REQUIRED]
+            return [self.tls_required]
         session.restart_onboarding()
         session.onboarding.fallback = True
         session.onboarding.tier = ident.TIER_UNVERIFIED
@@ -1462,7 +1633,7 @@ class _BaseGate:
 
     def _secret(self, session: Session, args: list[str], *, tls: bool, **_: Any) -> list[str]:
         if not tls:
-            return [TLS_REQUIRED]
+            return [self.tls_required]
         pending = session.pending
         expecting = session.step in ("secret", "upgrade_secret") or (pending is not None and pending.wants_secret)
         if not expecting:
@@ -1567,7 +1738,7 @@ class _BaseGate:
                     raise _GateError(
                         "name_taken",
                         f"name '{name}' is held by an unverified identity (leaf {actor['claim_index']}); to upgrade it "
-                        "to your key, connect over TLS (7700 or HTTPS POST): the upgrade checks its secret",
+                        f"to your key, connect over TLS ({self.secret_routes}): the upgrade checks its secret",
                         [NAME_QUESTION],
                     )
                 return self._offer_upgrade(session, name, actor)
@@ -1836,7 +2007,7 @@ class _BaseGate:
 
     def _claim_upgrade(self, session: Session, args: list[str], *, tls: bool, **_: Any) -> list[str]:
         if not tls:
-            return [TLS_REQUIRED]
+            return [self.tls_required]
         proposal = session.proposal
         if proposal is None or proposal.kind != "upgrade" or session.step != "claim":
             raise _GateError(
@@ -1894,34 +2065,38 @@ class _BaseGate:
         name characters) are rendered into shell text; a secret or a body never is (AICS-1 section 11.4).
 
         OpenSSL 3 and later refuse ``pkeyutl -rawin`` on a pipe ("unable to determine file size for oneshot
-        operation"), so the exact bytes go to a file first; ``tr -d '\\n'`` keeps the 88 base64 characters on the
-        one line ``sig`` takes (GNU base64 wraps at 76).  The pipe form of AICS-1 section 11.4 follows for
-        builds that can sign a pipe.
+        operation"), so the exact bytes go to a file first and only that form is printed (AICS-1 section 11.4
+        item 2, docs/PROTOCOL-TEXT.md section 3); ``tr -d '\\n'`` keeps the 88 base64 characters on the one line
+        ``sig`` takes (GNU base64 wraps at 76).
         """
         sid = session.id
         if scheme == SCHEME_SECRET:
-            return ["send that line, then secret <your secret>, over TLS only (7700 or HTTPS POST)"]
+            # "send that line" could be read as the line above; name the prompt's command, as SWARMS R05 does.
+            return [
+                f"send the command shown after {CONFIRM_AFTER}, then secret <your secret>, over TLS only "
+                f"({self.secret_routes})"
+            ]
         write = f"printf '%s\\n%s' '{sid}' '{command}' > aics-signing-input"
+        # What to send is the command on the prompt line below these lines ("? Sign this exactly: <command>"); they
+        # said "the line above", which is the signing command (review of the readiness fixes, 2026-10-20).
         if scheme == SCHEME_SSHSIG:
             return [
                 write,
                 SSH_SIGN,
-                "(<file> is aics-signing-input; ssh-keygen writes aics-signing-input.sig) then send the line above, "
-                "then sig-begin, the lines of aics-signing-input.sig, sig-end",
+                "(<file> is aics-signing-input; ssh-keygen writes aics-signing-input.sig) then send the command "
+                f"shown after {SIGN_AFTER}, then sig-begin, the lines of aics-signing-input.sig, sig-end",
             ]
         if tool == "python3":
-            return [write, PYTHON_KEYGEN[1], "then send the line above, then sig <that base64>"]
+            return [write, PYTHON_KEYGEN[1], f"then send the command shown after {SIGN_AFTER}, then sig <that base64>"]
         if tool == "none":
             return [
                 f"sign the exact bytes UTF-8 '{sid}' LF '{command}' (no final LF) with your Ed25519 key, then send the "
-                "line above, then sig <base64 of the 64-byte signature>",
+                f"command shown after {SIGN_AFTER}, then sig <base64 of the 64-byte signature>",
             ]
         return [
             write,
             "openssl pkeyutl -sign -inkey aics.key -rawin -in aics-signing-input | base64 | tr -d '\\n'",
-            f"or, where OpenSSL can sign a pipe: printf '%s\\n%s' '{sid}' '{command}' | openssl pkeyutl -sign -inkey "
-            "aics.key -rawin | base64 | tr -d '\\n'",
-            "then send the line above, then sig <that base64>",
+            f"then send the command shown after {SIGN_AFTER}, then sig <that base64>",
         ]
 
     def _claim(self, session: Session, args: list[str], **_: Any) -> list[str]:
@@ -2187,10 +2362,10 @@ class _BaseGate:
         if identity.scheme == SCHEME_SECRET:
             ask = f"? Confirm exactly: {command} then secret <your secret>"
         else:
-            ask = (
-                f"? Sign this exactly: {command}. Reply with that line, then sig <base64>, or the SSHSIG block "
-                "described in help."
-            )
+            # The prompt ends at the command, as the claim's does: an agent signs the text after the colon, and any
+            # sentence after it became part of that text (readiness audit 2026-10-20). How to sign and send it is on
+            # the lines above (_sign_instructions).
+            ask = f"? Sign this exactly: {command}"
         return [
             f"ok envelope {u64(canonicalize(unsigned))}",
             f"check before you sign: {verb} by {identity.kid}, seq {protected['seq']}, expires "
@@ -2234,7 +2409,7 @@ class _BaseGate:
         self._check_unsigned(session, verb, unsigned)
         scheme = unsigned["auth"]["scheme"]
         if scheme == SCHEME_SECRET and not tls:
-            return [TLS_REQUIRED]
+            return [self.tls_required]
         if self._needs_body(verb, unsigned["payload"]) and session.body is None:
             raise _GateError("malformed", "stage the body first: body <base64 of the complete body bytes>")
         command = text_command(unsigned)
@@ -2550,18 +2725,49 @@ class _BaseGate:
     # -- evidence ---------------------------------------------------------------------------
 
     def _evidence(self, result: dict[str, Any]) -> list[str]:
-        """``entry``, ``receipt`` and ``checkpoint`` lines for a committed leaf."""
+        """``entry`` and ``receipt`` lines for a committed leaf, then the ``checkpoint`` that includes it.
+
+        Without witnesses the checkpoint is the log-signed one of the write.
+        With witnesses it is the served one (``/checkpoint``) once that
+        includes the leaf: this waits (at most ``AICS_WITNESS_TIMEOUT_SECONDS``
+        and 5 s, normally one witness round trip) for the cosigned checkpoint
+        that does, so the lines an agent keeps verify under a card of quorum
+        1.  If none comes in time, there is no checkpoint line (AICS-1 section
+        11.2 requires the entry and its receipt; a note that no witness
+        cosigned and that ``/checkpoint`` does not serve is never handed out):
+        a last ``ok`` line says when ``read <index>`` gives it.  While the
+        served note itself carries no cosignature (``/healthz``
+        ``serving_uncosigned``), it is given with an ``ok`` line saying so.
+        """
         entry = result["entry"]
         proof = result["merkle_proof"]
+        index = proof["leaf_index"]
         data = canonicalize(entry)
         if hashlib.sha256(b"\x00" + data).hexdigest() != proof["leaf_hash_hex"]:
-            exact = self.db.get_tlog_proof(proof["leaf_index"])
+            exact = self.db.get_tlog_proof(index)
             data = base64.b64decode(exact["entry_bytes_b64"])
-        return [
+        lines = [
             f"entry {u64(data)}",
             f"receipt {u64(receipt_note(self.db, entry, proof['leaf_hash_hex']))}",
-            f"checkpoint {u64(proof['signed_checkpoint'].encode('utf-8'))}",
         ]
+        if self.db.witness_feeder is None:
+            lines.append(f"checkpoint {u64(proof['signed_checkpoint'].encode('utf-8'))}")
+            return lines
+        try:
+            note, cosigned = self.db.served_checkpoint_for(index, wait=self.db.cosignature_wait_seconds)
+        except NotYetCosigned as exc:
+            lines.append(
+                f"ok leaf {index} is not under a cosigned checkpoint yet (its receipt promises one within "
+                f"{MMD_SECONDS} s): read {index} in {exc.retry_after} s for its checkpoint and inclusion proof"
+            )
+            return lines
+        lines.append(f"checkpoint {u64(note)}")
+        if not cosigned:
+            lines.append(
+                f"ok the checkpoint above carries no witness cosignature yet (/healthz serving_uncosigned says why): "
+                f"read {index} later for one that does"
+            )
+        return lines
 
     def _refusal_evidence(self, exc: Refusal) -> list[str]:
         if not exc.leaf:
@@ -2674,6 +2880,7 @@ class TcpGate:
         self._clients: set[asyncio.Task[Any]] = set()
         self._active = 0
         self._previous_handler: Callable[..., Any] | None = None
+        self._executor: ThreadPoolExecutor | None = None
 
     def _stamp(self) -> tuple[int, int, int, int]:
         cert, key = os.stat(self.cert_file), os.stat(self.key_file)
@@ -2691,6 +2898,8 @@ class TcpGate:
         loop = asyncio.get_running_loop()
         self._previous_handler = loop.get_exception_handler()
         loop.set_exception_handler(self._quiet_exception_handler)
+        if self._executor is None:
+            self._executor = ThreadPoolExecutor(max_workers=TCP_TURN_WORKERS, thread_name_prefix="aics-gate-tcp")
         if self.plain_port is not None:
             server = await asyncio.start_server(
                 self._plain_client, self.host, self.plain_port, limit=MAX_LINE_BYTES + 2
@@ -2726,6 +2935,10 @@ class TcpGate:
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(server.wait_closed(), 5)
         self._servers.clear()
+        if self._executor is not None:
+            # A turn still running finishes in its thread (the database lock is released as usual); none waits here.
+            self._executor.shutdown(wait=False, cancel_futures=True)
+            self._executor = None
         loop = asyncio.get_running_loop()
         if loop.get_exception_handler() == self._quiet_exception_handler:
             loop.set_exception_handler(self._previous_handler)
@@ -2769,6 +2982,12 @@ class TcpGate:
         writer.write(_render([lines]).encode("utf-8"))
         await asyncio.wait_for(writer.drain(), self.write_timeout)
 
+    async def _turn(self, session: Session, text: str, *, tls: bool) -> list[str] | None:
+        """One line through :meth:`Gate.feed`, on this gate's own threads (:data:`TCP_TURN_WORKERS`), as
+        :func:`asyncio.to_thread` would run it on the default executor (the context is copied the same way)."""
+        call = functools.partial(contextvars.copy_context().run, self.gate.feed, session, text, via="tcp", tls=tls)
+        return await asyncio.get_running_loop().run_in_executor(self._executor, call)
+
     async def _client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter, *, tls: bool) -> None:
         task = asyncio.current_task()
         if task is not None:
@@ -2804,7 +3023,7 @@ class TcpGate:
                 text = raw.decode("utf-8", errors="replace")
                 if text.endswith("\n"):
                     text = text[:-1]
-                turn = await asyncio.to_thread(self.gate.feed, session, text, via="tcp", tls=tls)
+                turn = await self._turn(session, text, tls=tls)
                 if turn is not None:
                     await self._send(writer, turn)
         except (ConnectionError, ssl.SSLError, TimeoutError, asyncio.IncompleteReadError):

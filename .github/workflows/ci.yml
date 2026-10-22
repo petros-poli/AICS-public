@@ -1,91 +1,103 @@
-name: CI
+name: Verify
+
+# Reusable only: the Release workflow calls it once per v* tag. Routine pushes,
+# pull requests and documentation edits start no Actions jobs; verification is
+# local (CONTRIBUTING.md). This job runs the same entry point as a contributor,
+# scripts/verify.sh --full --strict, so the release checks and the local checks
+# cannot drift apart. That includes the six reproducible:<library> double
+# builds inside this one job, a cheap pre-check; the release evidence is the
+# pair of isolated builds per library in reproducible.yml.
 
 on:
-  push:
-  pull_request:
   workflow_call:
+    inputs:
+      python-version:
+        description: Exact Python release uv runs every check with (UV_PYTHON)
+        type: string
+        required: false
+        default: "3.12.12"
+      node-version:
+        description: Node.js release line for the clients/aics-js checks
+        type: string
+        required: false
+        default: "24"
+    outputs:
+      verified-commit:
+        description: The commit scripts/verify.sh --full passed on (git rev-parse HEAD)
+        value: ${{ jobs.verify.outputs.commit }}
 
 permissions:
   contents: read
-
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  discover:
+  verify:
+    name: scripts/verify.sh --full (Python ${{ inputs.python-version }}, Node ${{ inputs.node-version }})
     runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
     outputs:
-      packages: ${{ steps.packages.outputs.packages }}
+      commit: ${{ steps.commit.outputs.commit }}
+    env:
+      # The openssl, ssh-keygen and git interop tests fail instead of skipping.
+      AICS_INTEROP_REQUIRE_TOOLS: "1"
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Verify per-project release upload isolation
-        run: python3 -m unittest discover -s tools -p test_pypi_release.py
-      - name: Discover every Python package
-        id: packages
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-
-          packages = sorted(str(p.parent) for p in Path("packages").glob("*/pyproject.toml"))
-          if not packages:
-              raise SystemExit("No packages/*/pyproject.toml found")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              print(f"packages={json.dumps(packages)}", file=output)
-          PY
-
-  test:
-    name: Test ${{ matrix.package }}
-    needs: discover
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        package: ${{ fromJSON(needs.discover.outputs.packages) }}
-    defaults:
-      run:
-        working-directory: ${{ matrix.package }}
-    steps:
-      # Keep the entire checkout: aics-server uses sibling path dependencies.
+      # The entire checkout: aics-server and aics-interop use sibling path
+      # dependencies, and the interop suite checks citations at git HEAD.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "0.12.6"
-          python-version: "3.12.12"
-          enable-cache: true
-          cache-suffix: ${{ matrix.package }}
-          cache-dependency-glob: |
-            packages/*/pyproject.toml
-            packages/*/uv.lock
-      - name: Install dependencies and all extras
-        run: uv sync --all-extras --dev
-      - name: Run package tests
-        run: uv run pytest -q
-
-  all-packages:
-    name: All packages passed
-    if: ${{ always() }}
-    needs: [discover, test]
-    runs-on: ubuntu-24.04
-    permissions: {}
-    steps:
-      - name: Require every package to succeed
-        env:
-          DISCOVER_RESULT: ${{ needs.discover.result }}
-          TEST_RESULT: ${{ needs.test.result }}
+          python-version: ${{ inputs.python-version }}
+          # A release never restores a cache another ref could have written.
+          enable-cache: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: ${{ inputs.node-version }}
+          package-manager-cache: false
+      - name: Tools the checks drive (required)
         run: |
-          if [[ "$DISCOVER_RESULT" != success || "$TEST_RESULT" != success ]]; then
-            echo "Package CI failed or did not complete (discovery=$DISCOVER_RESULT, tests=$TEST_RESULT)."
+          for tool in uv node npm openssl ssh-keygen git; do
+            command -v "$tool" || { echo "::error::$tool is not installed"; exit 1; }
+          done
+          uv --version
+          node --version
+          npm --version
+          openssl version
+          ssh -V
+          git --version
+      - name: Record the verified commit
+        id: commit
+        run: echo "commit=$(git rev-parse 'HEAD^{commit}')" >> "$GITHUB_OUTPUT"
+      - name: List the checks
+        run: bash scripts/verify.sh --list
+      - name: Run every check (no SKIPPED or PREREQ line is accepted)
+        run: |
+          set -o pipefail
+          # --strict fails the run on a SKIPPED check; the grep below is a
+          # second guard that also refuses a PREREQ line.
+          bash scripts/verify.sh --full --strict 2>&1 | tee "$RUNNER_TEMP/verify.log"
+          if grep -E '^[[:space:]]*(PREREQ|SKIPPED)([^[:alnum:]_]|$)' "$RUNNER_TEMP/verify.log"; then
+            echo "::error::scripts/verify.sh --full skipped a check or missed a prerequisite"
             exit 1
           fi
-          echo "All discovered packages passed."
+      - name: Verification left the tracked tree unchanged
+        run: |
+          if ! git diff --exit-code --stat; then
+            echo "::error::scripts/verify.sh modified tracked files (stale lock file or fixtures?)"
+            exit 1
+          fi
+      - name: Preserve the verification log
+        if: ${{ always() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: verify-log
+          path: ${{ runner.temp }}/verify.log
+          if-no-files-found: warn
+          retention-days: 90

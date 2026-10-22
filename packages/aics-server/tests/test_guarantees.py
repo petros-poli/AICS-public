@@ -54,7 +54,7 @@ from aics_server import envelopes as ev
 from aics_server import identity as ident
 from aics_server.app import create_app
 from aics_server.banner import get_banner
-from aics_server.db import ENTRY_TYPES, REFUSAL_REASONS, TOMBSTONE_REASONS
+from aics_server.db import DEFAULT_ORIGIN, ENTRY_TYPES, REFUSAL_REASONS, TOMBSTONE_REASONS
 from aics_server.discovery import signed_endpoints
 from aics_server.gate import NONE_QUESTION, TOOLS_QUESTION, TcpGate, signing_input, text_command
 from aics_tlog import (
@@ -1725,14 +1725,19 @@ class TestG8VerificationSurvivesUs:
             assert tlog_cli.main(["verify-bundle", "--bundle", str(path), "--offline", "--vkey-file", str(key_file)]) != 0, n
             capsys.readouterr()
 
-    def test_the_aics_cli_verifies_a_served_bundle_when_it_can(self, journey, tmp_path):
+    def test_the_aics_cli_verifies_a_served_bundle_when_it_can(self, test_origin_journey, tmp_path):
         """DESIGN.md G8 names ``aics verify message --bundle --offline``; run it when an aics CLI is installed.
 
         A bare bundle offline proves the checkpoint, the inclusion and the envelope but not the history through its
         index (AICS-1 section 14.3 step 2), so it is ``incomplete`` (exit 1).  With the log's tiles (a mirror copy,
         still offline) the first entry of every type verifies completely: the name, key, policy-authority, sequence,
         nonce and grant history the CLI replays from the authenticated prefix agrees with what the server accepted.
+
+        The journey runs on a non-production origin (``conftest.TEST_ORIGIN``) with its own throwaway keys: the
+        published CLI carries the real trust bundle of the production origin and refuses hand-typed keys for it.
         """
+        journey = test_origin_journey
+        assert journey.origin != DEFAULT_ORIGIN
         candidates = [shutil.which("aics"), str(PACKAGE.parents[2] / "aics-cli" / ".venv" / "bin" / "aics")]
         aics = next((c for c in candidates if c and Path(c).is_file()), None)
         if aics is None:
@@ -2310,7 +2315,11 @@ class TestBanner:
             finally:
                 await tcp.close()
 
-        assert asyncio.run(tcp_greeting()) == greeting  # the TCP gate (plain here; TLS in test_gate.py)
+        # The TCP gate (plain here; TLS in test_gate.py): the same banner first, then on the plaintext port one line
+        # saying that the connection is not encrypted, then the same question.
+        plain = asyncio.run(tcp_greeting())
+        assert plain.startswith(banner)
+        assert plain == banner + client.app.state.gate.plaintext_note + "\n" + TOOLS_QUESTION + "\n>\n"
         # One text: it carries no figure that changes with the log.
         make_agent("alice").post()
         assert client.get("/", params={"format": "json"}).json()["banner"] == banner == get_banner()

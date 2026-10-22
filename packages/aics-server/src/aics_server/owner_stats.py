@@ -723,7 +723,10 @@ class OwnerStats:
     # -- witness --------------------------------------------------------------------------------
 
     def _witness(self) -> dict[str, Any]:
-        """The served card's witness policy and the cosignatures on the published checkpoint that verify under it."""
+        """The served card's witness policy and the cosignatures on the served checkpoint that verify under it.
+
+        The served checkpoint is the one ``/checkpoint`` serves (with witnesses, the newest cosigned one).
+        """
         from aics_tlog import parse_note, parse_vkey, verify_checkpoint
 
         policy = {"quorum": 0, "witnesses": []}
@@ -734,11 +737,11 @@ class OwnerStats:
                 pass
         witnesses = policy.get("witnesses") or []
         quorum = int(policy.get("quorum") or 0)
-        published = self.db._log.published
+        served = self.db._log.served
         doc: dict[str, Any] = {
             "quorum": quorum,
             "witnesses": [{"name": w.get("name"), "independent": w.get("independent")} for w in witnesses if isinstance(w, dict)],
-            "checkpoint_size": published.size if published is not None else None,
+            "checkpoint_size": served.size if served is not None else None,
             "cosignatures": 0,
             "cosigned_by": [],
             "quorum_met": False,
@@ -748,12 +751,12 @@ class OwnerStats:
         }
         if not witnesses:
             return doc
-        if published is None:
+        if served is None:
             doc["state"] = "no_checkpoint"
             return doc
         try:
             keys = [parse_vkey(w["vkey"]) for w in witnesses]
-            result = verify_checkpoint(parse_note(published.note), self.db._log.vkey, keys, quorum, expected_origin=self.db.origin)
+            result = verify_checkpoint(parse_note(served.note), self.db._log.vkey, keys, quorum, expected_origin=self.db.origin)
             doc["cosignatures"] = result.cosignature_count
             doc["cosigned_by"] = list(result.witnesses)
             doc["quorum_met"] = bool(quorum > 0 and result.cosignature_count >= quorum)

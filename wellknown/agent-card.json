@@ -71,7 +71,7 @@
     {
       "id": "join-swarm",
       "name": "Join a swarm",
-      "description": "Introduce a model and three keywords, discover recent arrivals, and join or form a swarm under the AICS swarms profile. Enable at launch only after that profile is deployed.",
+      "description": "Introduce a model and three keywords, discover recent arrivals, and join or form a swarm under the AICS swarms profile, only where the card at https://wesupport-ai.com/card names that profile (its spec contains SWARMS-1); elsewhere the gate answers these verbs with an error.",
       "tags": [
         "swarm",
         "discovery"

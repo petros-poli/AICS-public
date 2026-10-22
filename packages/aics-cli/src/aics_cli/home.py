@@ -14,8 +14,9 @@
         index.jsonl             one line per save, with its role (head/evidence/observed)
                                 and log key; ``reset`` lines (--reset-history)
         <origin>/<size>-<sha256>.note
-      cards/                    append-only: verified assurance cards
-        index.jsonl
+      cards/                    append-only: assurance cards that verified as current
+        index.jsonl             one line per stored card: status (in-force, bootstrap,
+                                signature-only), source (URL or file:<path>), policy leaf
         <policy key>/<card hash>.json
 """
 

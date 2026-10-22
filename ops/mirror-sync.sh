@@ -24,8 +24,13 @@ flock -n 9 || { printf 'mirror-sync: another run is active\n'; exit 0; }
 STAGE=$(mktemp -d)
 trap 'rm -rf "$STAGE"' EXIT
 # The writer atomically publishes tiles before checkpoint. Capture the note
-# first and require it unchanged after copying; pruning races fail closed.
-# A busy writer may force a retry on the next timer tick. No live files upload.
+# first and require its checkpoint (origin, size, root: the text before the
+# blank line) unchanged after copying; pruning races fail closed. The server
+# also rewrites the note without changing that text whenever a witness
+# cosignature is refreshed (every AICS_WITNESS_REFRESH_SECONDS), so the bytes
+# may differ: the note read after the walk is published, carrying the newest
+# cosignatures of the same checkpoint. A new publication during the walk still
+# forces a retry on the next timer tick. No live files upload.
 python3 - "$TILES" "$STAGE" <<'PYTHON' || fail 3 'snapshot failed; no checkpoint published'
 import os, re, shutil, stat, sys
 from pathlib import Path
@@ -35,10 +40,17 @@ def regular(p):
     s = p.lstat()
     if not stat.S_ISREG(s.st_mode) or s.st_nlink != 1:
         raise ValueError(f'not a single-link regular file: {p}')
+def checkpoint_text(note):
+    # The signed text (origin, size, root, extension lines), without the signature lines that follow the blank line.
+    text, sep, _ = note.partition(b'\n\n')
+    if not text or not sep:
+        raise ValueError('checkpoint is not a signed note')
+    return text
 regular(src / 'checkpoint')
 note = (src / 'checkpoint').read_bytes()
 if not note:
     raise ValueError('empty checkpoint')
+text = checkpoint_text(note)
 for base, dirs, names in os.walk(src, followlinks=False):
     for name in dirs:
         if (Path(base) / name).is_symlink():
@@ -57,9 +69,11 @@ for base, dirs, names in os.walk(src, followlinks=False):
         out = dst / rel
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(p, out)
-if (src / 'checkpoint').read_bytes() != note:
-    raise ValueError('checkpoint changed during snapshot; retry next run')
-(dst / 'checkpoint').write_bytes(note)
+regular(src / 'checkpoint')
+after = (src / 'checkpoint').read_bytes()
+if checkpoint_text(after) != text:
+    raise ValueError('a new checkpoint was published during the snapshot; retry next run')
+(dst / 'checkpoint').write_bytes(after)
 PYTHON
 # Every published full or width-qualified partial tile is immutable; only checkpoint advances.
 for remote in "$R2" "$B2"; do

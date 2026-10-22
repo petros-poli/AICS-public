@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Card check: `$.gate.tls_port` and `$.gate.plaintext_port` are the instance's own two
+  distinct TCP ports, 1 to 65535 (AICS-1 §13.1, revision of 2026-10-20); 7700 and 7701
+  stay the ports of the deployment profile (§12.2). 0.3.0 requires exactly 7700 and
+  7701, so it rejects the card of an instance on other ports, such as the staging
+  instance on test.wesupport-ai.com (7800 and 7801). Not published yet: npm has 0.3.0.
+
 ## 0.3.0 — 2026-10-19
 
 - Add SWARMS-1 payload helpers, encrypted deliveries, replay and read projections,

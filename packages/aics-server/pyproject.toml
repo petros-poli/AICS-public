@@ -40,3 +40,10 @@ dev = [
     "httpx>=0.28.0",
     "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+# The witness feeder's tests run the real aics-witness (packages/aics-witness) in-process. It is not a
+# dependency of the server package (its own path source for aics-tlog is not editable, which uv cannot
+# resolve next to this package's editable one), so its source is put on the test path instead; it needs
+# only aics-tlog and cryptography, which are installed here.
+pythonpath = ["../aics-witness/src"]

@@ -7,18 +7,97 @@ wrong.
 
 ## Running tests
 
-Each package under `packages/` is its own uv project with its own lockfile. Run the
-suite from inside the package directory:
+Verification is local. GitHub Actions does not run on pushes, pull requests,
+documentation edits or a schedule; it runs only for a signed release from a `v*`
+tag (docs/RELEASING.md). The one entry point is `scripts/verify.sh`, and the
+release workflow calls the same script, so the local checks and the release
+checks cannot drift apart.
 
-    cd packages/aics-identity && uv run pytest -q
-    cd packages/aics-tlog && uv run pytest -q
-    cd packages/aics-server && uv run pytest -q
+    scripts/verify.sh --list              # print the checks it would run, run nothing
+    scripts/verify.sh --affected          # quick loop: changed since the default ref (--list names it)
+    scripts/verify.sh --affected HEAD~3   # changed since another ref
+    scripts/verify.sh                     # same as --full: every check
 
-The `aics-tlog` suite includes a live check of a `sum.golang.org` checkpoint and
-needs network access. Run all three suites before sending changes. Every behaviour
-change ships with a test; every guarantee in DESIGN.md §3 gets a test for the
-positive case and for the negative one (unsigned write refused, replayed nonce
-refused, and so on).
+`--affected` follows the dependency graph: a change to `aics-identity` or
+`aics-tlog` selects every package that depends on them, which is all of them,
+and so does a change to `scripts/verify.sh` itself. `--full` runs, at the time
+of writing: every suite under `packages/` and `tools/` with a `pyproject.toml`
+(`tools/aics-capacity` and `tools/aics-export` included) and the card tests,
+each with `uv run --locked --all-extras pytest -q`; the card launch blockers
+(`pytest -m launch`); the interop suite with its fixture check and
+`AICS_INTEROP_REQUIRE_TOOLS=1`; the Node client's `npm test` (its offline tests
+and the live tests against local `aics-identity` and `aics-server`
+environments); the release isolation tests (`tools/test_pypi_release.py`,
+`tools/test_workflows.py`, `tools/test_deploy_vps.py`); a local double build of
+each of the six release libraries (`reproducible:<library>`); and the script's
+own tests (`verify-script`). Run `scripts/verify.sh --list` for the exact set at
+your commit.
+
+The script needs `uv`, `node`/`npm`, `openssl`, `ssh-keygen` and `git`. It prints
+a `PREREQ` line for each missing tool and a `SKIPPED` line for each check it could
+not run, and ends with a summary table. It exits 0 only when every check it ran
+passed. A run with any `SKIPPED` line is not a full run: install the tool and run
+again before you record it. The script never publishes, never contacts
+production hosts and needs no production credentials. Tests that need network
+access (the `aics-tlog` live `sum.golang.org` check) reach public hosts only.
+
+Inside one package, `cd packages/<name> && uv run pytest -q` is still the fastest
+loop while you edit. It does not replace `--full` before a merge.
+
+Every behaviour change ships with a test; every guarantee in DESIGN.md §3 gets a
+test for the positive case and for the negative one (unsigned write refused,
+replayed nonce refused, and so on).
+
+### Python versions
+
+The packages support Python 3.12, 3.13 and 3.14. Before a release, or after a
+change that could behave differently across versions (syntax, `tomllib`,
+`hashlib`, typing, the interop suite), run `scripts/verify.sh --full` once per
+version on the throwaway Linux VM, selecting the interpreter with uv's
+`UV_PYTHON` variable, for example `UV_PYTHON=3.13 scripts/verify.sh --full`.
+The VM holds no production credentials. Record each run with its own line (below).
+
+### Before merging
+
+Run `scripts/verify.sh --full` before merging anything that touches `packages/`
+or `clients/`, on the exact commit you merge. For a change outside those two
+directories, `scripts/verify.sh --affected main` is enough. If `main` moved after
+your run, rerun on the new merge result.
+
+Record the result in the commit or merge message, on its own line, in exactly
+this form:
+
+    Verified: scripts/verify.sh --full at <commit> on <os/python>, <n> checks passed
+
+for example
+
+    Verified: scripts/verify.sh --full at 3f9c2a1b7e40 on macOS 27/Python 3.12.12, 14 checks passed
+
+`<commit>` is the commit you ran the script on (at least 12 hex digits), `<os/python>`
+the operating system and the interpreter uv used, and `<n>` the passed count from
+the summary table. The table's NOTE column shows the Python each check ran on;
+without `UV_PYTHON` a project's own `.python-version` can pick a different one,
+so name every distinct version shown (`macOS 27/Python 3.12.11+3.14.7`) or set
+`UV_PYTHON` for a uniform run. Write one line per run when you ran several (for example one
+per Python version on the VM). Write `--affected <ref>` in place of `--full` when
+that is what you ran. Never write the line for a run that had a failure or a
+`SKIPPED` check, and never edit the numbers. AI sessions (Opus sessions and fast
+lanes included) follow the same rule and paste the summary table into their
+report.
+
+This line is a statement by the person or session that ran the script. It is not
+a GitHub check: do not report local results as commit statuses, check runs or
+badges, and do not configure required status checks for them. The only results
+GitHub shows are the release workflow's, on `v*` tags.
+
+### Branches
+
+Base every branch on a commit at or after `b9a976e` (the commit that removed the
+`push`, `pull_request` and `schedule` triggers). GitHub reads a push's triggers
+from the pushed branch's own workflow files, so a branch cut from an older
+commit still starts the old billed CI and Interop runs when it is pushed. Merge
+`main` into such a branch before pushing it, or delete the branch once it is
+merged.
 
 ## Invariants
 

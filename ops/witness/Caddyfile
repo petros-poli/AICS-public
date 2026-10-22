@@ -1,0 +1,88 @@
+# Caddy in front of the founder-run witness (ops/witness/compose.yml mounts
+# this file read-only as /etc/caddy/Caddyfile). WITNESS_DOMAIN comes from
+# ops/witness/.env: witness.wesupport-ai.com, a DNS-only (grey) Cloudflare
+# record, so Let's Encrypt's HTTP-01 challenge reaches this host on port 80
+# (ops/cloudflare-dns.sh --witness).
+#
+# What it publishes, and nothing else (every other path is 404):
+#   POST /add-checkpoint              the C2SP tlog-witness call the log's feeder makes
+#   GET  /<sha256(origin) hex>/checkpoint   the latest cosigned checkpoint (monitoring)
+#   GET  /healthz                     the witness's own health: "ok", or 503 after a
+#                                     failed database write (the process then restarts)
+#   GET  /, /vkey.txt, /witness.json  the public page: cosigner name, vkey, URL, trust
+#                                     domain and the logs it witnesses; written into
+#                                     ./site by bootstrap-witness-host.sh, never by hand
+
+{
+	# No record that could identify who runs a log or a client (docs/DESIGN.md
+	# §2, §8). No site block has a `log` directive, so Caddy writes no access
+	# log; its runtime ERROR entries carry the whole request object (client
+	# address, user agent, headers), which this filter deletes from every entry
+	# of the default logger (as deploy/Caddyfile and packages/aics-witness/Caddyfile.witness).
+	log default {
+		format filter {
+			wrap json
+			fields {
+				request delete
+			}
+		}
+	}
+
+	servers {
+		# Slow clients cannot hold connections: request headers within 5 s,
+		# the whole request within 10 s.
+		timeouts {
+			read_header 5s
+			read_body 10s
+			idle 30s
+		}
+		# TCP only: no HTTP/3, so nothing listens on UDP 443.
+		protocols h1 h2
+	}
+}
+
+{$WITNESS_DOMAIN} {
+	header {
+		-Server
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+	}
+
+	@add_checkpoint {
+		method POST
+		path /add-checkpoint
+	}
+	handle @add_checkpoint {
+		# The witness's max_body_bytes is 262144 (256 KiB); anything larger is
+		# refused here with 413. The body is buffered before it is passed on,
+		# so a slow body never ties up a witness connection.
+		request_body {
+			max_size 256KiB
+		}
+		reverse_proxy aics-witness:7380 {
+			request_buffers 256KiB
+		}
+	}
+
+	@witness_get {
+		method GET
+		path_regexp ^/(healthz|[0-9a-f]{64}/checkpoint)$
+	}
+	handle @witness_get {
+		reverse_proxy aics-witness:7380
+	}
+
+	@page {
+		method GET HEAD
+		path / /vkey.txt /witness.json
+	}
+	handle @page {
+		root * /srv/site
+		header Cache-Control "public, max-age=300"
+		file_server
+	}
+
+	handle {
+		respond "not found" 404
+	}
+}

@@ -3,27 +3,39 @@
 trust_file = "trust-bundle.json"
 pages = "https://wesupport-ai.com"
 mirrors = ["https://tiles.wesupport-ai.com/tiles"]
+# The witness policy of the effective pinned card, never lower: a card that lists the founder-run
+# witness at quorum 1 needs quorum = 1 and
+# witness_vkeys = ["witness.wesupport-ai.com/w1+45a4adcd+BHew2Ur+QH2S82rpq+DkFdR0fevS0fs+/SKQexugKGNN"].
 quorum = 0
 witness_vkeys = []
+# At a positive quorum: how long a log-signed head may take to carry its cosignatures before it is refused.
+# 60 leaves headroom over a mirror that may cache a log-signed note for up to 30 s (wesupport-ai.com's tiles mirror
+# sends Cache-Control max-age=30 for its checkpoint).
+witness_wait_seconds = 60
 max_checkpoint_age = 300
 max_scan_entries = 100000
 poll_seconds = 1.0
 receipt_wait_seconds = 95.0
 max_rate_attempts = 1000
-# Synthetic format only; match a high-precision format published by this instance.
+# Synthetic format only; match a high-precision format published by this instance
+# (wesupport-ai.com publishes github_token, docs/legal/secret-patterns.json).
 secret_sample = "ghp_AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-secret_pattern_id = "github_pat"
+secret_pattern_id = "github_token"
 gate_plain = "gate.wesupport-ai.com:7701"
-# The negotiated profiles your pinned card activates (AICS-1 §§19-20): ["SUP-1"] for an AICS-1+SUP-1 card.
-# The card must name exactly these; entries of any other profile are refused as unsupported.
-profiles = []
+# The negotiated profiles your pinned card activates (AICS-1 §§19-20): ["SUP-1"] for an AICS-1+SUP-1 card
+# such as wesupport-ai.com's. The card must name exactly these; entries of any other profile are refused as unsupported.
+profiles = ["SUP-1"]
 
-# Prepare a lawful synthetic body/tombstone using the instance's operator tools.
+# log.tombstone checks every tombstone of the log (or only this one). Log a tombstone only for a reason
+# that is true of its target (AICS-1 §10.3; README step 3); without one the check reports skip.
 # tombstone_index = 123
 
 # Either execute an operator-supplied restart (argv, no shell), or compare a
 # checkpoint saved before a restart you performed separately. No restart is
-# silently inferred from two ordinary fetches. The service must be ready on return.
-# restart_command = ["/absolute/path/to/restart-owned-instance-and-wait"]
+# silently inferred from two ordinary fetches. The service must be ready on
+# return, or restart_ready_seconds lets G3 wait that long for its checkpoint
+# (connection failures and HTTP 404/408/429/5xx only).
+# restart_command = ["ssh", "<vps>", "cd /opt/wesupport-ai/deploy && docker compose restart aics-server"]
+# restart_ready_seconds = 90
 # saved_checkpoint = "before-restart.checkpoint"
 # saved_card = "previously-verified-card.json"

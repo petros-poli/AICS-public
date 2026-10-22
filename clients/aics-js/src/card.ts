@@ -88,8 +88,9 @@ export function cardProblems(card: Json): string[] {
   if (!Array.isArray(card.tile_prefixes) || !card.tile_prefixes.length) s.bad('$.tile_prefixes', 'must list at least one tile prefix');
   else card.tile_prefixes.forEach((p, i) => s.https(p, `$.tile_prefixes[${i}]`));
   s.https(card.api_base, '$.api_base');
+  // §13.1 (revision of 2026-10-20): the instance's own two distinct TCP gate ports; 7700/7701 in the §12.2 deployment profile.
   const gate = card.gate;
-  if (s.obj(gate, '$.gate', ['tls_host', 'tls_port', 'plaintext_port', 'https_url'])) { s.string(gate.tls_host, '$.gate.tls_host'); s.uint(gate.tls_port, '$.gate.tls_port', { equals: 7700 }); s.uint(gate.plaintext_port, '$.gate.plaintext_port', { equals: 7701 }); s.https(gate.https_url, '$.gate.https_url'); }
+  if (s.obj(gate, '$.gate', ['tls_host', 'tls_port', 'plaintext_port', 'https_url'])) { s.string(gate.tls_host, '$.gate.tls_host'); s.uint(gate.tls_port, '$.gate.tls_port', { minimum: 1, maximum: 65535 }); s.uint(gate.plaintext_port, '$.gate.plaintext_port', { minimum: 1, maximum: 65535 }); if (gate.tls_port === gate.plaintext_port) s.bad('$.gate.plaintext_port', 'must differ from $.gate.tls_port'); s.https(gate.https_url, '$.gate.https_url'); }
   if (!Array.isArray(card.proxy)) s.bad('$.proxy', 'must be an array');
   else card.proxy.forEach((p, i) => { if (s.obj(p, `$.proxy[${i}]`, ['host', 'mode', 'tls_termination'])) { s.string(p.host, `$.proxy[${i}].host`); if (p.mode !== 'cloudflare' && p.mode !== 'dns-only') s.bad(`$.proxy[${i}].mode`, "must be 'cloudflare' or 'dns-only'"); s.string(p.tls_termination, `$.proxy[${i}].tls_termination`); } });
   const wp = card.witness_policy;

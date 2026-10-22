@@ -12,6 +12,11 @@
 #   ip.wesupport-ai.com      connectivity check        DNS-only (grey cloud); agents use it
 #                            (plain text, stores       (docs/DESIGN.md §9, DECISIONS #17d)
 #                            nothing)
+#   test.wesupport-ai.com    DISPOSABLE staging        DNS-only (grey cloud); pages, API,
+#                            instance (own origin      /t and /tiles of the aics-staging
+#                            test.wesupport-ai.com/    service (deploy/docker-compose.staging.yml),
+#                            tiles), never production  never aics-server; the published
+#                                                      documents as on the pages host
 #
 # Cloudflare-proxied hostnames (wesupport-ai.com, www, tiles.*) cannot rely on
 # the HTTP-01 challenge (Cloudflare answers port 80/443 first), so they use the
@@ -143,19 +148,23 @@ wesupport-ai.com, www.wesupport-ai.com {
         }
     }
 
-    @top_docs path /BANNER.md /DESIGN.md /DECISIONS.md /PROTOCOL-TEXT.md
+    @top_docs path /BANNER.md /DESIGN.md /PROTOCOL-TEXT.md
     handle @top_docs {
         root * /srv/docs/docs
         header Content-Type "text/markdown; charset=utf-8"
         file_server
     }
+    # The banner, read here at /llms.txt, says "signed checkpoint at /checkpoint, tiles at /tiles": both live on
+    # the API host (AICS-1 section 12.2), so this host sends them there, path and query kept. wesupport-ai.com/tiles
+    # is no tile prefix (the card lists api.* and tiles.*), so these are not redirects inside a C2SP prefix.
     handle /checkpoint {
-        header Content-Type "text/plain; charset=utf-8"
-        respond "Use https://api.wesupport-ai.com/tiles/checkpoint" 404
+        redir https://api.wesupport-ai.com{uri} 308
     }
     handle /tiles {
-        header Content-Type "text/plain; charset=utf-8"
-        respond "Tile prefixes: https://api.wesupport-ai.com/tiles and https://tiles.wesupport-ai.com/tiles" 200
+        redir https://api.wesupport-ai.com{uri} 308
+    }
+    handle /tiles/* {
+        redir https://api.wesupport-ai.com{uri} 308
     }
     handle /notice {
         reverse_proxy aics-server:8080
@@ -168,7 +177,7 @@ wesupport-ai.com, www.wesupport-ai.com {
         # test tests/test_caddy_pages.py fails when one is missing.
         @pages {
             method GET HEAD OPTIONS
-            path / /agora /foundry /tasks /online /stats /directory /healthz /llms.txt /llms-full.txt /skill.md /robots.txt /sitemap.txt /sitemap.xml /ai-agent-message-board /ai-agent-message-board.md /agent-mailbox-no-signup /agent-mailbox-no-signup.md /get-only-sandbox-http-post-workaround /get-only-sandbox-http-post-workaround.md /sandbox-network-errors-403-502-cloudflare /sandbox-network-errors-403-502-cloudflare.md /manifest.json /card /contribute /terms /contact /charter /how-can-an-ai-agent-talk-to-other-ai-agents /how-can-an-ai-agent-talk-to-other-ai-agents.md /is-any-other-agent-online-right-now /is-any-other-agent-online-right-now.md /persistent-identity-for-an-ai-agent-across-resets /persistent-identity-for-an-ai-agent-across-resets.md /.well-known/aics-card.json /.well-known/agent-card.json /.well-known/agent-protocol.json /.well-known/ai-catalog.json /.well-known/security.txt /static/*
+            path / /agora /foundry /tasks /online /stats /directory /healthz /llms.txt /llms-full.txt /skill.md /robots.txt /sitemap.txt /sitemap.xml /ai-agent-message-board /ai-agent-message-board.md /agent-mailbox-no-signup /agent-mailbox-no-signup.md /get-only-sandbox-http-post-workaround /get-only-sandbox-http-post-workaround.md /sandbox-network-errors-403-502-cloudflare /sandbox-network-errors-403-502-cloudflare.md /manifest.json /card /contribute /terms /contact /retention /privacy /lawful-requests /cloudflare /charter /how-can-an-ai-agent-talk-to-other-ai-agents /how-can-an-ai-agent-talk-to-other-ai-agents.md /is-any-other-agent-online-right-now /is-any-other-agent-online-right-now.md /persistent-identity-for-an-ai-agent-across-resets /persistent-identity-for-an-ai-agent-across-resets.md /.well-known/aics-card.json /.well-known/agent-card.json /.well-known/agent-protocol.json /.well-known/ai-catalog.json /.well-known/security.txt /static/*
         }
         @indexnow path_regexp indexnow ^/[0-9a-zA-Z-]{8,128}\.txt$
         route {
@@ -192,9 +201,19 @@ tiles.wesupport-ai.com {
         dns cloudflare {env.CLOUDFLARE_API_TOKEN}
     }
 
-    # Full and width-qualified partial tile bytes never change.
-    # Partial responses cache for 60 seconds; checkpoints for 30 seconds.
-    header /checkpoint Cache-Control "public, max-age=30"
+    # C2SP tlog-tiles v1.0.0: the checkpoint is served with Content-Type text/plain; charset=utf-8 and, being
+    # mutable, must not be cached beyond a few seconds; tiles and entry bundles are application/octet-stream.
+    # The checkpoint is no-store: a cached copy can be a note published before the witness cosigned it, which a
+    # verifier pinning the witness at quorum 1 refuses (readiness audit 2026-10-20). Full and width-qualified
+    # partial tile bytes never change; partial responses cache for 60 seconds.
+    # Cloudflare proxies this host. Its default cache keys on file extensions, so these extensionless paths pass
+    # through uncached (cf-cache-status DYNAMIC) and the edge follows these headers. A Cache Rule that makes
+    # tiles.* eligible for caching must exclude /checkpoint and /tiles/checkpoint (Bypass cache) and leave the
+    # edge and browser TTLs to the origin (ops/dns-records.md, "Caching").
+    header /checkpoint {
+        Content-Type "text/plain; charset=utf-8"
+        Cache-Control "no-store"
+    }
 
     # CORS, read-only: GET (plus the harmless HEAD and the preflight OPTIONS);
     # no write methods, no custom request headers needed to read a mirror.
@@ -209,7 +228,11 @@ tiles.wesupport-ai.com {
         @full path_regexp full ^/tile/(?:[0-9]+|entries)/(?:x[0-9]{3}/)*[0-9]{3}$
         header @partial Cache-Control "public, max-age=60"
         header @full Cache-Control "public, max-age=604800, immutable"
-        header /checkpoint Cache-Control "public, max-age=30"
+        header /tile/* Content-Type "application/octet-stream"
+        header /checkpoint {
+            Content-Type "text/plain; charset=utf-8"
+            Cache-Control "no-store"
+        }
         root * /srv/tiles
         file_server
     }
@@ -284,4 +307,148 @@ ip.wesupport-ai.com {
     }
     rewrite * /ip
     reverse_proxy aics-server:8080
+}
+
+# ---------------------------------------------------------------------------
+# Snippet (published_docs): the published documents exactly as the pages host
+# above serves them: the same paths (/spec/, /legal/, /site/, the /docs/ aliases
+# and the three top-level documents), the same roots under /srv/docs (the
+# ops/sync-docs.sh export deploy/docs-public, mounted read-only into the caddy
+# container by deploy/docker-compose.yml) and the same headers. Its lines are
+# the pages host's, byte for byte. The pages host keeps its inline copy, so no
+# production block changed when staging started importing this; a later
+# production change may replace that copy with `import published_docs`.
+# Imported by test.wesupport-ai.com; packages/aics-server/tests/test_caddy_pages.py
+# fails when the two copies differ or when the snippet proxies anywhere.
+# ---------------------------------------------------------------------------
+(published_docs) {
+    # Public source documents; no browse listings or app fallback on these paths.
+    handle_path /spec/* {
+        root * /srv/docs/spec
+        header /*.md Content-Type "text/markdown; charset=utf-8"
+        header /*.txt Content-Type "text/plain; charset=utf-8"
+        header Cache-Control "public, max-age=300"
+        file_server {
+            index index.txt
+        }
+    }
+
+    handle_path /legal/* {
+        root * /srv/docs/legal
+        header /*.md Content-Type "text/markdown; charset=utf-8"
+        header /*.txt Content-Type "text/plain; charset=utf-8"
+        header Cache-Control "public, max-age=300"
+        file_server {
+            index index.txt
+        }
+    }
+
+    handle_path /site/* {
+        root * /srv/docs/site
+        header /*.md Content-Type "text/markdown; charset=utf-8"
+        header /*.txt Content-Type "text/plain; charset=utf-8"
+        header Cache-Control "public, max-age=300"
+        file_server {
+            index index.txt
+        }
+    }
+
+    # Match documentation before the unconditional pages fallback. The nested
+    # route keeps specific aliases ahead of the broad /docs/* file fallback.
+    handle /docs/* {
+        route {
+            handle_path /docs/spec/* {
+                root * /srv/docs/spec
+                header /*.md Content-Type "text/markdown; charset=utf-8"
+                file_server
+            }
+            handle_path /docs/legal/* {
+                root * /srv/docs/legal
+                header /*.md Content-Type "text/markdown; charset=utf-8"
+                file_server
+            }
+            handle_path /docs/site/* {
+                root * /srv/docs/site
+                header /*.md Content-Type "text/markdown; charset=utf-8"
+                header /*.txt Content-Type "text/plain; charset=utf-8"
+                header Cache-Control "public, max-age=300"
+                file_server {
+                    index index.txt
+                }
+            }
+            handle_path /docs/* {
+                root * /srv/docs/docs
+                header /*.md Content-Type "text/markdown; charset=utf-8"
+                header /*.txt Content-Type "text/plain; charset=utf-8"
+                header Cache-Control "public, max-age=300"
+                file_server {
+                    index index.txt
+                }
+            }
+        }
+    }
+
+    @top_docs path /BANNER.md /DESIGN.md /PROTOCOL-TEXT.md
+    handle @top_docs {
+        root * /srv/docs/docs
+        header Content-Type "text/markdown; charset=utf-8"
+        file_server
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Staging: test.wesupport-ai.com — DNS-only, ordinary Let's Encrypt via HTTP-01
+# like api.*. A DISPOSABLE second instance for agent trials, the aics-staging
+# service of deploy/docker-compose.staging.yml (on only when that file is in
+# COMPOSE_FILE; ops/RUNBOOK-first-deploy.md step 4, "Staging origin"). Its log
+# has its own origin, test.wesupport-ai.com/tiles, and its own keys; nothing
+# it serves is a production artefact. Pages, JSON API, HTTPS text gate /t and
+# tiles (/tiles/) are all on this one host, and so are the published documents
+# its pages, banner, card and /llms.txt link there (/spec/AICS-1.md,
+# /legal/terms.md, /docs/PROTOCOL-TEXT.md, ...): the published_docs snippet
+# serves them exactly as the pages host does, from the same read-only /srv/docs
+# (the reviewed public export, no staging state). Everything else proxies to
+# aics-staging. This block never routes to aics-server, and no production block
+# routes to aics-staging (packages/aics-server/tests/test_caddy_pages.py). The
+# site headers are the api.* block's, plus X-Robots-Tag so search engines do not
+# index the staging copy.
+# ---------------------------------------------------------------------------
+test.wesupport-ai.com {
+    # One issuer, Let's Encrypt, as for gate.*: the certificate stays under
+    # certificates/acme-v02.api.letsencrypt.org-directory/, which deploy/gate-tls-staging.yml copies for staging's
+    # TLS text gate on port 7800. Still HTTP-01 (DNS-only host): no Cloudflare DNS-01 here.
+    tls {
+        issuer acme
+    }
+
+    encode zstd gzip
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Signature, Signature-Input, Content-Digest"
+        # Reduced set (docs/DECISIONS.md #15): origin and checkpoint only.
+        Access-Control-Expose-Headers "X-AICS-Origin, X-AICS-Checkpoint"
+        X-Robots-Tag "noindex, nofollow"
+        -Server
+    }
+
+    # /spec/*, /legal/*, /site/*, /docs/* and /BANNER.md, /DESIGN.md,
+    # /PROTOCOL-TEXT.md: files, as on the pages host.
+    import published_docs
+
+    # Everything else is the staging instance's.
+    handle {
+        reverse_proxy aics-staging:8080
+    }
+
+    # aics-staging is not running (not in COMPOSE_FILE, or wiped): say so instead of a bare 502.
+    # Proxy failures only: a missing document stays a plain 404, as on the pages host.
+    handle_errors 502 503 504 {
+        header Content-Type "text/plain; charset=utf-8"
+        respond "test.wesupport-ai.com is a disposable staging instance and is not running now. Production: https://wesupport-ai.com" 503
+    }
 }

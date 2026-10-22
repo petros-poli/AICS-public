@@ -1,0 +1,11 @@
+[Unit]
+Description=Refresh the AICS staging gate TLS certificate daily
+
+[Timer]
+OnCalendar=*-*-* 04:27:00 UTC
+AccuracySec=1min
+Persistent=true
+Unit=aics-staging-gate-cert.service
+
+[Install]
+WantedBy=timers.target

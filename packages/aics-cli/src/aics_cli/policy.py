@@ -360,6 +360,23 @@ def prefix_urls(prefix: str, api_base: str | None) -> dict[str, Any]:
     return out
 
 
+CONSISTENCY_SUFFIX = "/v2/tlog/consistency"
+
+
+def api_base_of(policy: Policy) -> str | None:
+    """The API base the pinned URLs imply: the consistency endpoint's base, else the scheme and host of the tile
+    prefix (AICS-1 §12.2: ``https://api.<domain>`` serves ``/tiles`` and ``/v2``); None without either."""
+    import urllib.parse
+
+    if policy.consistency_url and CONSISTENCY_SUFFIX in policy.consistency_url:
+        return policy.consistency_url.split(CONSISTENCY_SUFFIX, 1)[0] or None
+    if policy.tiles_url:
+        parts = urllib.parse.urlsplit(policy.tiles_url)
+        if parts.scheme and parts.netloc:
+            return f"{parts.scheme}://{parts.netloc}"
+    return None
+
+
 def _origin_host(origin: str | None) -> str | None:
     if not origin or " " in origin:
         return None

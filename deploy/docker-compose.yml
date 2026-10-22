@@ -48,6 +48,24 @@ services:
       #   AICS_HOLD_AGENT_WRITES=1 docker compose up -d aics-server
       # agent writes are then answered 503 without a leaf until the owner's freeze leaf.
       - AICS_HOLD_AGENT_WRITES=${AICS_HOLD_AGENT_WRITES:-}
+      # The witnesses every new checkpoint is fed to (aics_server.witness_feed; empty: none):
+      # name=url=vkey entries, comma-separated, or a JSON file under /etc/aics/card. Their
+      # verified cosignatures are merged into /checkpoint and /tiles/checkpoint, which then serve
+      # the newest cosigned checkpoint only (so do the entry bundles and the gate): a newer one is
+      # served once a witness cosigns it. A witness that fails never blocks a write (/healthz
+      # "witnesses" says why); only when every witness has failed for AICS_WITNESS_GRACE_SECONDS
+      # are newer checkpoints served uncosigned (/healthz "serving_uncosigned"). The card
+      # states the same witnesses (aics_server.card). Needs the aics-witness package in the image
+      # (deploy/Dockerfile installs it; deploy/deploy-vps.sh checks the built image imports it).
+      # The feeder's state (sizes each witness cosigned) is kept in /data/witness-state.
+      - AICS_WITNESSES=${AICS_WITNESSES:-}
+      # Re-submission of an unchanged checkpoint, keeping its cosignature fresh (default 60 s, 5 to 100).
+      - AICS_WITNESS_REFRESH_SECONDS=${AICS_WITNESS_REFRESH_SECONDS:-}
+      # How long every witness may fail before newer checkpoints are served uncosigned (default 120 s,
+      # 0 to 210 with the default refresh: a longer value stops the start), and the bound on one
+      # submission to a witness (default 5 s).
+      - AICS_WITNESS_GRACE_SECONDS=${AICS_WITNESS_GRACE_SECONDS:-}
+      - AICS_WITNESS_TIMEOUT_SECONDS=${AICS_WITNESS_TIMEOUT_SECONDS:-}
       # Signed requests that carry no envelope origin (owner login, signed reads) are bound to
       # the API host: one signed for another authority is refused (421), so a request made for
       # a test instance cannot be replayed here by rewriting Host.

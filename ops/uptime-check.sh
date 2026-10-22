@@ -5,7 +5,7 @@
 # Checks:
 #   1. GET /healthz answers HTTP 200;
 #   2. the transparency-log checkpoint note is reachable and parses, and is not
-#      older than MAX_AGE seconds (default 600 = 10 minutes);
+#      older than MAX_AGE seconds (default 240: inside the card's max_checkpoint_age of 300 s);
 #   3. disk usage on the data volume (decision 16 follow-up): each run records
 #      the volume's used bytes in a small state file, and the probe fails when
 #      growth over the last hour exceeds AICS_DISK_GROWTH_PCT percent of the
@@ -30,14 +30,28 @@
 # 8 the notice register (notices table) is near or at its cap; 9 the server
 # reports ciphertext resource exhaustion (procedure: ops/RUNBOOK-first-deploy.md
 # step 10, "Resource exhaustion": a freeze leaf with reason resource_exhaustion); 10 /v2/limits unreachable or
-# unparseable.
+# unparseable; 11 AICS_WITNESS_VKEY_FILE is set but holds no cosignature vkey.
+#
+# AICS_UPTIME_KEEP_GOING=1 (used by ops/vantage/vantage-probe.sh): a failed
+# checkpoint, age, disk or limits check no longer stops the run; every later
+# check still runs, and the script ends with one stdout line
+# "uptime-check: failed checks: <codes>" (comma-separated, in check order) and
+# exits with the first of them. A failed /healthz (1) still stops at once.
+# Without it (the default) the first failure exits as before.
 #
 # Freshness source, in order (see the python below):
 #   a. cosignature/v1 lines inside the signed checkpoint note: their signature
 #      blob is key-id(4) + big-endian POSIX seconds(8) + signature(64) = 76
 #      bytes, so a 76-byte blob yields a timestamp (the plain log signature is
-#      68 bytes and carries none). Until the witness feeder is wired
-#      (docs/internal/followups.md) the note carries no cosignature;
+#      68 bytes and carries none). Until a witness cosigns (AICS_WITNESSES on
+#      the server) the note carries no cosignature. Without a pinned witness
+#      key any such line counts, and a line a signed-note parser would ignore
+#      (an unknown name or key) could date a stale note. So set
+#      AICS_WITNESS_VKEY_FILE (the witness's public vkey, name+keyid+base64,
+#      obtained out of band) wherever it is known: then only lines with that
+#      name and key ID count, and when AICS_LOG_VKEY_FILE and aics-tlog are
+#      available too, the note must verify (aics-tlog verify-checkpoint
+#      --witness-key ... --quorum 1) before its cosignature dates it;
 #   b. a numeric timestamp field in the JSON envelope, should one be added;
 #   c. neither -> exit 4 with a clear message. A monitor must not report "ok"
 #      when it cannot actually verify the thing it monitors; a silent freeze
@@ -50,7 +64,10 @@
 set -euo pipefail
 
 BASE_URL="${AICS_API_BASE_URL:-https://api.wesupport-ai.com}"
-MAX_AGE="${AICS_CHECKPOINT_MAX_AGE:-600}"
+MAX_AGE="${AICS_CHECKPOINT_MAX_AGE:-240}"
+# Optional pins for the freshness source (see a. above); both public.
+WITNESS_VKEY_FILE="${AICS_WITNESS_VKEY_FILE:-}"
+LOG_VKEY_FILE="${AICS_LOG_VKEY_FILE:-}"
 
 # Disk-growth alert (check 3). AICS_DATA_PATH: any directory on the volume that
 # holds the server's /data — default /var/lib/docker, the docker volume store
@@ -65,6 +82,13 @@ GROWTH_PCT="${AICS_DISK_GROWTH_PCT:-2}"
 FREE_FLOOR_PCT="${AICS_DISK_FREE_FLOOR_PCT:-15}"
 LIMITS_CHECK="${AICS_LIMITS_CHECK:-1}"
 NOTICE_FILL_PCT="${AICS_NOTICE_FILL_PCT:-80}"
+KEEP_GOING="${AICS_UPTIME_KEEP_GOING:-0}"
+
+failed_codes=""
+fail_with() { # exit code: stop now, or remember it and go on (AICS_UPTIME_KEEP_GOING=1)
+  [ "$KEEP_GOING" = "1" ] || exit "$1"
+  failed_codes="${failed_codes:+$failed_codes,}$1"
+}
 
 rc=0
 if ! curl -fsS --max-time 15 -o /dev/null "$BASE_URL/healthz"; then
@@ -83,11 +107,13 @@ for path in /checkpoint /tiles/checkpoint /v2/tlog/checkpoint; do
 done
 if [ -z "$cp_body" ]; then
   printf 'FAIL: no checkpoint at %s (tried /checkpoint, /tiles/checkpoint, /v2/tlog/checkpoint)\n' "$BASE_URL" >&2
-  exit 2
+  fail_with 2
 fi
 
-cp_body="$cp_body" MAX_AGE="$MAX_AGE" python3 - <<'PY'
-import base64, json, os, sys, time
+if [ -n "$cp_body" ]; then
+set +e
+cp_body="$cp_body" MAX_AGE="$MAX_AGE" WITNESS_VKEY_FILE="$WITNESS_VKEY_FILE" LOG_VKEY_FILE="$LOG_VKEY_FILE" python3 - <<'PY'
+import base64, hashlib, json, os, shutil, subprocess, sys, tempfile, time
 
 body = os.environ["cp_body"]
 doc = None
@@ -123,8 +149,11 @@ except (ValueError, TypeError):
     print("FAIL: checkpoint note has a malformed size or root line", file=sys.stderr); sys.exit(2)
 if note_size < 0 or len(root) != 32:
     print("FAIL: checkpoint note has a malformed size or root line", file=sys.stderr); sys.exit(2)
-if doc is not None and doc["tree_size"] != note_size:
-    print(f"FAIL: envelope tree_size {doc['tree_size']} differs from the note's {note_size}", file=sys.stderr); sys.exit(2)
+# The envelope's checkpoint_size is the size of its signed_checkpoint; tree_size is the committed tree's, which
+# runs ahead of it while a publication waits for its witness cosignature (older servers send tree_size alone).
+claimed = doc.get("checkpoint_size", doc["tree_size"]) if doc is not None else note_size
+if claimed != note_size:
+    print(f"FAIL: envelope checkpoint_size {claimed} differs from the note's {note_size}", file=sys.stderr); sys.exit(2)
 size = note_size
 if not sigs or not all(l.startswith("\N{EM DASH} ") for l in sigs):
     print("FAIL: checkpoint note carries no signature lines", file=sys.stderr); sys.exit(2)
@@ -134,17 +163,60 @@ max_age = int(os.environ["MAX_AGE"])
 now = time.time()
 ts = None
 
-# (a) cosignature timestamps from the note (76-byte sig blobs).
+# The pinned witness (optional): name+keyid+base64(0x04 || Ed25519 public key), the key ID being the first four
+# bytes of SHA-256(name || LF || 0x04 || key) (c2sp.org/signed-note, c2sp.org/tlog-cosignature).
+pin = None
+wfile = os.environ.get("WITNESS_VKEY_FILE") or ""
+if wfile:
+    try:
+        vkey = open(wfile, encoding="utf-8").readline().strip()
+        wname, wid, wkey = vkey.split("+", 2)  # the base64 key itself may contain "+"
+        key = base64.b64decode(wkey, validate=True)
+        if not wname or len(wid) != 8 or len(key) != 33 or key[0] != 0x04:
+            raise ValueError("not an Ed25519 cosignature vkey (type 0x04)")
+        key_id = hashlib.sha256(wname.encode() + b"\n" + key).digest()[:4]
+        if key_id.hex() != wid.lower():
+            raise ValueError("its key ID does not match its key")
+    except (OSError, ValueError) as exc:
+        print(f"FAIL: AICS_WITNESS_VKEY_FILE {wfile} holds no cosignature vkey ({exc})", file=sys.stderr)
+        sys.exit(11)
+    pin = (wname, key_id, vkey)
+
+# (a) cosignature timestamps from the note (76-byte sig blobs), only the pinned witness's when one is pinned.
 for line in sigs:
     parts = line.split()
     if len(parts) < 3:
+        continue
+    if pin is not None and parts[1] != pin[0]:
         continue
     try:
         blob = base64.b64decode(parts[-1], validate=True)
     except (ValueError, TypeError):
         continue
-    if len(blob) == 76:  # key-id 4 + timestamp 8 + signature 64
+    if len(blob) == 76 and (pin is None or blob[:4] == pin[1]):  # key-id 4 + timestamp 8 + signature 64
         ts = max(ts or 0, int.from_bytes(blob[4:12], "big"))
+
+# With both keys and aics-tlog at hand, the cosignature must verify before it dates the checkpoint.
+lfile = os.environ.get("LOG_VKEY_FILE") or ""
+tlog = shutil.which("aics-tlog")
+if ts is not None and pin is not None and lfile and os.access(lfile, os.R_OK) and tlog:
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".note", delete=False) as f:
+        f.write(note)
+    try:
+        check = subprocess.run([tlog, "verify-checkpoint", "--note", f.name, "--vkey-file", lfile,
+                                "--witness-key", pin[2], "--quorum", "1"], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as exc:
+        check = None
+        print(f"note: aics-tlog could not run ({exc}); the pinned witness's line dates the checkpoint unverified")
+    finally:
+        os.unlink(f.name)
+    if check is not None and check.returncode != 0:
+        print("FAIL: cannot determine checkpoint age: the note does not verify under the pinned log key with a "
+              f"cosignature by {pin[0]} (aics-tlog verify-checkpoint: "
+              f"{(check.stderr or check.stdout).strip()[:300]})", file=sys.stderr)
+        sys.exit(4)
+    if check is not None:
+        print(f"ok: cosignature by {pin[0]} verified (aics-tlog)")
 
 # (b) numeric timestamp field in the envelope, should the server add one.
 if ts is None and doc is not None:
@@ -155,9 +227,10 @@ if ts is None and doc is not None:
             break
 
 if ts is None:
-    print("FAIL: cannot determine checkpoint age: the note carries no cosignature "
-          "(witness feeder not wired yet?) and the envelope has no timestamp field.",
-          file=sys.stderr)
+    who = f"no cosignature by the pinned witness {pin[0]}" if pin is not None else "no cosignature"
+    print(f"FAIL: cannot determine checkpoint age: the note carries {who} "
+          "(AICS_WITNESSES not set on the server, or the witness not answering?) and the envelope has no "
+          "timestamp field.", file=sys.stderr)
     sys.exit(4)
 
 age = now - ts
@@ -169,6 +242,10 @@ if -age > 300:  # dated more than 5 minutes in the future
     sys.exit(3)
 print(f"ok: checkpoint age {int(age)}s (limit {max_age}s)")
 PY
+check_rc=$?
+set -e
+[ "$check_rc" -eq 0 ] || fail_with "$check_rc"
+fi
 
 # --- 3. Disk-usage growth on the data volume (decision 16) ------------------
 # The log never shrinks and leaves are never deleted; the first disk-pressure
@@ -176,6 +253,8 @@ PY
 # least 90 days old (decisions 4 and 16). A fast-growth alert is the warning
 # that that decision point — or a disk expansion — is coming, with time to act.
 if [ "$DISK_CHECK" = "1" ]; then
+  set +e
+  ( set -e   # a subshell, so its exits are this check's result in both modes
   if ! df_line="$(df -Pk "$DATA_PATH" 2>/dev/null | tail -n 1)" || [ -z "$df_line" ]; then
     printf 'FAIL: cannot sample disk usage of %s (set AICS_DATA_PATH to a directory on the data volume, or AICS_DISK_CHECK=0 on a host that is not the VPS)\n' "$DATA_PATH" >&2
     exit 7
@@ -230,6 +309,10 @@ if [ "$DISK_CHECK" = "1" ]; then
       "$free_pct" "$DATA_PATH" "$FREE_FLOOR_PCT" >&2
     exit 6
   fi
+  )
+  check_rc=$?
+  set -e
+  [ "$check_rc" -eq 0 ] || fail_with "$check_rc"
 fi
 
 # --- 4. The notice register and ciphertext exhaustion (GET /v2/limits) --------
@@ -239,8 +322,9 @@ fi
 if [ "$LIMITS_CHECK" = "1" ]; then
   if ! limits_body="$(curl -fsS --max-time 15 "$BASE_URL/v2/limits" 2>/dev/null)" || [ -z "$limits_body" ]; then
     printf 'FAIL: %s/v2/limits did not answer\n' "$BASE_URL" >&2
-    exit 10
-  fi
+    fail_with 10
+  else
+  set +e
   limits_body="$limits_body" NOTICE_FILL_PCT="$NOTICE_FILL_PCT" python3 - <<'PY'
 import json, os, sys
 
@@ -272,4 +356,13 @@ if exhaustion is not None:
           file=sys.stderr)
     sys.exit(9)
 PY
+  check_rc=$?
+  set -e
+  [ "$check_rc" -eq 0 ] || fail_with "$check_rc"
+  fi
+fi
+
+if [ -n "$failed_codes" ]; then
+  printf 'uptime-check: failed checks: %s\n' "$failed_codes"
+  exit "${failed_codes%%,*}"
 fi

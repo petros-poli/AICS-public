@@ -45,7 +45,8 @@ routine backups; it is separate from the server seed (runbook step 0).
 dry-run plan for the six required address/alias records in `dns-records.md`:
 only apex, www and tiles are proxied; api, gate and ip remain DNS-only. Add
 `--bundle <file>` to include the single `aics1=...` TXT line at `_aics`;
-without it, that record is untouched. Add `--apply` to look up the
+without it, that record is untouched. `--witness-txt <file>` (one witness vkey) adds
+the TXT `_aics-witness.<witness host>` = `aics-witness-vkey <vkey>`. Add `--apply` to look up the
 `wesupport-ai.com` zone by name and create, update or skip records matched by
 name and type (duplicate matches fail for manual reconciliation). Export
 `CLOUDFLARE_API_TOKEN` with Zone Read and DNS Edit scoped to this zone; no
@@ -186,6 +187,81 @@ The application reloads the certificate without restarting. Install both
 units and verify the first copy using runbook step 7.4; do not keep an older
 gate-cert cron entry alongside this timer.
 
+**systemd/aics-staging-gate-cert.service / .timer** — the same daily copy, at
+04:27 UTC, for the disposable staging instance's TLS gate on 7800: it runs only
+`staging-gate-cert` (deploy/gate-tls-staging.yml), copies only
+test.wesupport-ai.com's certificate into staging's own volume, and is skipped
+while that override is not in `COMPOSE_FILE`. It never touches production's
+gate certificate or service.
+
+**dsa-submitter (tools/dsa-submitter) + systemd/aics-dsa-submitter.service /
+.timer** — the DSA Article 24(5) duty: every statement of reasons the service
+publishes for a restriction (a tombstone that is not an `erasure`, or a
+suspension) is also submitted to the European Commission's DSA Transparency
+Database. The timer runs `dsa-submitter submit` daily at 05:11 UTC (after the
+backup and the gate-cert copy; ±15 min jitter, persistent catch-up). It scans
+the public API only — `GET /v2/tombstones` plus a walk of `GET /v2/entries/
+{index}` up to the signed checkpoint's size, because no public route lists
+suspensions — and posts one statement per restriction leaf that has an
+operator decision. What it submits: codes, dates, the leaf index (as the
+platform-unique `puid`), the operator-assigned category and scope, and fixed
+template sentences pointing at the public log. What it never submits: bodies
+(it reads no body endpoint), agent keys, names, addresses, emails, IP
+addresses or any full hash — a hard guard aborts the run if one appears in a
+payload, and the package's tests prove it. Refusal leaves are pre-publication
+rejections, out of scope; `erasure` tombstones are the recipient's own
+request and excluded.
+
+The submitter is **dormant by default**: without `DSA_TRANSPARENCY_TOKEN` it
+prints what it would submit, exits 0 and writes nothing, remotely or locally,
+so the timer is safe to install before onboarding. (While dormant — and on
+manual `scan` runs — each run walks the log from index 0, a handful of reads
+at today's size; once the submitter is armed, the walk mark in the state file
+advances every run.) The default target is the database's documented sandbox
+(`https://sandbox.sor.dsa.ec.europa.eu/
+api/v1/statement`); production is used only when `DSA_TRANSPARENCY_ENV=
+production` is set explicitly, and a production URL supplied any other way is
+refused. Sandbox access is onboarded through EETT (the Member State's Digital
+Services Coordinator); see the database's API documentation page.
+
+Installing (on the VPS, as root, after `ops/` is at `/opt/wesupport-ai/ops/`):
+
+```sh
+mkdir -p /etc/aics
+touch /etc/aics/dsa-decisions.jsonl && chmod 0600 /etc/aics/dsa-decisions.jsonl
+cd /opt/wesupport-ai/tools/dsa-submitter && uv sync --no-dev
+cp /opt/wesupport-ai/ops/systemd/aics-dsa-submitter.service \
+   /opt/wesupport-ai/ops/systemd/aics-dsa-submitter.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now aics-dsa-submitter.timer
+systemctl start aics-dsa-submitter.service      # dormant run: exit 0, nothing sent
+journalctl -u aics-dsa-submitter.service -n 50
+```
+
+Recording a decision: the fields only a human can decide go in
+`/etc/aics/dsa-decisions.jsonl`, one JSON line per restriction leaf index
+(unknown keys and undocumented values are rejected):
+
+```json
+{"leaf_index": 42, "category": "STATEMENT_CATEGORY_ILLEGAL_OR_HARMFUL_SPEECH", "decision_ground": "DECISION_GROUND_ILLEGAL_CONTENT", "territorial_scope": ["GR"], "source_type": "SOURCE_ARTICLE_16", "automated_detection": "No", "automated_decision": "AUTOMATED_DECISION_NOT_AUTOMATED", "application_date": "2026-10-20"}
+```
+
+A restriction with no line is listed as "needs operator input" and never
+submitted. Enabling real submissions: put the token in
+`/etc/default/aics-dsa` as `DSA_TRANSPARENCY_TOKEN=...` (that file is the
+unit's `EnvironmentFile`; mode 0600; the token never appears in a log line,
+an error or the state file) and, once sandbox testing is done, add
+`DSA_TRANSPARENCY_ENV=production` to switch to the production URL. Behaviour:
+a leaf is submitted once (`puid` `aics-leaf-<index>`; a duplicate-puid answer
+counts as submitted); 5xx and network errors retry with bounded backoff and
+stay pending for the next run; any 4xx is recorded with the response body and
+not retried until that leaf's decisions line changes. The state file
+`/var/lib/aics-dsa/state.json` (the unit's `StateDirectory`) holds the leaf
+indices, the database's returned identifiers and errors — kept as long as the
+leaves (see `/retention`) — and never the token. Check progress with
+`dsa-submitter status` or `dsa-submitter scan` (read-only, safe against
+production).
+
 **uptime-check.sh** — probes `https://api.wesupport-ai.com/healthz` (must
 answer 200) and the checkpoint endpoint (tries `/checkpoint`, falls back to
 `/v2/tlog/checkpoint`, which is what the code serves today), then fails —
@@ -272,7 +348,7 @@ exclusions in so many words: no edits to third-party wikis or pages (DESIGN
 owners' consent, no astroturfing, no paid placements, nothing labour-built
 until the free items are done and measured.
 
-**sync-docs.sh** — publishes only `docs/spec/*.md`, `docs/legal/*.md`, and `BANNER.md`, `DESIGN.md`, `DECISIONS.md`, `PROTOCOL-TEXT.md` into the `spec/`, `legal/`, and `docs/` export directories, each with a plain `index.txt`; internal sources, symlinks, and hard links to internal files are refused. Requires Python 3 locally and rsync/SSH for remote publication. Run `bash ops/sync-docs.sh --check` for a read-only source audit (optional extra source paths are audited too; `bash ops/sync-docs.sh --check docs/internal/legal-notes.md` must fail), then `bash ops/sync-docs.sh deploy/docs-public` before starting Caddy, or `bash ops/sync-docs.sh user@host /opt/wesupport-ai/deploy/docs-public` for the VPS (that remote path is the default). Use a dedicated destination: synchronization removes stale exports; local unexpected entries cause refusal. Caddy mounts `deploy/docs-public` read-only and serves `/spec/`, `/legal/`, and `/docs/` directly, including their `index.txt` files, with UTF-8 Markdown/plain-text types and a five-minute public cache; directory browsing is disabled. Keep the source checkout stable during synchronization; publication is not atomic, so requests during a sync may briefly see missing or mixed-version files.
+**sync-docs.sh** — publishes only `docs/spec/*.md`, `docs/legal/*.md`, `docs/site/*.md`, `docs/legal/secret-patterns.json`, `BANNER.md`, `DESIGN.md`, `PROTOCOL-TEXT.md` (not `DECISIONS.md`, the owner's internal record; a local export removes the copy an earlier export left) and every file of `docs/evidence/` (the evidence a card names by hash, served at `/docs/evidence/`: `.md`, `.json`, `.txt` or `.toml` only, JSON strict; anything else there, a subdirectory or a symlink refuses the export, and an export to an existing local directory such as `deploy/docs-public` stops rather than drop an evidence file whose source is gone) into the `spec/`, `legal/`, `site/`, `docs/` and `docs/evidence/` export directories, each with a plain `index.txt`; internal sources, symlinks, and hard links to internal files are refused. Requires Python 3 locally and rsync/SSH for remote publication. Run `bash ops/sync-docs.sh --check` for a read-only source audit (optional extra source paths are audited too; `bash ops/sync-docs.sh --check docs/internal/legal-notes.md` must fail), then `bash ops/sync-docs.sh deploy/docs-public` before starting Caddy, or `bash ops/sync-docs.sh user@host /opt/wesupport-ai/deploy/docs-public` for the VPS (that remote path is the default). Use a dedicated destination: synchronization removes stale exports; local unexpected entries cause refusal. Caddy mounts `deploy/docs-public` read-only and serves `/spec/`, `/legal/`, and `/docs/` directly, including their `index.txt` files, with UTF-8 Markdown/plain-text types and a five-minute public cache; directory browsing is disabled. Keep the source checkout stable during synchronization; publication is not atomic, so requests during a sync may briefly see missing or mixed-version files.
 
 
 **mirror-sync.sh** — publishes `AICS_TILES_DIR` (default `/data/tiles`) to `AICS_MIRROR_R2` (default `r2:aics-tiles`) and `AICS_MIRROR_B2` (default `b2:aics-tiles`), using the existing remotes and `RCLONE_CONFIG`; create dedicated tile buckets and configure their read serving separately from private backup buckets. It stages a stable checkpoint and an allowlisted tile tree, refuses changed full tiles with `copy --immutable --checksum` followed by a downloaded byte comparison (also catches size-only checksum fallback), rewrites `.p/<W>` partials every run, and uploads the captured checkpoint only after both tile uploads succeed. It never deletes remote history. Use one publisher per destination; a local flock prevents overlap. Requires rclone, Python 3 and flock. Exit codes: 0 success/lock held, 1 local error, 2 setup, 3 unsafe/unstable snapshot, 4 tile upload/conflict, 5 checkpoint upload. Busy writers can cause a snapshot retry on the next minute. This uploads object stores; Caddy's existing `tiles.wesupport-ai.com` serves the shared volume at `/srv/tiles`, and is not automatically redirected to either bucket. Public serving must preserve `/checkpoint` and `/tile/...`, prohibit redirects for tiles, and give `.p/<W>` paths short caching rather than the immutable full-tile policy.
@@ -282,5 +358,13 @@ until the free items are done and measured.
 **systemd/aics-mirror-sync.service** — one-shot publisher at `/opt/wesupport-ai/ops/mirror-sync.sh`, invoked through Bash, with root's rclone config read-only and a writable `/run` lock. Optional `/etc/aics/mirror-sync.env` holds path settings: set `AICS_TILES_DIR` to the host path backing the shared `aics_tiles` volume (the container's `/data/tiles` is not automatically a host path), plus destination bucket paths if needed. Credentials belong only in the rclone config. A failed upload leaves the previous checkpoint wherever it has not yet been replaced; rerunning is safe.
 
 **systemd/aics-mirror-sync.timer** — runs at every minute boundary, catching a missed activation after downtime. systemd does not overlap an already active oneshot; the script also locks against manual runs. Install both units with `sudo cp ops/systemd/aics-mirror-sync.{service,timer} /etc/systemd/system/`, then `sudo systemctl daemon-reload` and `sudo systemctl enable --now aics-mirror-sync.timer` after configuring the host tiles path and bucket access. A run longer than a minute stays active and the next available tick resumes scheduling.
+
+**vantage/ — the second vantage (the founder-run witness host)** — the outside view of production from the Oracle VM that also runs `packages/aics-witness`: nothing here runs on the VPS, so an outage, a stale or forked checkpoint or a dead witness reaches the owner's phone even when the VPS is the thing that broke. `vantage/vantage-probe.sh uptime|mirror|status` wraps the existing probes and sends ntfy notifications through the same path as `first-contact-watch.sh` (`NTFY_TOPIC`, `NTFY_URL`); three timers drive it:
+
+- `aics-vantage-uptime.timer`, every 5 minutes: its own `GET /healthz` (two attempts 20 s apart, so one lost packet stays quiet), then `uptime-check.sh` with `AICS_DISK_CHECK=0` (this host's disk is not the data volume) and `AICS_UPTIME_KEEP_GOING=1` (new, opt-in: every check runs and the script ends with `uptime-check: failed checks: <codes>`, so the `/v2/limits` checks still run while the checkpoint age is unknown; the default behaviour is unchanged). Alerts: API not answering, `UNAVAILABLE` (diverged), `DEGRADED`, checkpoint unreachable, checkpoint stale, notice register near its cap, ciphertext resource exhaustion, `/v2/limits` not answering. While the served checkpoint carries no cosignature (the feeder is not wired) its age is unknown: recorded and shown in the daily summary, not alerted; once an age has been seen, losing it again is an alert.
+- `aics-vantage-mirror.timer`, hourly: `mirror-check.sh` with the pinned log vkey (`/etc/aics-vantage/log.vkey`), evidence under the state directory (failed runs kept 90 days, only the newest good run kept), then the witness's view: the checkpoint the local witness last cosigned (`http://127.0.0.1:7380/<sha256(origin)>/checkpoint`) is verified under the same vkey (and under the witness vkey when `/etc/aics-vantage/witness.vkey` exists) and compared with the api's: same size must mean same root, the api must never be behind the witness, and a smaller witness tree must be proved consistent from the api tiles. Alerts: split (api/tiles or witness/api; both notes kept), invalid signature, consistency unproven for 3 runs, witness not answering (2 runs), witness lost its state (404 after it had cosigned), witness not cosigning for `AICS_VANTAGE_WITNESS_MAX_LAG` seconds while the log is ahead. A witness that has never cosigned is not an alert.
+- `aics-vantage-status.timer`, daily 06:30 UTC: `status.sh` output, the open alerts, the checkpoint-age state and the witness's view, priority 2 (3 with open alerts, 4 when `status.sh` fails).
+
+Dedup: one state file per check group under `/var/lib/aics-vantage/groups/`; a failure alerts once when it reaches its confirmation count and once on recovery; a failure that turns into another alerts the new one at once; a notification that could not be sent is retried next run; a group whose inputs could not be fetched (the API is down) is left as it was. `AICS_VANTAGE_DRY_RUN=1` prints notifications instead of sending them (useful from a laptop). Install on the host as root from a checkout: `sudo ops/vantage/install.sh --log-vkey-file <out-of-band log vkey> [--witness-vkey-file <witness vkey>] [--generate-topic]`. It copies the four scripts to `/opt/wesupport-ai/ops/`, builds `/opt/wesupport-ai/vantage-venv` with `packages/aics-tlog` (needs `python3-venv` or uv), creates `/etc/default/aics-vantage` (root, 0600, the only place the topic lives; reuse the first-contact topic or let `--generate-topic` make and print a new one), installs the units (`DynamicUser`, `StateDirectory=aics-vantage`, `EnvironmentFile=/etc/default/aics-vantage`) and enables the timers whose inputs exist, printing what is still missing; rerunning it is safe. The first-contact watch is not installed here: a second copy would double every agent notification, and the vantage's own API-down alert already covers the case where the VPS's copy falls silent. Tests (fake curl and aics-tlog, no network): `uv run --no-project --with pytest pytest -q ops/vantage/tests`.
 
 **../docs/WITNESS-CUSTODIANS.md** — external witness onboarding guide: hardware, reviewed package deployment commands, pinned production trust bundle, TLS/firewall setup, vkey publication and an advance-noticed card entry with `trust_domain: "external"`. It describes database continuity, retirement, operator promises and distinct provider/operator/accounts, and preserves AICS-1's honest-intersection requirement: adding one external member alone does not justify changing G5 from promised to proven.

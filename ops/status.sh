@@ -106,6 +106,15 @@ if doc is not None:
     origin = doc.get("origin", "?")
     size = doc["tree_size"]
     root = doc.get("root_hash_hex") or "?"
+    served = parse_note(note) if "checkpoint_size" in doc and note else None
+    if served is not None:
+        # The served note (signed_checkpoint, checkpoint_size), which the tiles mirror copies; with a witness,
+        # tree_size and root_hash_hex (the committed tree) run ahead of it while a publication waits for its
+        # cosignature.
+        if served[1] != size:
+            print(f"tree (committed):   size={size}, ahead of the served checkpoint (a publication waits for its "
+                  "witness cosignature)")
+        origin, size, root = served
 else:
     parsed = parse_note(os.environ["api_note"])
     if parsed is None:

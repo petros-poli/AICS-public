@@ -4,18 +4,31 @@ set +x  # Never trace the API token, even when invoked with bash -x.
 set -euo pipefail
 die() { printf 'cloudflare-dns.sh: %s\n' "$*" >&2; exit 1; }
 usage() {
-    printf 'Usage: %s [--apply] [--bundle <file>] <VPS_IPV4>\n' "$0"
+    printf 'Usage: %s [--apply] [--bundle <file>] [--witness-txt <file>] [--staging] [--witness <WITNESS_IPV4>] <VPS_IPV4>\n' "$0"
     printf '%s\n' 'Default: offline dry run. --apply needs CLOUDFLARE_API_TOKEN in the environment.'
+    printf '%s\n' '--staging also upserts the DNS-only A record test (the disposable staging instance).'
+    printf '%s\n' '--witness also upserts the DNS-only A record witness -> the second host (ops/witness/, HTTP-01).'
+    printf '%s\n' '--witness-txt FILE (one witness vkey) upserts TXT _aics-witness.<its host> "aics-witness-vkey <vkey>".'
 }
 apply=false
 bundle=
+witness_txt=
+staging=
+witness=
 ipv4=
 while [[ $# -gt 0 ]]; do
     case $1 in
         --apply) apply=true; shift ;;
+        --staging) staging=1; shift ;;
+        --witness)
+            [[ $# -ge 2 && -n $2 && $2 != -* ]] || die '--witness requires the witness host IPv4 address'
+            witness=$2; shift 2 ;;
         --bundle)
             [[ $# -ge 2 && -n $2 ]] || die '--bundle requires a file'
             bundle=$2; shift 2 ;;
+        --witness-txt)
+            [[ $# -ge 2 && -n $2 ]] || die '--witness-txt requires a file'
+            witness_txt=$2; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         -*) die "unknown option: $1" ;;
         *) [[ -z $ipv4 ]] || die 'supply exactly one VPS IPv4 address'; ipv4=$1; shift ;;
@@ -25,13 +38,26 @@ done
 command -v python3 >/dev/null || die 'python3 is required'
 python3 -c 'import ipaddress, sys; ipaddress.IPv4Address(sys.argv[1])' "$ipv4" \
     2>/dev/null || die "invalid IPv4 address: $ipv4"
+if [[ -n $witness ]]; then
+    python3 -c 'import ipaddress, sys; ipaddress.IPv4Address(sys.argv[1])' "$witness" \
+        2>/dev/null || die "invalid witness IPv4 address: $witness"
+    # A witness on the log's own host would share every failure and every administrator with it.
+    [[ $witness != "$ipv4" ]] || die 'the witness must run on another host than the VPS (same IPv4 given twice)'
+fi
 zone=wesupport-ai.com
 plan=$(python3 -c '
 import json, pathlib, re, sys
-ip, zone, bundle = sys.argv[1:]
+ip, zone, bundle, staging, witness, witness_txt = sys.argv[1:]
 records = [dict(type="A", name=zone if h == "@" else h+"."+zone,
                 content=ip, proxied=h in ("@", "tiles"), ttl=1)
            for h in ("@", "api", "gate", "ip", "tiles")]
+if staging:
+    # The disposable staging instance (deploy/docker-compose.staging.yml): DNS-only, HTTP-01.
+    records.append(dict(type="A", name="test."+zone, content=ip, proxied=False, ttl=1))
+if witness:
+    # The founder-run witness on the second host (ops/witness/): DNS-only, so Caddy there
+    # answers the HTTP-01 challenge itself, and add-checkpoint calls reach it unproxied.
+    records.append(dict(type="A", name="witness."+zone, content=witness, proxied=False, ttl=1))
 records.append(dict(type="CNAME", name="www."+zone, content=zone, proxied=True, ttl=1))
 if bundle:
     try:
@@ -41,12 +67,23 @@ if bundle:
     if not re.fullmatch(r"aics1=[A-Za-z0-9_-]+={0,2}", content):
         sys.exit("cloudflare-dns.sh: bundle must contain one aics1=<base64url> line")
     records.append(dict(type="TXT", name="_aics."+zone, content=content, ttl=1))
+if witness_txt:
+    # The witness vkey, published under the name of the witness host (ops/witness/README.md).
+    try:
+        vkey = pathlib.Path(witness_txt).read_text().strip()
+    except (OSError, UnicodeError) as exc:
+        sys.exit("cloudflare-dns.sh: cannot read the witness vkey: " + str(exc))
+    m = re.fullmatch(r"([a-z0-9.-]+)/[A-Za-z0-9._/-]+\+[0-9a-f]{8}\+[A-Za-z0-9+/]+={0,2}", vkey)
+    if not m or not m.group(1).endswith("." + zone):
+        sys.exit("cloudflare-dns.sh: --witness-txt must hold one witness vkey <host in " + zone + ">/<name>+<8 hex>+<base64>")
+    records.append(dict(type="TXT", name="_aics-witness."+m.group(1), content="aics-witness-vkey "+vkey, ttl=1))
 for record in records:
     print(json.dumps(record, separators=(",", ":")))
-' "$ipv4" "$zone" "$bundle") || exit 1
+' "$ipv4" "$zone" "$bundle" "$staging" "$witness" "$witness_txt") || exit 1
 if ! $apply; then
     printf 'DRY RUN: planned upserts for %s (TTL auto; no API calls):\n%s\n' "$zone" "$plan"
     [[ -n $bundle ]] || printf '%s\n' '_aics TXT: untouched (no --bundle supplied).'
+    [[ -n $witness_txt ]] || printf '%s\n' '_aics-witness TXT: untouched (no --witness-txt supplied).'
     exit 0
 fi
 [[ -n ${CLOUDFLARE_API_TOKEN:-} ]] || die 'CLOUDFLARE_API_TOKEN is missing; export a token with Zone Read and DNS Edit for wesupport-ai.com'

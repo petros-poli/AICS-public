@@ -1,4 +1,5 @@
 """Checks, bounded scans, receipts and portable failure evidence."""
+import math
 import time
 import traceback
 from dataclasses import dataclass
@@ -9,6 +10,11 @@ from .schema import require
 from . import adapter, verify
 
 class Skip(Exception): pass
+
+#: How a receipt's inclusion observation is timed (:meth:`Context.follow`): by this harness's own recorded clock, at
+#: every witness quorum.  AICS-1 §14.4 step 3 labels such a conclusion clock-dependent; only the breach branch, which
+#: compares the counted witness timestamps with ``deadline+30``, can be independently timed.
+LOCAL_CLOCK='local; clock-dependent (AICS-1 §14.4 step 3)'
 
 @dataclass
 class Check:
@@ -44,13 +50,45 @@ class Context:
     def head(self,source=None,*,historical=False,accept=True):
         """Fetch and verify a checkpoint note (verify.head).  With ``accept=False`` it is only authenticated by
         origin and log signature, its witness policy recorded (verify.authenticate): AICS-1 §14.6 compares
-        log-signed views before the witness policy decides acceptance.  Only accepted heads are kept in ``heads``."""
-        tiles=source or self.tiles; raw=tiles.checkpoint()
-        self.evidence.setdefault('checkpoint_notes',[]).append(U(raw))
-        self.evidence.setdefault('observations',[]).append({'note_hash':H(raw),'at':self.now(),'source':tiles.url})
-        h=(verify.head if accept else verify.authenticate)(raw,self.policy,self.now(),historical=historical)
+        log-signed views before the witness policy decides acceptance.  Only accepted heads are kept in ``heads``.
+
+        A current head that the log signed but that misses a positive witness quorum is fetched again, for at most
+        ``witness_wait_seconds`` (:meth:`witness_wait`): a log publishes a checkpoint before its witnesses cosign
+        it (AICS-1 §6.3 forbids accepting it, not waiting for its cosignature).  Every note fetched is evidence."""
+        tiles=source or self.tiles; pauses=self.witness_pauses()
+        while True:
+            raw=tiles.checkpoint()
+            self.evidence.setdefault('checkpoint_notes',[]).append(U(raw))
+            self.evidence.setdefault('observations',[]).append({'note_hash':H(raw),'at':self.now(),'source':tiles.url})
+            h=verify.authenticate(raw,self.policy,self.now(),historical=historical)
+            if h.witness_policy_met or historical or not accept or not next(pauses,False): break
+        if accept and not historical: require(h.witness_policy_met,h.witness_error)
         if h.witness_policy_met: self.heads[H(raw)]=h
         return h
+    def pauses(self,budget):
+        """The waits of a bounded retry loop: each step sleeps one poll interval and yields True, for ``budget``
+        seconds in all by the context's clock and never more steps than fit in it, so a frozen clock (a test's
+        pinned one, a no-op sleep) ends the loop too.  A budget of 0 yields nothing."""
+        started=self.now(); steps=math.ceil(budget/self.policy.poll_seconds) if budget>0 else 0
+        def steps_left():
+            for _ in range(steps):
+                waited=self.now()-started
+                if waited>=budget: return
+                self.sleep(min(self.policy.poll_seconds,budget-waited)); yield True
+        return steps_left()
+    def witness_pauses(self):
+        """:meth:`pauses` for a note that the log signed but that misses the pinned witness policy:
+        ``witness_wait_seconds`` at a positive quorum, none at quorum 0."""
+        return self.pauses(self.policy.witness_wait_seconds if self.policy.quorum else 0)
+    def witnessed(self,fetch,note_of,*,historical=False):
+        """``fetch()`` (a bundle or a lookup) again while the checkpoint note it states (``note_of(result)``, bytes)
+        is signed by the log but misses the pinned witness policy, at most ``witness_wait_seconds`` and only at a
+        positive quorum: a server states lookups and proofs at checkpoints its witnesses may not have cosigned yet.
+        A note the log did not sign raises at once.  The caller verifies the result exactly as without a wait."""
+        pauses=self.witness_pauses()
+        while True:
+            obj=fetch(); h=verify.authenticate(note_of(obj),self.policy,self.now(),historical=historical)
+            if h.witness_policy_met or not next(pauses,False): return obj
     def scan(self,h=None,source=None,*,validate=True):
         h=h or self.head(); source=source or self.tiles
         if h.cp.size>self.policy.max_scan_entries: raise Skip('complete scan exceeds configured max_scan_entries; raise limit')
@@ -85,7 +123,7 @@ class Context:
     def follow(self,entry,note):
         r=verify.receipt(note,entry,self.policy); deadline=r['submitted_at']+60
         self.evidence['receipt']=U(note); self.evidence['entry']=U(J(entry)); started=self.now()
-        self.evidence['timing_evidence']={'started_at':started,'deadline':deadline,'clock':'local'}
+        self.evidence['timing_evidence']={'started_at':started,'deadline':deadline,'clock':LOCAL_CLOCK}
         while True:
             raw,h=self.scan(validate=False)
             pre=self.submissions.get(H(J(entry['payload']['envelope'])))
@@ -95,7 +133,9 @@ class Context:
             digest=leaf_hash(J(entry)); matches=[i for i,b in enumerate(raw) if leaf_hash(b)==digest]
             if matches:
                 self.evidence['inclusion_proof']=[__import__('base64').b64encode(x).decode() for x in MerkleTree(raw).inclusion_proof(matches[0])]
-                self.evidence['timing_evidence']=dict(observed_at=self.now(),deadline=deadline,clock='local; remote freshness unproven' if not self.policy.quorum else 'witness',met_deadline=self.now()<=deadline)
+                # The observation is timed by this harness's own clock at every quorum: a witness timestamp of the
+                # head says when that head was cosigned, not when this inclusion was first observed.
+                self.evidence['timing_evidence']=dict(observed_at=self.now(),deadline=deadline,clock=LOCAL_CLOCK,met_deadline=self.now()<=deadline)
                 require(self.now()<=deadline,'eventual inclusion observed, deadline compliance unproven (no deadline observation)')
                 return matches[0]
             independently_timed=bool(h.timestamps) and min(h.timestamps.values())>deadline+30
@@ -129,6 +169,10 @@ class Context:
         if hasattr(self.client.transport,'tcp_gate'): return self.client.transport.tcp_gate(plain)
         target=self.policy.gate_plain if plain else self.gate_target
         if plain and not target and self.gate_target:
-            target=self.gate_target.rsplit(':',1)[0]+':7701'
+            host,port=self.gate_target.rsplit(':',1)
+            # 7701 is the plaintext port only beside the deployment profile's 7700: a card names the instance's own two
+            # gate ports (AICS-1 §13.1), and staging's TLS gate on 7800 shares its address with production's 7701.
+            if port!='7700': raise Skip("plaintext TCP target not configured: set gate_plain to this instance's own host:port")
+            target=host+':7701'
         if not target: raise Skip('TCP target not configured')
         return TCPGate(target,tls=False if plain else None)

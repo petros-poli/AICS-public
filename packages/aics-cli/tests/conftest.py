@@ -58,11 +58,18 @@ class FakeFetcher:
     def __init__(self) -> None:
         self.routes: dict[str, Any] = {}
         self.requests: list[str] = []
+        self.sequences: dict[str, list[bytes]] = {}
 
     def set(self, url: str, body: bytes | str, status: int = 200, headers: dict[str, str] | None = None) -> None:
         if isinstance(body, str):
             body = body.encode("utf-8")
+        self.sequences.pop(url, None)
         self.routes[url] = (status, body, headers or {})
+
+    def set_sequence(self, url: str, bodies: list[bytes | str]) -> None:
+        """Answer each GET of ``url`` with the next body; the last one stays."""
+        self.set(url, bodies[-1])
+        self.sequences[url] = [b.encode("utf-8") if isinstance(b, str) else b for b in bodies]
 
     def fail(self, url: str, message: str = "connection refused") -> None:
         self.routes[url] = FetchError(f"cannot fetch {url}: {message}")
@@ -75,6 +82,9 @@ class FakeFetcher:
 
     def get(self, url: str, *, max_bytes: int = 1 << 22, accept: str | None = None) -> Response:
         self.requests.append(url)
+        seq = self.sequences.get(url)
+        if seq:
+            return Response(200, seq.pop(0) if len(seq) > 1 else seq[0], url, {})
         r = self.routes.get(url)
         if r is None:
             return Response(404, b"not found", url)
@@ -243,6 +253,156 @@ class Instance:
         h.fetcher.set(CARD_URL, json.dumps(card or self.card, indent=1))
 
 
+POLICIES_URL = API_BASE + "/v2/policies"
+DAY = 86400
+
+
+def _sha256_hex(data: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(data).hexdigest()
+
+
+class Site:
+    """An AICS-1 instance whose cards are logged the way aics-server logs them (AICS-1 §6.4, §13.1): leaf 0 the
+    charter countersigned by the log key, then one ``policy`` leaf of kind ``card`` per card, each an entry v2 whose
+    envelope the policy key signed.  :meth:`publish` serves DNS, the card at the well-known URL, ``GET
+    /v2/policies``, ``GET /v2/policies/<index>``, the checkpoint and the tiles through the fake fetcher.
+
+    The first card (leaf 1) is the bootstrap card the trust bundle pins.  ``notice`` is every card's
+    ``policy_notice_seconds``."""
+
+    LISTED = ("kind", "document_hash", "size", "prev_policy_index", "effective_after", "not_before")
+
+    def __init__(self, *, witnesses: list[Witness] = (), quorum: int = 0, max_age: int = 300,
+                 notice: int = 7 * DAY, genesis: int = NOW - 30 * DAY) -> None:
+        from aics_identity.canonical import canonicalize
+
+        self.witnesses, self.quorum, self.max_age, self.notice = list(witnesses), quorum, max_age, notice
+        self.log_key, self.policy_key, self.owner_key = (idkeys.generate_keypair() for _ in range(3))
+        self.log = Log(origin=ORIGIN, key=self.log_key, entries=[])
+        self.last_envelope: dict[str, Any] | None = None
+        self.rows: list[dict[str, Any]] = []
+        self.documents: dict[int, bytes] = {}
+        self.cards: dict[int, dict[str, Any]] = {}
+        charter = b"site charter: a test log of packages/aics-cli\n"
+        q = {"kind": "charter", "document_hash": _sha256_hex(charter), "size": len(charter),
+             "prev_policy_index": None, "effective_after": 0, "not_before": genesis,
+             "log_kid": idkeys.did_key(self.log_key.public_key()), "policy_kid": did(self.policy_key),
+             "owner_kid": did(self.owner_key)}
+        q["log_sig"] = b64u(self.log_key.sign(b"AICS-1 policy\n" + canonicalize(q)))
+        self.policy_leaf(q, ts=genesis, document=charter)
+        self.first = self.log_card(self.make_card(issued_at=genesis + 30, expires=NOW + 300 * DAY),
+                                   ts=genesis + 60, not_before=genesis + 60)
+        self.bundle = TrustBundle(origin=ORIGIN, log_vkey=self.log.vkey, policy_kid=did(self.policy_key),
+                                  owner_kid=did(self.owner_key), bootstrap_card_hash=card_hash(self.cards[self.first]))
+
+    @property
+    def last_policy_index(self) -> int:
+        return self.rows[-1]["leaf_index"]
+
+    def card_of(self, index: int) -> dict[str, Any]:
+        return self.cards[index]
+
+    def make_card(self, **over: Any) -> dict[str, Any]:
+        """A card signed by the policy key whose ``policy_parent_index`` is the last policy leaf (the server's rule)."""
+        mutate = over.pop("mutate", None)
+        body = card_body(self.log, self.policy_key, self.owner_key, witnesses=over.pop("witnesses", self.witnesses),
+                         quorum=over.pop("quorum", self.quorum), max_age=over.pop("max_age", self.max_age), **over)
+        body["policy_parent_index"] = self.last_policy_index
+        body["policy_notice_seconds"] = self.notice
+        if mutate:
+            mutate(body)
+        return sign_card(body, self.policy_key, did(self.policy_key))
+
+    def policy_leaf(self, q: dict[str, Any], *, ts: int, document: bytes, key=None) -> int:
+        """Append a ``policy`` entry whose envelope ``key`` (default: the policy key) signs at ``ts``."""
+        from aics_identity import envelope as idenv
+        from aics_identity.canonical import canonicalize
+
+        key = key or self.policy_key
+        prior = self.last_envelope if key is self.policy_key else None
+        env = idenv.sign_envelope(q, key, origin=ORIGIN, type="policy", created=ts,
+                                  seq=prior["protected"]["seq"] + 1 if prior else 0,
+                                  prev=idenv.envelope_hash(prior) if prior else None, types=idenv.SUP_PROFILE_TYPES)
+        if key is self.policy_key:
+            self.last_envelope = env
+        entry = {"v": 2, "origin": ORIGIN, "type": "policy", "actor_kid": did(key), "ts": ts,
+                 "payload": {"envelope": env, **env["payload"]}}
+        self.log.append(canonicalize(entry))
+        index = len(self.log.entries) - 1
+        self.documents[index] = document
+        self.rows.append({"leaf_index": index, **{k: q[k] for k in self.LISTED}})
+        return index
+
+    def card_statement(self, card: dict[str, Any], *, not_before: int, **over: Any) -> dict[str, Any]:
+        from aics_identity.canonical import canonicalize
+
+        doc = canonicalize(card)
+        q = {"kind": "card", "document_hash": _sha256_hex(doc), "size": len(doc),
+             "prev_policy_index": self.last_policy_index, "effective_after": len(self.log.entries),
+             "not_before": not_before, "log_kid": idkeys.did_key(self.log_key.public_key()),
+             "policy_kid": did(self.policy_key), "owner_kid": did(self.owner_key), "log_sig": None}
+        q.update(over)
+        return q
+
+    def log_card(self, card: dict[str, Any], *, ts: int, not_before: int, **over: Any) -> int:
+        """Log ``card`` as a policy leaf of kind card (``over`` changes the statement); returns its index."""
+        from aics_identity.canonical import canonicalize
+
+        index = self.policy_leaf(self.card_statement(card, not_before=not_before, **over), ts=ts,
+                                 document=canonicalize(card))
+        self.cards[index] = card
+        return index
+
+    def successor(self, *, ts: int = NOW - DAY, notice: int | None = None, **over: Any) -> int:
+        """Log a successor card at ``ts`` taking effect ``notice`` (default: the card's notice) later."""
+        card = self.make_card(issued_at=over.pop("issued_at", ts - 2), expires=over.pop("expires", NOW + 365 * DAY),
+                              **over)
+        return self.log_card(card, ts=ts, not_before=ts + (self.notice if notice is None else notice))
+
+    def filler(self, n: int) -> None:
+        """``n`` entries that are not policy leaves (the agents' traffic)."""
+        start = len(self.log.entries)
+        self.log.append(*(f"agent leaf {i}\n".encode() for i in range(start, start + n)))
+
+    def listing(self, rows: list[dict[str, Any]] | None = None) -> str:
+        rows = self.rows if rows is None else rows
+        return json.dumps({"count": len(rows), "policies": rows, "notice_seconds": self.notice,
+                           "tree_size": len(self.log.entries)})
+
+    def publish(self, h: Harness, served: int | dict[str, Any] | None = None, *, cosigners=(), listing: bool = True,
+                size: int | None = None) -> None:
+        """Serve everything; ``served`` is the card at the well-known URL (a leaf index or a card; default: the
+        first card).  ``cosigners`` are (witness, timestamp) pairs on the checkpoint."""
+        h.dns.records[TXT_NAME] = [self.bundle.txt]
+        card = self.cards[self.first if served is None else served] if not isinstance(served, dict) else served
+        h.fetcher.set(CARD_URL, json.dumps(card, indent=1))
+        if listing:
+            h.fetcher.set(POLICIES_URL, self.listing())
+        else:
+            h.fetcher.routes.pop(POLICIES_URL, None)
+        for i, doc in self.documents.items():
+            h.fetcher.set(f"{POLICIES_URL}/{i}", doc)
+        h.serve(self.log, size, list(cosigners))
+
+    def pin(self, h: Harness, *, force: bool = False) -> tuple[int, dict[str, Any]]:
+        """``aics policy init --from-dns`` (one source: the fake DNS)."""
+        return h.run("policy", "init", "--from-dns", DOMAIN, "--require-sources", "1", *(["--force"] if force else []))
+
+    def policy(self, h: Harness) -> Policy:
+        """Pin by hand what ``policy init`` takes from the bundle and the first card (no card is stored)."""
+        return make_policy(h.home, self.log, witnesses=self.witnesses, quorum=self.quorum, max_age=self.max_age,
+                           policy_kid=did(self.policy_key), owner_kid=did(self.owner_key),
+                           bootstrap_card_hash=self.bundle.bootstrap_card_hash)
+
+
+def b64u(data: bytes) -> str:
+    import base64
+
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
 def make_policy(home: Path, log: Log, *, witnesses: list[Witness] = (), quorum: int = 0,
                 max_age: int | None = 300, policy_kid: str | None = None, owner_kid: str | None = None,
                 bootstrap_card_hash: str | None = None, mirrors: list[str] = (),
@@ -282,10 +442,13 @@ class Harness:
     fetcher: FakeFetcher
     dns: FakeDNS
     clock: list[int]
+    #: Every wait a command asked for (aics_cli.checkpoints.fetch_checked); the tests never really sleep.
+    sleeps: list[float] = field(default_factory=list)
 
     @property
     def env(self) -> Env:
-        return Env(fetcher=self.fetcher, resolve_txt=self.dns, clock=lambda: self.clock[0], home=self.home)
+        return Env(fetcher=self.fetcher, resolve_txt=self.dns, clock=lambda: self.clock[0], home=self.home,
+                   sleep=self.sleeps.append)
 
     def run(self, *argv: str) -> tuple[int, dict[str, Any]]:
         """Run the CLI with --json; returns (exit code, parsed output)."""

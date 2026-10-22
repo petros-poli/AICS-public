@@ -129,7 +129,7 @@ class TestChains:
         size = tree_size(client)
         # The same envelope again (AICS-1 section 4.3: its tuple's record is backed by the refusal) is answered
         # with that first refusal, its own entry, receipt, code and status, and adds no leaf for the same bytes
-        # (the card's [deviation-refusal-dedup]); the hint says what happened, not "replay".
+        # (the card's [refusal-citation]); the hint says what happened, not "replay".
         again = client.post(ENTRIES, content=raw, headers=headers)
         assert again.status_code == 422, again.text
         assert again.json() == response.json() and leaf_index(again, client) == first and tree_size(client) == size

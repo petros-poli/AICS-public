@@ -37,7 +37,7 @@ dev = [
 
 [[package]]
 name = "aics-conformance"
-version = "0.1.0"
+version = "0.1.1"
 source = { directory = "../../packages/aics-conformance" }
 dependencies = [
     { name = "aics-identity" },
@@ -82,7 +82,7 @@ dev = [
 
 [[package]]
 name = "aics-tlog"
-version = "0.2.0"
+version = "0.2.1"
 source = { directory = "../../packages/aics-tlog" }
 dependencies = [
     { name = "cryptography" },

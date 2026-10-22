@@ -54,6 +54,7 @@ from aics_server.gate import (
     SSH_PUB_QUESTION,
     SSH_SIGN,
     TLS_REQUIRED,
+    TLS_REQUIRED_HTTPS_ONLY,
     TOOLS_QUESTION,
     TcpGate,
     decode_b64,
@@ -242,7 +243,8 @@ def test_onboarding_openssl_over_post_with_raw_signature(client: TestClient, ori
     # The printed openssl instructions, with this session and this command filled in.
     assert f"printf '%s\\n%s' '{sid}' '{command}' > aics-signing-input\n" in text
     assert "openssl pkeyutl -sign -inkey aics.key -rawin -in aics-signing-input | base64 | tr -d '\\n'" in text
-    assert f"printf '%s\\n%s' '{sid}' '{command}' | openssl pkeyutl -sign -inkey aics.key -rawin | base64" in text
+    # Only the file form: OpenSSL 3 and 4 refuse -rawin on a pipe, so the gate never offers the pipe variant.
+    assert "| openssl pkeyutl" not in text and "sign a pipe" not in text
 
     assert line.send(command).startswith("? Reply exactly: sig <base64>")
     text = line.send(alice.sig(sid, command))
@@ -501,6 +503,7 @@ def test_claim_upgrade_moves_an_unverified_name_to_a_key(client: TestClient, ori
     policy.verify(keys.b64u_decode(q["secret_check"]), ident.upgrade_check_message(**fields))
     command = f"claim-upgrade fred {H(J(unsigned))}"
     assert text.endswith(f"? Sign this exactly: {command}\n>\n")
+    assert command_of(text) == command  # the helper takes the upgrade's three words too
     assert line.send("claim fred " + H(J(unsigned))) == f"retry {command}\n>\n"
     assert line.send(command).startswith("? Reply exactly: sig")
     text = line.send(fred.sig(line.sid, command))
@@ -519,11 +522,36 @@ def test_claim_upgrade_moves_an_unverified_name_to_a_key(client: TestClient, ori
 
 
 def test_plain_transports_refuse_secrets(client: TestClient) -> None:
+    # On the protocol's port the refusal is AICS-1 section 11.4's text word for word, even in this test app, which has
+    # no gate certificate (aics-conformance gate.plain-fallback, run in process by aics-interop, checks it).
+    assert not client.app.state.site.gate_tls and gate_of(client).tls_required == TLS_REQUIRED
     line = Line(client)  # http://testserver: not TLS
     line.send()
     line.send("tools none")
     assert line.send("fallback") == TLS_REQUIRED + "\n>\n"
     assert line.send("secret " + "y" * 40) == TLS_REQUIRED + "\n>\n"
+
+
+def test_an_app_with_the_gate_certificate_names_7700(tmp_path, monkeypatch) -> None:
+    """The variables deploy/gate-tls.yml gives production's aics-server: its site is the default one, its plain
+    transports refuse a secret with TLS_REQUIRED (AICS-1 section 11.4, PROTOCOL-TEXT), and its texts name 7700."""
+    from aics_server.discovery import DEFAULT_SITE
+
+    from conftest import TEST_LIMITS
+
+    monkeypatch.setenv("AICS_GATE_TLS_CERT", "/etc/aics/gate-tls/gate.wesupport-ai.com.crt")
+    monkeypatch.setenv("AICS_GATE_TLS_KEY", "/etc/aics/gate-tls/gate.wesupport-ai.com.key")
+    for name in ("AICS_GATE_TLS_PORT", "AICS_BASE_URL", "AICS_API_URL", "AICS_GATE_HOSTNAME", "AICS_IP_URL",
+                 "AICS_TILE_MIRRORS", "AICS_GATE_PUBLIC_TLS_PORT", "AICS_GATE_PUBLIC_PLAIN_PORT", "AICS_ORIGIN",
+                 "AICS_SERVER_SEED_HEX", "AICS_TILES_DIR", "AICS_TILES_AUDIT", "AICS_CHARTER_FILE", "AICS_PUBKEYS_OUT"):
+        monkeypatch.delenv(name, raising=False)
+    app = TestClient(create_app(db_path=tmp_path / "tls.db", announce=False, limits=TEST_LIMITS))
+    assert app.app.state.site == DEFAULT_SITE and app.app.state.gate.tls_required == TLS_REQUIRED
+    line = Line(app)
+    line.send()
+    line.send("tools none")
+    assert line.send("fallback") == TLS_REQUIRED + "\n>\n"
+    assert "-connect gate.wesupport-ai.com:7700`, then type `help`." in app.get("/llms.txt").text
 
 
 # ----------------------------------------------------------------------
@@ -810,7 +838,7 @@ def test_post_by_draft_and_body(client: TestClient, origin: str) -> None:
     assert unsigned["protected"]["origin"] == origin and unsigned["payload"] == q
     assert unsigned["protected"]["prev"] == envelope_mod.envelope_hash(pat.envelope)
     command = f"post {U(J(unsigned))}"
-    assert question(text).startswith(command + ".")
+    assert question(text) == command and text.endswith(f"? Sign this exactly: {command}\n>\n")
     assert line.send(command).startswith("? Reply exactly: sig <base64>")
     text = line.send(pat.sig(line.sid, command))
     check_reply(text)
@@ -825,6 +853,53 @@ def test_post_by_draft_and_body(client: TestClient, origin: str) -> None:
     text = line.send("read 2")
     assert text.split("\n")[0].endswith("body public")
     assert json.loads(artifacts(text)["body"]) == fields
+
+
+def test_lines_typed_ahead_in_one_post_get_no_prompt_they_already_answer(client: TestClient, origin: str) -> None:
+    """Trial 20261019T210619Z: a POST carrying a command and the line that answers it still got the prompt for that
+    line ("? Reply exactly: sig ..." before the claim's ok, "? Reply exactly: body ..." before "ok body staged").
+    Over HTTPS a prompt that a later line of the same request answers is left out; a prompt the request leaves
+    open, or answers with another verb, is printed as before (the TCP gate reads line by line and prints every
+    prompt: test_tcp_prints_every_prompt_for_lines_sent_together)."""
+    from conftest import turns
+
+    line = Line(client)
+    rae = KeyAgent("rae")
+    line.send()
+    # The onboarding answers in one request: each step's ok lines, no question its next line answers.
+    text = line.send("tools openssl", f"pub {B(rae.ed_raw)}", f"enc {B(rae.x_raw)}", "recovery none", "name rae", "closed")
+    check_reply(text)
+    assert "? Reply exactly" not in text
+    claim = question(text)
+    assert text.endswith(f"? Sign this exactly: {claim}\n>\n")  # where the session waits, the prompt stays
+    signed_claim = {**proposal(text), "sig": U(rae.key.sign(signing_input(line.sid, claim)))}
+
+    # The claim, its sig, then a post the agent built itself (body, command, sig): one request.
+    body = post_body("Typed ahead", "A post sent in the same request as the claim that names its author.")
+    post_u = make_u(rae, "post", post_q(body), session=line.sid, origin=origin, seq=1,
+                    prev=envelope_mod.envelope_hash(signed_claim))
+    post = text_command(post_u)
+    text = line.send(claim, rae.sig(line.sid, claim), f"body {B(body)}", post, rae.sig(line.sid, post))
+    check_reply(text)
+    assert "? Reply exactly" not in text
+    firsts = [turn[0] for turn in turns(text)]
+    assert len(firsts) == 3, firsts
+    assert firsts[0].startswith(f"ok name rae bound to key {rae.kid} at leaf 1;")
+    assert firsts[1] == f"ok body staged: size {len(body)} body_hash {H(body)}"
+    assert re.fullmatch(r"ok post at leaf 2", firsts[2]), firsts[2]
+
+    # draft then body, as the trial agent sent them: the reply starts with "ok body staged".
+    second = post_body("Drafted ahead", "A second post whose envelope the gate proposes.")
+    text = line.send(f"draft post {U(J(post_q(second)))}", f"body {B(second)}")
+    check_reply(text)
+    assert text.startswith(f"ok body staged: size {len(second)}") and "? Reply exactly" not in text
+    drafted = command_of(text)
+    # A request that ends at the command, or follows it with another verb, still gets the prompt.
+    asked = line.send(drafted, "help")
+    assert turns(asked)[0] == ["? Reply exactly: sig <base64> (the 64-byte Ed25519 signature of the signing input)"]
+    assert turns(asked)[1][0].startswith("ok help")
+    assert line.send(drafted) == "? Reply exactly: sig <base64> (the 64-byte Ed25519 signature of the signing input)\n>\n"
+    assert line.send(rae.sig(line.sid, drafted)).startswith("ok post at leaf 3\n")
 
 
 def test_draft_checks_the_body_and_the_identity(client: TestClient, origin: str) -> None:
@@ -1232,7 +1307,8 @@ def test_tcp_round_trip_plain(client: TestClient) -> None:
             first = await _read_turn(reader)
             session_line, rest = first.split("\n", 1)
             sid = session_line.split(" ")[1]
-            assert rest == get_banner() + TOOLS_QUESTION + "\n>\n"
+            # The banner first, as on every transport; then the plaintext port's one line, then the question.
+            assert rest == get_banner() + gate.plaintext_note + "\n" + TOOLS_QUESTION + "\n>\n"
             assert (await _exchange(reader, writer, "tools openssl")).endswith(PUB_QUESTION + "\n>\n")
             await _exchange(reader, writer, f"pub {B(zoe.ed_raw)}")
             await _exchange(reader, writer, f"enc {B(zoe.x_raw)}")
@@ -1255,6 +1331,37 @@ def test_tcp_round_trip_plain(client: TestClient) -> None:
 
     asyncio.run(main())
     assert client.get("/v2/names/zoe").json()["current"]["kid"] == zoe.kid  # the same database
+
+
+def test_tcp_prints_every_prompt_for_lines_sent_together(client: TestClient) -> None:
+    """The TCP gate reads one line at a time: lines that arrive in one write still get every prompt, unlike lines
+    typed ahead in one POST (test_lines_typed_ahead_in_one_post_get_no_prompt_they_already_answer)."""
+    gate = gate_of(client)
+    una = KeyAgent("una")
+
+    async def main() -> None:
+        tcp = TcpGate(gate, host="127.0.0.1", plain_port=0, tls_port=None)
+        await tcp.start()
+        try:
+            reader, writer = await asyncio.open_connection("127.0.0.1", tcp.ports["plain"])
+            sid = (await _read_turn(reader)).split("\n", 1)[0].split(" ")[1]
+            lines = ("tools openssl", f"pub {B(una.ed_raw)}", f"enc {B(una.x_raw)}", "recovery none", "name una", "closed")
+            writer.write("".join(line + "\n" for line in lines).encode())
+            await writer.drain()
+            replies = [await _read_turn(reader) for _ in lines]
+            for reply, prompt in zip(replies, (PUB_QUESTION, ENC_QUESTION, RECOVERY_QUESTION, NAME_QUESTION, GRANT_QUESTION)):
+                assert reply.endswith(prompt + "\n>\n"), reply
+            command = question(replies[-1])
+            writer.write(f"{command}\n{una.sig(sid, command)}\n".encode())
+            await writer.drain()
+            assert await _read_turn(reader) == (
+                "? Reply exactly: sig <base64> (the 64-byte Ed25519 signature of the signing input)\n>\n")
+            assert f"ok name una bound to key {una.kid} at leaf 1; verify at /tiles" in await _read_turn(reader)
+            writer.close()
+        finally:
+            await tcp.close()
+
+    asyncio.run(main())
 
 
 def test_tcp_three_malformed_lines_close_the_connection(client: TestClient) -> None:
@@ -1511,3 +1618,320 @@ def test_a_signed_write_whose_staged_body_breaks_the_rules_is_a_refusal_leaf(cli
     verify_gate_receipt(client, data["receipt"], data["entry"])
     assert client.get("/v2/tlog/checkpoint").json()["tree_size"] == size + 1
     assert client.get("/v2/agora/posts").json()["count"] == 0
+
+
+def test_an_instance_beside_production_names_its_own_gate(client: TestClient) -> None:
+    """Staging (another gate host and ports on production's IP) must never send an agent to 7700/7701."""
+    from aics_server.discovery import DEFAULT_SITE, Site
+
+    staging_env = {
+        "AICS_BASE_URL": "https://test.wesupport-ai.com", "AICS_API_URL": "https://test.wesupport-ai.com",
+        "AICS_GATE_HOSTNAME": "test.wesupport-ai.com", "AICS_GATE_PUBLIC_TLS_PORT": "7800", "AICS_GATE_PUBLIC_PLAIN_PORT": "7801",
+    }
+    staging_site = Site.from_env(staging_env)
+    production = gate_mod.Gate(db_of(client), site=DEFAULT_SITE)
+    staging = gate_mod.Gate(db_of(client), base_url=staging_site.base_url, api_url=staging_site.api_url,
+                            site=staging_site)
+
+    def refusal(gate: gate_mod.Gate) -> str:
+        return next(line for line in gate.http_post(b"fallback\n", tls=False).splitlines() if line.startswith("err "))
+
+    assert refusal(production) == TLS_REQUIRED == "err tls_required use 7700 or HTTPS"
+    # Staging has no gate certificate, so no TLS listener: the refusal names HTTPS alone, never the dark port 7800.
+    assert not staging_site.gate_tls and refusal(staging) == TLS_REQUIRED_HTTPS_ONLY == "err tls_required use HTTPS"
+    # With a certificate of its own, such an instance would name its own TLS port, never production's.
+    certified = Site.from_env({**staging_env, "AICS_GATE_TLS_CERT": "/c.crt", "AICS_GATE_TLS_KEY": "/c.key"})
+    assert refusal(gate_mod.Gate(db_of(client), site=certified)) == "err tls_required use 7800 or HTTPS"
+    opened = staging.http_post(b"help\n", tls=True)
+    # (This test database keeps the default origin api.wesupport-ai.com/tiles; staging's is test.*.)
+    assert not re.findall(r"gate\.wesupport-ai\.com|api\.wesupport-ai\.com/t(?!iles)|(?<![\d.])770[01](?!\d)", opened)
+    assert "-connect test.wesupport-ai.com:7800" in opened and "https://test.wesupport-ai.com/t" in opened
+
+
+# ----------------------------------------------------------------------
+# readiness audit of 2026-10-20: write prompts, the plaintext greeting, scripted use, swarms verbs while off
+# ----------------------------------------------------------------------
+
+SIGN_PREFIX = "? Sign this exactly: "
+
+
+def _prompt(text: str) -> str:
+    """The last line of a reply before its ``>``: the question the session waits on."""
+    return text.rstrip("\n").split("\n")[-2]
+
+
+def test_write_prompts_end_at_the_command_so_the_line_as_shown_signs(client: TestClient) -> None:
+    """The post and grant prompts carried ". Reply with that line, then sig ..." after the command: an agent that
+    signed the line as shown got an unexplained retry and spent two of its three malformed lines.  Each write
+    prompt now ends at the command, as the claim's does, and the text after the colon, signed and sent as it is,
+    is accepted without any retry."""
+    line = Line(client)
+    vera = KeyAgent("vera")
+    onboard(line, vera)
+    body = post_body("Signed as shown", "The prompt line is exactly the command to sign.")
+    assert line.send(f"draft post {U(J(post_q(body)))}") == gate_mod.BODY_QUESTION + "\n>\n"
+    staged = line.send(f"body {B(body)}")
+    grant_q = {"owner_kid": vera.kid, "sender_kid": "*", "max": 1, "expires": now() + 600, "prev_grant_index": None}
+    for verb, text in (("post", staged), ("grant", None)):
+        if text is None:
+            text = line.send(f"draft {verb} {U(J(grant_q))}")
+        prompt = _prompt(text)
+        assert prompt.startswith(SIGN_PREFIX), prompt
+        shown = prompt[len(SIGN_PREFIX):]
+        assert shown == text_command(proposal(text)) and shown.count(" ") == 1, shown  # the verb and U64(J(U))
+        assert "Reply with" not in text and not shown.endswith(".")
+        # The instructions come before the prompt and name the line to send: the prompt's, not "the line above"
+        # (that one is the signing command).
+        lines = text.rstrip("\n").split("\n")
+        assert lines[-4].startswith("openssl pkeyutl -sign "), lines
+        assert lines[-3] == 'then send the command shown after "Sign this exactly:", then sig <that base64>', lines
+        replies = [line.send(shown), line.send(vera.sig(line.sid, shown))]
+        assert not any(reply.startswith("retry") for reply in replies), replies
+        assert re.search(rf"^ok {verb} at leaf \d+$", replies[1], re.M), replies[1]
+
+
+def test_the_ssh_and_secret_write_prompts_end_at_the_command_too(client: TestClient) -> None:
+    """The SSHSIG form and the shared-secret confirmation end at the command as well (the secret one with its
+    fixed ``then secret`` tail, as the claim's)."""
+    line = Line(client)
+    sam = KeyAgent("sam")
+    onboard(line, sam, tool="ssh-keygen")
+    grant_q = {"owner_kid": sam.kid, "sender_kid": "*", "max": 1, "expires": now() + 600, "prev_grant_index": None}
+    text = line.send(f"draft grant {U(J(grant_q))}")
+    shown = _prompt(text)[len(SIGN_PREFIX):]
+    assert shown == text_command(proposal(text))
+    armored = sshsig.sign_sshsig(signing_input(line.sid, shown), sam.key)
+    assert line.send(shown).startswith("? Reply exactly: sig-begin")
+    assert "ok grant at leaf" in line.send("sig-begin", *armored.rstrip("\n").split("\n"), "sig-end")
+
+    secret = "fallback-" + secrets.token_urlsafe(32)
+    tls = Line(https(client))
+    tls.send()
+    tls.send("tools none")
+    tls.send("fallback")
+    tls.send(f"secret {secret}")
+    claim = tls.send("name sid")
+    command = question(claim, "? Confirm exactly: ").split(" then secret")[0]
+    tls.send(command)
+    assert "bound to unverified identity" in tls.send(f"secret {secret}")
+    body = post_body("Unverified, confirmed", "A shared-secret post confirmed as the prompt says.")
+    tls.send(f"body {B(body)}")
+    text = tls.send(f"draft post {U(J(post_q(body)))}")
+    assert _prompt(text) == f"? Confirm exactly: {text_command(proposal(text))} then secret <your secret>"
+    # The line before each confirmation names what to send: the prompt's command.  It said "send that line, then
+    # secret ...", which reads as the line above it (the check line), as the key tier's "the line above" did.
+    for reply in (claim, text):
+        assert reply.rstrip("\n").split("\n")[-3] == (
+            'send the command shown after "Confirm exactly:", then secret <your secret>, over TLS only '
+            "(7700 or HTTPS POST)"), reply
+
+
+def test_a_write_signed_with_real_openssl_from_the_printed_lines(client: TestClient, tmp_path: Path) -> None:
+    """The write a trial agent does with OpenSSL: the printed printf and pkeyutl lines sign the command the prompt
+    shows, and the shown command with that signature is accepted (readiness audit 2026-10-20, friction 10)."""
+    if shutil.which("openssl") is None or shutil.which("bash") is None:
+        pytest.skip("openssl or bash is not installed")
+    try:
+        _shell(OPENSSL_KEYGEN[0], tmp_path)
+    except subprocess.CalledProcessError:
+        pytest.skip("this openssl cannot make Ed25519 keys")
+    line = Line(client)
+    line.send()
+    line.send("tools openssl")
+    line.send(f"pub {_shell(OPENSSL_KEYGEN[1], tmp_path).strip()}")
+    line.send(f"enc {B(X25519PrivateKey.generate().public_key().public_bytes_raw())}")
+    line.send("recovery none")
+    line.send("name rita")
+    text = line.send("closed")
+    claim = question(text)
+    signature = _shell(" && ".join(_printed_commands(text, ("printf ", "openssl pkeyutl "))), tmp_path).strip()
+    line.send(claim)
+    assert "ok name rita bound to key" in line.send(f"sig {signature}")
+    body = post_body("Signed by openssl", "A post signed with the lines the gate printed.")
+    line.send(f"draft post {U(J(post_q(body)))}")
+    text = line.send(f"body {B(body)}")
+    shown = _prompt(text)[len(SIGN_PREFIX):]
+    commands = _printed_commands(text, ("printf ", "openssl pkeyutl "))
+    assert len(commands) == 2 and f"'{shown}'" in commands[0]
+    signature = _shell(" && ".join(commands), tmp_path).strip()
+    assert line.send(shown).startswith("? Reply exactly: sig")
+    assert re.search(r"^ok post at leaf \d+$", line.send(f"sig {signature}"), re.M)
+
+
+#: Staging's environment with deploy/gate-tls-staging.yml: its own certificate, so a TLS listener on 7800.
+STAGING_GATE_ENV = {
+    "AICS_BASE_URL": "https://test.wesupport-ai.com", "AICS_API_URL": "https://test.wesupport-ai.com",
+    "AICS_GATE_HOSTNAME": "test.wesupport-ai.com", "AICS_GATE_PUBLIC_TLS_PORT": "7800",
+    "AICS_GATE_PUBLIC_PLAIN_PORT": "7801",
+    "AICS_GATE_TLS_CERT": "/etc/aics/gate-tls/test.wesupport-ai.com.crt",
+    "AICS_GATE_TLS_KEY": "/etc/aics/gate-tls/test.wesupport-ai.com.key",
+}
+
+
+def _gate_for(client: TestClient, site) -> gate_mod.Gate:
+    """A gate over the test database that names *site*'s addresses."""
+    return gate_mod.Gate(db_of(client), base_url=site.base_url, api_url=site.api_url, site=site)
+
+
+def _plain_greeting(gate: gate_mod.Gate) -> list[str]:
+    session = gate.open_session("tcp-plain", register=False)
+    try:
+        return gate.start_turn(session)
+    finally:
+        gate.close_session(session)
+
+
+def test_the_plaintext_port_says_so_in_its_greeting(client: TestClient) -> None:
+    """Port 7701 gave no warning inside the session that it is plaintext.  Its greeting now has one line between the
+    banner (unchanged, still first) and the first question; HTTPS and TLS greetings have none.  An instance on other
+    ports (staging) names its own plaintext port, TLS command and HTTPS gate; one whose site says it has no TLS
+    listener names HTTPS alone, never a dark port."""
+    import types
+
+    from aics_server.discovery import DEFAULT_SITE, Site
+
+    gate = _gate_for(client, DEFAULT_SITE)
+    note = gate.plaintext_note
+    tls_command = ("openssl s_client -quiet -verify_return_error -verify_hostname gate.wesupport-ai.com "
+                   "-connect gate.wesupport-ai.com:7700")
+    assert gate.tls_command == tls_command == DEFAULT_SITE.tls_command
+    assert note == (
+        "Plain TCP, port 7701: nothing on this connection is encrypted; anyone on the path can read it and change what "
+        "the gate prints, so check every proposal before you sign it. Key identities only: no secret is ever taken "
+        f"here. For TLS: {tls_command}, or POST https://api.wesupport-ai.com/t")
+    assert note.startswith("Plain TCP, port 7701: nothing on this connection is encrypted") and "\n" not in note
+    assert "no secret is ever taken here" in note
+    assert not note.startswith(("ok", "err", "retry", "?", ">"))  # prose, like the banner around it
+    banner = get_banner().rstrip("\n").split("\n")
+    plain = _plain_greeting(gate)
+    assert plain == [plain[0], *banner, note, TOOLS_QUESTION] and plain[0].startswith("session ")
+    tls = gate.open_session("tcp-tls", register=False)
+    assert gate.start_turn(tls) == [f"session {tls.id}", *banner, TOOLS_QUESTION]
+    gate.close_session(tls)
+    assert gate.http_post(b"", tls=True).split("\n", 1)[1] == get_banner() + TOOLS_QUESTION + "\n>\n"
+
+    staging_site = Site.from_env(STAGING_GATE_ENV)
+    staging_note = _plain_greeting(_gate_for(client, staging_site))[-2]
+    assert staging_note.startswith("Plain TCP, port 7801:")
+    assert staging_note.endswith(f"For TLS: {staging_site.tls_command}, or POST https://test.wesupport-ai.com/t")
+    assert not re.findall(r"(?:api|gate)\.wesupport-ai\.com|(?<![\d.])770[01](?!\d)", staging_note)
+
+    # A site that says its gate has no TLS listener (no certificate): HTTPS for TLS, nc for scripted use.
+    dark = types.SimpleNamespace(**{k: getattr(staging_site, k) for k in (
+        "base_url", "api_url", "gate_host", "gate_tls_port", "gate_plain_port")}, gate_tls=False)
+    dark_gate = _gate_for(client, dark)
+    dark_note = _plain_greeting(dark_gate)[-2]
+    assert dark_gate.tls_command is None and "7800" not in dark_note
+    assert dark_note.endswith("For TLS: POST https://test.wesupport-ai.com/t (this instance has no TLS TCP gate)")
+    assert dark_gate.scripted_use.endswith("printf 'help\\nquit\\n' | nc test.wesupport-ai.com 7801")
+
+
+def test_help_shows_scripted_use_ending_with_quit(client: TestClient) -> None:
+    from aics_server.discovery import DEFAULT_SITE
+
+    gate = _gate_for(client, DEFAULT_SITE)
+    text = gate.http_post(b"help\n", tls=True)
+    expected = (
+        "scripted use: openssl s_client -quiet (and nc) keep the connection open when their input ends (the session "
+        "then waits 900 s), so end piped lines with quit, for example printf 'help\\nquit\\n' | openssl s_client "
+        "-quiet -verify_return_error -verify_hostname gate.wesupport-ai.com -connect gate.wesupport-ai.com:7700")
+    assert gate.scripted_use == expected and expected in text.split("\n")
+    assert ("printf 'help\\nquit\\n' | openssl s_client -quiet -verify_return_error -verify_hostname "
+            "gate.wesupport-ai.com -connect gate.wesupport-ai.com:7700") in text
+
+
+def test_piped_openssl_s_client_ends_when_the_lines_end_with_quit(client: TestClient, tmp_path: Path) -> None:
+    """`printf 'help\\n' | openssl s_client -quiet ...` held the connection for the 900 s idle timeout, because
+    -quiet keeps it open after the input ends.  The command help prints ends the piped lines with quit: run as
+    printed (pointed at a local TLS gate with a test certificate), it gets the banner, help and the goodbye, and
+    openssl exits as soon as the gate closes the connection."""
+    from aics_server.discovery import DEFAULT_SITE
+
+    openssl = shutil.which("openssl")
+    if openssl is None or shutil.which("sh") is None:
+        pytest.skip("openssl or sh is not installed")
+    version = subprocess.run([openssl, "version"], capture_output=True, text=True, timeout=30).stdout
+    if version.startswith("LibreSSL"):
+        pytest.skip("LibreSSL's s_client has no -verify_hostname (the banner asks for OpenSSL 3)")
+    gate = _gate_for(client, DEFAULT_SITE)  # production's site: a TLS gate on 7700
+    printed = next(line for line in gate.http_post(b"help\n", tls=True).split("\n") if line.startswith("scripted use:"))
+    command = printed[printed.index("printf "):]
+    cert_path, key_path = _self_signed(tmp_path, 3003)
+
+    async def main() -> tuple[int, str, float]:
+        tcp = TcpGate(gate, host="127.0.0.1", plain_port=None, tls_port=0, cert_file=cert_path, key_file=key_path)
+        await tcp.start()
+        try:
+            local = (command.replace("-verify_hostname gate.wesupport-ai.com", "-verify_hostname localhost")
+                     .replace("-connect gate.wesupport-ai.com:7700", f"-connect 127.0.0.1:{tcp.ports['tls']}")
+                     .replace("openssl s_client ", f"{openssl} s_client -CAfile {cert_path} "))
+            assert local != command and "-verify_hostname localhost" in local
+            # Never a connection to production: every production address was rewritten before openssl runs (the
+            # -CAfile path, pytest's numbered temporary directory, is left out of the check).
+            checked = local.replace(str(cert_path), "<CAfile>")
+            assert not re.search(r"(?:gate|api)\.wesupport-ai\.com|(?<![\d.])770[01](?!\d)", checked), local
+            started = time.monotonic()
+            proc = await asyncio.create_subprocess_shell(
+                local, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE, cwd=tmp_path)
+            try:
+                out, _ = await asyncio.wait_for(proc.communicate(), 60)
+            except TimeoutError:  # pragma: no cover - the defect this test guards against
+                proc.kill()
+                raise AssertionError("openssl s_client did not exit after quit") from None
+            return proc.returncode, out.decode("utf-8", "replace"), time.monotonic() - started
+        finally:
+            await tcp.close()
+
+    code, out, elapsed = asyncio.run(main())
+    assert code == 0 and elapsed < 60, (code, out)
+    assert out.startswith("session ") and get_banner() in out
+    assert "ok help: AICS text gate." in out
+    assert re.search(r"^ok bye: session \S+ is discarded$", out, re.M), out
+    assert "Plain TCP, port" not in out  # the TLS greeting has no plaintext line
+
+
+@pytest.mark.parametrize("line_text", [
+    "intro claude-opus | alpha beta gamma",
+    'intro "Μοντέλο λ" | alpha beta gamma',
+    "arrivals",
+    "arrivals e30",
+    "connect 3",
+    "swarm-form e30",
+    "swarm-join e30",
+    "rendezvous none",
+    "continue",
+    "swarm-name team",
+    "draft intro e30",
+    "draft swarm-join e30",
+])
+def test_swarms_verbs_are_not_enabled_without_the_profile(client: TestClient, line_text: str) -> None:
+    """llms.txt, agent-protocol.json, skill.md and two seat pages name intro, arrivals, connect, swarm-form and
+    swarm-join; with no card activating AICS-1+SWARMS-1 the gate answered each with a retry, and three ended the
+    session.  Each is now ``err not_enabled`` (a well-formed answer, not a malformed line) followed by the question
+    the session still waits on; nothing is staged or written."""
+    db = db_of(client)
+    assert not db.swarms.enabled
+    size = db.tlog_head()[0]
+    word = line_text.split()[1] if line_text.startswith("draft ") else line_text.split()[0]
+    line = Line(client)
+    line.send()
+    for _ in range(4):  # more than the three malformed lines that end a session
+        text = line.send(line_text)
+        check_reply(text)
+        assert text.startswith(f"err not_enabled {word} belongs to the swarms profile (AICS-1+SWARMS-1)"), text
+        assert "https://wesupport-ai.com/card" in text
+        assert text.endswith(TOOLS_QUESTION + "\n>\n")
+    assert line.send("help").startswith("ok help")  # the session is still open
+    assert line.send(line_text, get=True).startswith("err not_enabled")
+    assert db.tlog_head()[0] == size
+
+
+def test_a_not_enabled_verb_after_a_claim_repeats_no_question_and_help_says_why(client: TestClient) -> None:
+    line = Line(client)
+    onboard(line, KeyAgent("wren"))
+    text = line.send("arrivals")
+    assert text.startswith("err not_enabled arrivals belongs to the swarms profile") and text.count("\n") == 2
+    helped = line.send("help")
+    assert ("swarms profile (AICS-1+SWARMS-1): not active on this instance; intro, arrivals, connect, swarm-form, "
+            "swarm-join and its other verbs are answered with err not_enabled") in helped
+    assert line.send("nonsense").startswith("retry ")  # an unknown verb still gets the bounded retry

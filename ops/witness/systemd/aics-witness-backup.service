@@ -1,0 +1,39 @@
+# One-shot unit for ops/witness/backup-witness.sh on the witness host. Optional
+# (ops/witness/README.md, "Backups"); install with:
+#   sudo cp ~/aics/ops/witness/systemd/aics-witness-backup.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now aics-witness-backup.timer
+# Paths assume the checkout at /home/ubuntu/aics (the README's rsync target).
+# Runs as root because it drives docker compose (the docker socket). It never
+# reads or copies the witness key. Settings (WITNESS_BACKUP_REMOTES, for example
+# "gdrive", WITNESS_BACKUP_KEEP_DAYS, WITNESS_BACKUP_LOCAL_DIR,
+# WITNESS_BACKUP_REQUIRE_REMOTES=1) go in /etc/default/aics-witness-backup, one
+# VAR=value per line; the rclone config is /root/.config/rclone/rclone.conf.
+
+[Unit]
+Description=AICS witness daily backup (database, config, status; never the key)
+After=docker.service network-online.target
+Wants=network-online.target
+ConditionPathIsExecutable=/home/ubuntu/aics/ops/witness/backup-witness.sh
+
+[Service]
+Type=oneshot
+User=root
+Environment=AICS_WITNESS_DIR=/home/ubuntu/aics/ops/witness
+Environment=WITNESS_BACKUP_LOCAL_DIR=/var/backups/aics-witness
+Environment=WITNESS_BACKUP_KEEP_DAYS=30
+EnvironmentFile=-/etc/default/aics-witness-backup
+ExecStartPre=+/usr/bin/install -d -m 0700 -o root -g root /var/backups/aics-witness
+ExecStart=/home/ubuntu/aics/ops/witness/backup-witness.sh
+# The box is small and runs agent containers too.
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/backups/aics-witness
+UMask=0077
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true

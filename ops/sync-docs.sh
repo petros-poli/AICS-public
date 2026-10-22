@@ -19,16 +19,22 @@ usage = """Usage:
   bash ops/sync-docs.sh LOCAL_DIRECTORY
   bash ops/sync-docs.sh user@host [ABSOLUTE_REMOTE_DIRECTORY]
 Remote default: /opt/wesupport-ai/deploy/docs-public
-The destination must be dedicated to this export; stale files are removed.
+The destination must be dedicated to this export; stale files are removed, except
+published evidence: a local export refuses to drop an evidence file, a remote sync keeps it.
 --check validates the publication sources without writing or connecting anywhere.
 --check-links verifies published document/alias bytes over HTTPS after deployment.
-Published: docs/{spec,legal,site}/*.md, the four top-level documents and one data
+Published: docs/{spec,legal,site}/*.md, the three top-level documents (BANNER.md,
+DESIGN.md, PROTOCOL-TEXT.md; never DECISIONS.md, the owner's internal record), one data
 file, docs/legal/secret-patterns.json (the secret-pattern definitions the card hashes
-and the server scans with). Nothing else, and never docs/internal.
+and the server scans with), and every file of docs/evidence (the evidence a card names
+by hash: conformance reports and what re-verifying them needs; .md, .json, .txt or
+.toml only, JSON strict, no subdirectory, no symlink), served at /docs/evidence/.
+Nothing else, and never docs/internal.
 The publisher preserves source bytes. The site must serve /spec, /legal, /site,
-/docs/spec, /docs/legal and /docs/site aliases plus root aliases for the four top-level
-documents. Repository-only research/package links require their own public
-repository URL; never expose docs/internal to satisfy a broken link.
+/docs/spec, /docs/legal and /docs/site aliases plus root aliases for the three top-level
+documents, and /docs/evidence/ (inside the /docs/ export). Repository-only
+research/package links require their own public repository URL; never expose
+docs/internal to satisfy a broken link.
 """
 
 def fail(message):
@@ -36,6 +42,47 @@ def fail(message):
 
 #: Exactly the data files docs/legal may publish besides its Markdown.
 DATA_FILES = ("secret-patterns.json",)
+#: docs/evidence: every regular file is published under /docs/evidence/ with this name form; any other entry
+#: refuses the whole export (fail closed) rather than being skipped, since a card names these files by hash.
+EVIDENCE_NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\.(?:md|json|txt|toml)")
+#: The export directories that get a plain index.txt.
+INDEXED = ("spec", "legal", "site", "docs", "docs/evidence")
+
+def strict_json_file(path):
+    """Refuse an evidence .json that is not strict JSON: UTF-8, no duplicate member, no NaN or Infinity."""
+    import json
+    def pairs(items):
+        members = {}
+        for key, value in items:
+            if key in members:
+                raise ValueError(f"duplicate member {key!r}")
+            members[key] = value
+        return members
+    def constant(name):
+        raise ValueError(f"non-standard constant {name}")
+    try:
+        json.loads(path.read_bytes().decode("utf-8"), object_pairs_hook=pairs, parse_constant=constant)
+    except (UnicodeDecodeError, ValueError) as error:
+        fail(f"REFUSED evidence file that is not strict JSON: {path.name} ({error})")
+
+def evidence_sources(docs):
+    evidence = docs / "evidence"
+    if evidence.is_symlink():
+        fail(f"REFUSED symlink in source path: {evidence}")
+    if not evidence.is_dir():
+        return []
+    found = []
+    for path in sorted(evidence.iterdir()):
+        if path.name.startswith("."):
+            continue  # editor and Finder litter (.DS_Store) is never published
+        if path.is_symlink() or not path.is_file():
+            fail(f"REFUSED evidence entry that is not a regular file: {path}")
+        if not EVIDENCE_NAME.fullmatch(path.name) or path.name == "index.txt":
+            fail(f"REFUSED evidence file outside the .md/.json/.txt/.toml names (or index.txt): {path.name}")
+        if path.suffix == ".json":
+            strict_json_file(path)
+        found.append((path, Path("docs") / "evidence" / path.name))
+    return found
 
 def below(path, parent):
     return path == parent or parent in path.parents
@@ -53,11 +100,16 @@ def validate_sources(extra):
     for section in ("spec", "legal", "site"):
         sources.extend((p, Path(section) / p.name)
                        for p in sorted((docs / section).glob("*.md")))
+    # docs/DECISIONS.md is the owner's internal record, not a public document (readiness audit 2026-10-20); the
+    # specifications link its copy in the public repository instead.
     sources.extend((docs / name, Path("docs") / name) for name in
-                   ("BANNER.md", "DESIGN.md", "DECISIONS.md", "PROTOCOL-TEXT.md"))
+                   ("BANNER.md", "DESIGN.md", "PROTOCOL-TEXT.md"))
     # The one non-Markdown file, named exactly: the secret-pattern definitions that the
     # card's [secret-scan-scope] names at /legal/secret-patterns.json (decision 29).
     sources.extend((docs / "legal" / name, Path("legal") / name) for name in DATA_FILES)
+    evidence = evidence_sources(docs)
+    sources.extend(evidence)
+    evidence_files = {source for source, target in evidence}
     allowed = {source for source, target in sources}
     for source in [p for p, target in sources] + [Path(p).absolute() for p in extra]:
         resolved = source.resolve(strict=True)
@@ -72,7 +124,8 @@ def validate_sources(extra):
         stat = source.stat()
         if (stat.st_dev, stat.st_ino) in private_inodes:
             fail(f"REFUSED hard link to internal document: {source}")
-        if not (re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.md", source.name) or source.name in DATA_FILES):
+        if not (re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*\.md", source.name) or source.name in DATA_FILES
+                or (source in evidence_files and EVIDENCE_NAME.fullmatch(source.name))):
             fail(f"REFUSED unsafe index filename: {source.name}")
     return sources
 
@@ -96,8 +149,9 @@ def main():
             paths = ["/" + target.as_posix()]
             if target.parts[0] in ("spec", "legal", "site"):
                 paths.append("/docs/" + target.as_posix())
-            else:
+            elif target.parent == Path("docs"):
                 paths.append("/" + source.name)
+            # docs/evidence/<name> has its one path, /docs/evidence/<name>, and no root alias.
             for path in paths:
                 url = base + path
                 # Identify our verifier honestly: generic Python-urllib clients can
@@ -117,7 +171,9 @@ def main():
         print(f"OK: {count} published document and relative-link alias URLs match source bytes.")
         return 0
     if check:
-        print(f"OK: {len(sources)} public documents ({len(DATA_FILES)} data file); internal sources excluded.")
+        evidence = sum(1 for source, target in sources if target.parent == Path("docs/evidence"))
+        print(f"OK: {len(sources)} public documents ({len(DATA_FILES)} data file, {evidence} evidence files); "
+              "internal sources excluded.")
         return 0
     if args[0].startswith("-") or len(args) > 2:
         fail(usage)
@@ -143,30 +199,40 @@ def main():
             if not destination.is_dir():
                 fail("Destination must be a directory")
             expected = {target.as_posix() for source, target in sources}
-            expected.update(f"{section}/index.txt" for section in ("spec", "legal", "site", "docs"))
+            expected.update(f"{section}/index.txt" for section in INDEXED)
             # Fail closed on contamination rather than publish an unknown file.
             for entry in destination.rglob("*"):
                 relative = entry.relative_to(destination).as_posix()
-                if entry.is_symlink() or (entry.is_dir() and relative not in ("spec", "legal", "site", "docs")):
+                if entry.is_symlink() or (entry.is_dir() and relative not in INDEXED):
                     fail(f"REFUSED unexpected destination entry: {entry}")
                 if not entry.is_dir() and relative not in expected:
-                    # Old public .md files are safely removed below.
-                    if entry.parent.name not in ("spec", "legal", "site") or entry.suffix != ".md":
+                    # Old public .md files are safely removed below: those of spec/, legal/ and site/, and a
+                    # top-level document no longer published (docs/DECISIONS.md, exported before 2026-10-20). A
+                    # stale evidence file (docs/evidence/) or anything else still refuses the export.
+                    parent = entry.parent.relative_to(destination).as_posix()
+                    if parent not in ("spec", "legal", "site", "docs") or entry.suffix != ".md":
                         fail(f"REFUSED unexpected destination file: {entry}")
     with tempfile.TemporaryDirectory(prefix="aics-public-docs-") as temporary:
         stage = Path(temporary)
-        for section in ("spec", "legal", "site", "docs"):
+        for section in INDEXED:
             (stage / section).mkdir(mode=0o755)
         for source, target in sources:
             shutil.copyfile(source, stage / target)
             (stage / target).chmod(0o644)
-        for section in ("spec", "legal", "site", "docs"):
-            names = sorted(p.name for p in (stage / section).iterdir())
+        for section in INDEXED:
+            # A subdirectory is listed with a trailing slash (docs/index.txt names evidence/).
+            names = sorted(p.name + ("/" if p.is_dir() else "") for p in (stage / section).iterdir())
             (stage / section / "index.txt").write_text("\n".join(names + ["index.txt"]) + "\n", encoding="utf-8")
             (stage / section / "index.txt").chmod(0o644)
         if remote:
             subprocess.run(["ssh", args[0], f"mkdir -p -- {destination}"], check=True)
-            subprocess.run(["rsync", "-r", "--delete", "--chmod=D755,F644", "--",
+            # The stage holds D755/F644 exactly (its root too), and --perms copies those modes: the effect of
+            # --chmod=D755,F644, which macOS's openrsync does not accept. --delete removes stale public files, but
+            # never published evidence: a card names those by hash, and an export from a checkout that lacks one
+            # (a fresh worktree of an older commit) must not unpublish it (the local export refuses instead; here
+            # the remote copy is protected and kept).
+            stage.chmod(0o755)
+            subprocess.run(["rsync", "-r", "--perms", "--delete", "--filter", "P /docs/evidence/**", "--",
                             str(stage) + "/", f"{args[0]}:{destination}/"], check=True)
         else:
             destination.mkdir(parents=True, exist_ok=True)
@@ -175,7 +241,8 @@ def main():
                 if target.exists():
                     shutil.rmtree(target)
                 shutil.copytree(stage / section, target)
-        print(f"Published {len(sources)} documents ({len(DATA_FILES)} data file) and four plain indexes to {destination}")
+        print(f"Published {len(sources)} documents ({len(DATA_FILES)} data file) and {len(INDEXED)} plain indexes "
+              f"to {destination}")
     return 0
 
 try:

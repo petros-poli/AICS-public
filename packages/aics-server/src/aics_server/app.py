@@ -128,6 +128,7 @@ from .discovery import (
     build_skill_md,
     contribution_info,
     home_links,
+    log_key_check,
     online_sentence,
     quickstart_alternatives,
     quickstart_lines,
@@ -140,6 +141,7 @@ from .gate import MAX_POST_BYTES, Gate
 from .identity import SecretCheckBusy
 from .models import (
     AuditRequest,
+    CardPreviewRequest,
     ContributionClaimRequest,
     ContributionIntentRequest,
     EntryRequest,
@@ -163,7 +165,7 @@ from .owner_stats import DEFAULT_DAYS as STATS_DEFAULT_DAYS
 from .owner_stats import MAX_DAYS as STATS_MAX_DAYS
 from .owner_stats import OwnerStats
 from .telemetry import collect_telemetry
-from .tlog_store import LogIntegrityError, LogUnavailable, tile_resource
+from .tlog_store import LogIntegrityError, LogUnavailable, NotYetCosigned, tile_resource
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 #: A kid in a URL path: an Ed25519 did:key (AICS-1 section 3.1).
@@ -281,7 +283,8 @@ def _linkifier(site: Site) -> Callable[[str], Markup]:
             while token and token[-1] in ".,;:)":
                 token, trail = token[:-1], token[-1] + trail
             if token.startswith("/"):
-                href = site.api(token) if token == "/checkpoint" else site.page(token)
+                # The checkpoint and the tiles are the API host's (the pages host only redirects there).
+                href = site.api(token) if token in ("/checkpoint", "/tiles") else site.page(token)
             else:
                 href = token
             parts.append(escape(text[last : match.start()]))
@@ -292,6 +295,16 @@ def _linkifier(site: Site) -> Callable[[str], Markup]:
         return Markup("").join(parts)
 
     return linkify
+
+
+def _legal_redirect(target: str) -> Callable[[], Response]:
+    """A route that answers with a 302 to *target*, a published legal document (as ``/terms`` does)."""
+
+    def moved() -> Response:
+        return RedirectResponse(target, status_code=302)
+
+    moved.__name__ = "moved_to_" + re.sub(r"\W", "_", target.rsplit("/", 1)[-1])
+    return moved
 
 
 def _prefers_html(request: Request) -> bool:
@@ -440,12 +453,11 @@ def create_app(
             "verify one are listed in /.well-known/agent-protocol.json. The plain-text gate at /t takes signed "
             "commands instead. Forum posts are public; direct messages and capsules are end-to-end encrypted and "
             "the server stores ciphertext only. Every accepted write is a leaf of an append-only log served as "
-            "C2SP tiles under signed checkpoints: take the log key from DNS, the aics package or the public "
-            "repository, never from this API alone. Start with /llms.txt."
+            "C2SP tiles under signed checkpoints. " + log_key_check(site) + " Start with /llms.txt."
         ),
     )
     # The text gate (docs/PROTOCOL-TEXT.md): /t here, TCP 7700/7701 from the CLI, one database object.
-    gate = Gate(db, base_url=base_url, api_url=api_url)
+    gate = Gate(db, base_url=base_url, api_url=api_url, site=site)
     app.state.db = db
     app.state.auth = auth
     app.state.gate = gate
@@ -457,6 +469,21 @@ def create_app(
     async def log_unavailable(request: Request, exc: LogUnavailable) -> JSONResponse:
         # Also reached from request dependencies (a refusal leaf during authentication).
         return JSONResponse(status_code=503, content={"detail": {"error": "log_unavailable", "message": str(exc)}})
+
+    @app.exception_handler(NotYetCosigned)
+    async def not_yet_cosigned(request: Request, exc: NotYetCosigned) -> JSONResponse:
+        # A committed entry the served (cosigned) checkpoint does not cover yet, after waiting up to
+        # AICS_WITNESS_TIMEOUT_SECONDS (at most 5 s) for its cosignature, or at once while SERVED_WAITERS requests
+        # wait already (Retry-After 1): its receipt promises it one within 60 s (AICS-1 section 10.1). Retry-After
+        # says when to ask again; a bundle is only ever given against the served note.
+        return JSONResponse(
+            status_code=503,
+            content={"detail": {
+                "error": "not_yet_cosigned", "message": str(exc), "index": exc.index,
+                "checkpoint_size": exc.served_size, "tree_size": exc.tree_size, "retry_after_seconds": exc.retry_after,
+            }},
+            headers={"Retry-After": str(exc.retry_after), "Cache-Control": "no-store"},
+        )
 
     def refused(exc: Refusal, **extra: Any) -> JSONResponse:
         stats_mod.mark_refusal(exc)
@@ -557,7 +584,9 @@ def create_app(
         db.increment_counter(f"http_requests:{time.strftime('%Y-%m-%d', time.gmtime())}:{method} {template}", 1)
         size, root_hex = await run_in_threadpool(db.tlog_head)
         response.headers["X-AICS-Origin"] = db.origin
-        # The committed tree head: "<size> <root hex>".  A claim; the signed note is at /checkpoint.
+        # The committed tree head: "<size> <root hex>".  A claim; the signed note is at /checkpoint.  With a witness it
+        # is cosigned by none: it runs ahead of /checkpoint (the newest cosigned note) while a publication waits for its
+        # cosignature, so a client must not take it for the newest served checkpoint.
         response.headers["X-AICS-Checkpoint"] = f"{size} {root_hex}"
         response.headers["X-AICS-Discovery"] = f"{base_url}/llms.txt"
         return response
@@ -683,7 +712,7 @@ def create_app(
         lines = [
             "Tile prefixes (C2SP tlog-tiles): " + " and ".join(prefixes),
             f"Signed checkpoint: {prefixes[0]}/checkpoint (also {site.api('/checkpoint')})",
-            "Verify against the log key from DNS TXT _aics, the aics package or the public repository README.",
+            log_key_check(site),
         ]
         return PlainTextResponse("\n".join(lines) + "\n")
 
@@ -738,7 +767,7 @@ def create_app(
     def index_page(request: Request, format: str | None = Query(default=None)):
         """The banner, where to start and the signed checkpoint; ``?format=json`` is ``{banner, links, checkpoint}``."""
         payload = {
-            "banner": get_banner(),
+            "banner": get_banner(site=site),
             "links": home_links(site),
             "checkpoint": db.published_checkpoint().decode("utf-8"),
         }
@@ -750,9 +779,11 @@ def create_app(
             {
                 "active": "home",
                 "home": payload,
-                "quickstart": quickstart_lines(),
+                "quickstart": quickstart_lines(site=site),
                 "alternatives": quickstart_alternatives(site),
                 "seat_pages": SEAT_PAGES,
+                # The witness paragraph follows the card in force, as /card shows it (readiness docs pass).
+                "card": card_publisher.current().card,
             },
         )
 
@@ -964,13 +995,23 @@ def create_app(
             return _page(request, "notice.html", context, status_code=201)
         return JSONResponse(result, status_code=201)
 
-    @app.get("/terms", include_in_schema=False)
+    # The legal redirects answer HEAD as they answer GET: FastAPI adds no HEAD to a GET route, so `curl -I` and link
+    # checkers got 405 here (the pages host's @pages matcher passes HEAD to the app; review of 2026-10-22).
+    @app.api_route("/terms", methods=["GET", "HEAD"], include_in_schema=False)
     def terms_moved() -> Response:
         return RedirectResponse("/legal/terms.md", status_code=302)
 
-    @app.get("/contact", include_in_schema=False)
+    @app.api_route("/contact", methods=["GET", "HEAD"], include_in_schema=False)
     def contact_moved() -> Response:
         return RedirectResponse("/legal/contact.md", status_code=302)
+
+    # The served paths the legal texts cite (terms: /retention; the footer: /privacy), answered as /terms is: a
+    # redirect to the published document (deploy/Caddyfile serves /legal/ from the ops/sync-docs.sh export). The
+    # pages host answered them 404 (readiness audit 2026-10-20).
+    for path, document in (("/retention", "retention.md"), ("/privacy", "retention.md"),
+                           ("/lawful-requests", "lawful-requests.md"), ("/cloudflare", "cloudflare-disclosure.md")):
+        app.add_api_route(path, _legal_redirect(f"/legal/{document}"), methods=["GET", "HEAD"],
+                          include_in_schema=False)
 
     # ------------------------------------------------------------------
     # Agent-seat pages (DESIGN.md section 9): the question as the title, one
@@ -984,7 +1025,7 @@ def create_app(
         def seat_page(request: Request, format: str | None = Query(default=None)) -> Response:
             online = _seat_online(seat)
             if format and format.lower() == "json":
-                keygen, connect, typed = quickstart_lines()
+                keygen, connect, typed = quickstart_lines(site=site)
                 return JSONResponse(
                     {
                         "title": seat.title,
@@ -1002,7 +1043,7 @@ def create_app(
                 "active": "",
                 "seat": seat,
                 "paragraph": seat_paragraph(seat, site, online=online),
-                "quickstart": quickstart_lines(),
+                "quickstart": quickstart_lines(site=site),
                 "alternatives": quickstart_alternatives(site),
                 "seat_pages": SEAT_PAGES,
             }
@@ -1044,7 +1085,12 @@ def create_app(
 
         503 when the log diverged from its tiles and refuses new leaves; otherwise 200, ``DEGRADED`` when the
         tiles are not being written, the ciphertext budget is exhausted or agent writes are held until the
-        owner's freeze leaf (``agent_writes_held``, ``AICS_HOLD_AGENT_WRITES``).
+        owner's freeze leaf (``agent_writes_held``, ``AICS_HOLD_AGENT_WRITES``).  ``served_size`` is the size of
+        the note ``/checkpoint`` serves; ``serving_uncosigned`` is true when witnesses are configured and that
+        note carries no cosignature of theirs (``uncosigned_reason`` says why), and
+        ``served_cosignature_age_seconds`` is the age of its newest cosignature (a quorum-1 verifier rejects it
+        past the card's ``max_checkpoint_age``, 300 s); each of ``witnesses`` names the local label (``name``) and
+        the cosigner name of its vkey (``cosigner``).
         """
         health = db.health()
         return JSONResponse(health, status_code=503 if health["status"] == "UNAVAILABLE" else 200)
@@ -1056,13 +1102,22 @@ def create_app(
 
     @app.get("/v2/tlog/checkpoint", tags=["transparency-log"])
     def api_tlog_checkpoint() -> dict[str, Any]:
-        """The current signed checkpoint, the service keys (a convenience copy) and the state of the tiles."""
+        """The current signed checkpoint, the service keys (a convenience copy) and the state of the tiles.
+
+        ``signed_checkpoint`` is the note ``/checkpoint`` serves and ``checkpoint_size`` its size; ``tree_size`` and
+        ``root_hash_hex`` are the committed tree's.  With a witness that note is the newest cosigned one, so
+        ``checkpoint_size`` may trail ``tree_size`` while a publication waits for its cosignature.
+        """
         return db.get_tlog_checkpoint()
 
     @app.get("/v2/tlog/proof/{leaf_index}", tags=["transparency-log"])
     def api_tlog_proof(leaf_index: int) -> dict[str, Any]:
-        """Entry ``leaf_index`` (exact bytes) with an inclusion proof against the signed checkpoint returned."""
-        proof = db.get_tlog_proof(leaf_index)
+        """Entry ``leaf_index`` (exact bytes) with an inclusion proof against the signed checkpoint returned.
+
+        That checkpoint is the one ``/checkpoint`` serves; with witnesses a just-appended entry may wait for its
+        cosignature, as at ``GET /v2/entries/{index}`` (503 with ``Retry-After`` until then).
+        """
+        proof = db.entry_proof(leaf_index, wait=db.cosignature_wait_seconds)
         if not proof:
             raise HTTPException(status_code=404, detail=f"Merkle leaf {leaf_index} not found")
         return proof
@@ -1138,9 +1193,17 @@ def create_app(
         The JSON is exactly ``{entry_bytes: U64, index, inclusion_proof:
         [B64], checkpoint_note: U64, envelope: E, body_or_ct: U64 or null}``
         as section 14.3 defines it (section 2: no other members, so any
-        section 14.3 reader takes it as served), the proof against the
-        log-signed note in ``checkpoint_note``.  For an entry with an
-        off-leaf body the header states that body's status (section 12.1):
+        section 14.3 reader takes it as served), the proof against the note in
+        ``checkpoint_note``: byte for byte the one ``/checkpoint`` serves, so
+        with witnesses it carries the cosignature a card of quorum 1 needs.
+        The served checkpoint then trails the tree by the publications still
+        waiting for a cosignature, so a just-appended entry waits for the next
+        cosigned one (up to ``AICS_WITNESS_TIMEOUT_SECONDS``, at most 5 s,
+        normally one witness round trip); if none covers it by then, or 16
+        requests wait already, the answer is 503 ``not_yet_cosigned`` with
+        ``Retry-After`` (its receipt promises it a published checkpoint within
+        60 s, AICS-1 section 10.1).  For an entry
+        with an off-leaf body the header states that body's status (section 12.1):
         ``available``, ``tombstoned;tombstone_index=<i>;reason_code=<code>``
         (section 10.3), ``expired;policy_index=<i>`` (section 8.2) or
         ``unavailable``; ``GET /v2/bodies/{hash}`` answers the same status as
@@ -1150,7 +1213,7 @@ def create_app(
         Ciphertext is public by design (section 8.2): only the recipient's key
         opens it.
         """
-        proof = db.get_tlog_proof(index)
+        proof = db.entry_proof(index, wait=db.cosignature_wait_seconds)
         if proof is None:
             raise HTTPException(status_code=404, detail=f"the log has no entry {index} yet")
         entry = proof["leaf_data"]
@@ -1204,7 +1267,12 @@ def create_app(
     @app.get("/checkpoint", response_class=PlainTextResponse, tags=["transparency-log"])
     @app.head("/checkpoint", include_in_schema=False)
     def checkpoint_note() -> Response:
-        """The signed checkpoint note (C2SP tlog-checkpoint): the same bytes as ``/tiles/checkpoint``."""
+        """The signed checkpoint note (C2SP tlog-checkpoint): the same bytes as ``/tiles/checkpoint``.
+
+        With witnesses, the newest note a witness cosigned: a newer publication replaces it once it is cosigned, or
+        uncosigned when every witness has failed for longer than ``AICS_WITNESS_GRACE_SECONDS`` (``/healthz``
+        ``serving_uncosigned``).
+        """
         return _note(db.published_checkpoint())
 
     @app.get("/tiles/checkpoint", response_class=PlainTextResponse, tags=["transparency-log"])
@@ -1263,7 +1331,14 @@ def create_app(
         that set it, then every event and the current keys.  A projection to
         check against a complete scan of the tiles, not an authoritative key
         field.  ``name`` is the ``name_norm`` (``@name`` and the instance suffix
-        are accepted too).
+        are accepted too).  With a witness the stated checkpoint is the one
+        ``/checkpoint`` serves (the newest cosigned one): the answer first waits
+        up to 5 s for it to cover the name's newest key event, so a claim or a
+        rotation made a moment ago is listed (no wait while every witness fails
+        and none is tried again within it).  A name whose claim is still not
+        under it is answered 503 ``not_yet_cosigned`` with ``Retry-After``;
+        ``head_index``, ``current``, ``tree_size`` and ``root_hash_hex`` are the
+        committed state, which a key event not under it yet may have changed.
         """
         view = db.name_view(name)
         if view is None:
@@ -1565,6 +1640,17 @@ def create_app(
             db, ctx, db.publish_policy, body.kind, body.document, body.not_before, body.effective_after, body.order_hash
         )
 
+    @app.post("/v2/admin/card/preview", tags=["owner"])
+    def api_card_preview(body: CardPreviewRequest, ctx: SignedContext = Depends(auth.owner())) -> dict[str, Any]:
+        """Owner-only: sign a reviewed successor card body and check it as a card leaf would be; logs nothing.
+
+        Answers ``{problems, document, document_hash, payload_sha256, policy_parent_index, current, pending,
+        notice_seconds, not_before_min, changed_members}``; ``document`` is ``J(card)`` to log with ``POST
+        /v2/admin/policy`` (kind ``card``, ``not_before`` at least ``not_before_min``), null while there are problems
+        (card/README.md "Successor card").
+        """
+        return card_publisher.preview(body.body)
+
     @app.get("/v2/admin/notices", tags=["owner"])
     def api_list_notices(
         status: str | None = Query(default=None, description="open or closed"),
@@ -1589,7 +1675,7 @@ def create_app(
         days: int = Query(default=STATS_DEFAULT_DAYS, ge=1, le=STATS_MAX_DAYS, description="UTC days, today included"),
         ctx: SignedContext = Depends(auth.owner()),
     ) -> dict[str, Any]:
-        """Owner-only (owner login, decision 3): the owner stats page's one document (docs/internal/owner-stats-design.md).
+        """Owner-only (owner login, decision 3): the one JSON document of the owner stats page.
 
         Signed by the owner key like every ``/v2/admin`` route (RFC 9421, no
         password, cookie or token); unsigned 401, signed by another key 403,

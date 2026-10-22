@@ -49,15 +49,33 @@ class CliResult:
         return self.data.get("evidence") or {}
 
 
+class OfflineFetcher:
+    """The fetcher of an :class:`AicsCli` without a ``web``: every request fails as a network error, so the suite
+    never reaches the network (``aics verify card --file``, for one, reads the policy listing of the card's API
+    base).  The URLs asked for are recorded."""
+
+    def __init__(self) -> None:
+        self.requests: list[str] = []
+
+    def get(self, url: str, *, max_bytes: int = 1 << 22, accept: str | None = None) -> Any:
+        from aics_cli.errors import FetchError
+
+        self.requests.append(url)
+        raise FetchError(f"cannot fetch {url}: offline (the interop driver was given no web)")
+
+
 @dataclass
 class AicsCli:
-    """``aics_cli.cli.run`` with an injected fetcher, clock and state directory."""
+    """``aics_cli.cli.run`` with an injected fetcher, clock and state directory.  Without ``web`` nothing is fetched
+    (:class:`OfflineFetcher`), and a wait for a missing witness line is recorded in ``sleeps``, never slept."""
 
     home: Path
     web: Any = None
     now: int = aicslog.T0
     stdin: Any = None
     txt: dict[str, list[str]] = field(default_factory=dict)
+    offline: OfflineFetcher = field(default_factory=OfflineFetcher)
+    sleeps: list[float] = field(default_factory=list)
 
     def env(self) -> Any:
         from aics_cli.commands import Env
@@ -68,11 +86,8 @@ class AicsCli:
                 return TxtResult(name=name, resolver="interop-fake", nxdomain=True)
             return TxtResult(name=name, records=list(self.txt[name]), resolver="interop-fake")
 
-        kwargs: dict[str, Any] = {"resolve_txt": resolve, "clock": lambda: float(self.now), "home": self.home,
-                                  "stdin": self.stdin}
-        if self.web is not None:
-            kwargs["fetcher"] = self.web
-        return Env(**kwargs)
+        return Env(fetcher=self.web if self.web is not None else self.offline, resolve_txt=resolve,
+                   clock=lambda: float(self.now), home=self.home, stdin=self.stdin, sleep=self.sleeps.append)
 
     def run(self, *argv: str) -> CliResult:
         from aics_cli.cli import run

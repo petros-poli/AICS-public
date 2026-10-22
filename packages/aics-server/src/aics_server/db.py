@@ -193,7 +193,16 @@ from .notices import NOTICE_FIELD_BYTES
 from .strictjson import loads_bounded
 from .schema_swarms import migrate as migrate_swarms
 from .swarms import SwarmStore, TYPES as SWARM_TYPES, REFUSAL_CODES as SWARM_REFUSAL_CODES
-from .tlog_store import MMD_SECONDS, LogIntegrityError, LogUnavailable, TlogStore, _say, acquire_writer_lock
+from .tlog_store import (
+    MMD_SECONDS,
+    LogIntegrityError,
+    LogUnavailable,
+    NotYetCosigned,
+    TlogStore,
+    _say,
+    acquire_writer_lock,
+)
+from .witness_feed import WitnessEndpoint, WitnessFeeder, WitnessSettings
 
 #: Version of this database layout (``PRAGMA user_version``).  9: the AICS-1 section 12.1 binding (one native
 #: write path, ``POST /v2/entries``): capsule bodies are kept per capsule leaf and named by ``key_hash`` only (the
@@ -210,6 +219,13 @@ ENTRY_VERSION = 2
 #: Origin of the production log (AICS-1 section 12.2): also the C2SP key name of
 #: its checkpoint key and the tile prefix ``https://api.wesupport-ai.com/tiles/``.
 DEFAULT_ORIGIN = "api.wesupport-ai.com/tiles"
+#: Requests that may wait at once for the served checkpoint to cover an entry (:meth:`SanctuaryDB.await_served`);
+#: more are answered at once (503 ``not_yet_cosigned``, ``Retry-After: 1``), so slow witnesses cannot tie up every
+#: request thread.
+SERVED_WAITERS = 16
+#: The longest a request waits for that checkpoint, whatever ``AICS_WITNESS_TIMEOUT_SECONDS`` (up to 120 s) bounds a
+#: submission to a witness by: a request thread is held meanwhile.
+MAX_COSIGNATURE_WAIT_SECONDS = 5.0
 
 #: The closed registry of entry types (DESIGN.md section 4.3, AICS-1 section 17.1).
 ENTRY_TYPES = frozenset(
@@ -1402,7 +1418,13 @@ class SanctuaryDB:
       default :meth:`aics_server.payments.PaymentsConfig.from_env` (no address
       or endpoint in code; nothing configured means nothing is creditable);
     * ``hold_agent_writes`` / ``AICS_HOLD_AGENT_WRITES``: start with agent writes
-      held until the owner's freeze leaf (:data:`HOLD_WRITES_ENV`).
+      held until the owner's freeze leaf (:data:`HOLD_WRITES_ENV`);
+    * ``witnesses`` / ``AICS_WITNESSES`` (with ``AICS_WITNESS_STATE_DIR``,
+      ``AICS_WITNESS_REFRESH_SECONDS``, ``AICS_WITNESS_TIMEOUT_SECONDS``,
+      ``AICS_WITNESS_GRACE_SECONDS``): the witnesses every new checkpoint is
+      fed to, whose verified cosignatures the served checkpoint carries; with
+      them the served checkpoint is the newest cosigned one
+      (:mod:`aics_server.witness_feed`); none by default.
     """
 
     def __init__(
@@ -1417,6 +1439,7 @@ class SanctuaryDB:
         payments: pay.PaymentsConfig | None = None,
         swarms_enabled: bool = False,
         hold_agent_writes: bool | None = None,
+        witnesses: WitnessSettings | None = None,
     ) -> None:
         if hold_agent_writes is None:
             hold_agent_writes = os.environ.get(HOLD_WRITES_ENV, "").strip().lower() in _TRUE_TEXT
@@ -1434,6 +1457,23 @@ class SanctuaryDB:
                     f"AICS_TILES_DIR ({self.tiles_dir}) must not contain {private.name}: the tiles directory is published"
                 )
         self.origin = origin or os.environ.get("AICS_ORIGIN") or DEFAULT_ORIGIN
+        # The witnesses (aics_server.witness_feed): parsed before anything is opened, so a malformed
+        # AICS_WITNESSES stops the start here.
+        if witnesses is None:
+            witnesses = WitnessSettings.from_env(default_state_dir=self.db_path.parent / "witness-state")
+        if witnesses.state_dir is not None and witnesses.state_dir.resolve().is_relative_to(published_root):
+            raise ValueError(f"AICS_WITNESS_STATE_DIR ({witnesses.state_dir}) must not be inside the published tiles")
+        self.witness_settings = witnesses
+        self.witness_feeder: WitnessFeeder | None = None
+        if witnesses.witnesses:
+            self.witness_feeder = WitnessFeeder(
+                witnesses, proof=self._witness_proof, deliver=self._deliver_cosignature,
+                on_change=self._witnesses_changed,
+            )
+        # Requests waiting for the served (cosigned) checkpoint to cover an entry (await_served): woken whenever
+        # the served checkpoint or the witnesses' state changes. A waiter never holds the writer lock.
+        self._served_cond = threading.Condition()
+        self._served_waiters = threading.BoundedSemaphore(SERVED_WAITERS)
         # One writer process per database (DESIGN.md section 4.1); released with this object.
         weakref.finalize(self, acquire_writer_lock(f"{self.db_path}.writer-lock"))
         self._lock = threading.RLock()
@@ -1536,7 +1576,10 @@ class SanctuaryDB:
             log_key=self.server_key,
             tiles_dir=self.tiles_dir,
             audit=os.environ.get("AICS_TILES_AUDIT") or "full",
+            witness_keys=[w.vkey for w in witnesses.witnesses],
         )
+        self._log.grace_seconds = witnesses.grace_seconds
+        self._log.on_served = self._served_changed
         self.server_vkey = self._log.vkey_text
 
         self._conn = sqlite3.connect(str(self.db_path), check_same_thread=False, isolation_level=None)
@@ -1554,6 +1597,7 @@ class SanctuaryDB:
         self._ciphertext_total = self._stored_ciphertext_bytes()
         self._last_housekeeping = 0
         self.housekeeping(force=True)
+        self._start_witness_feeder()
 
     def _server_seed(self) -> bytes:
         """The service seed: ``AICS_SERVER_SEED_HEX``, else the seed file next to the database (made once, 0600)."""
@@ -2091,6 +2135,154 @@ class SanctuaryDB:
             size = self._conn.execute("SELECT COUNT(*) FROM tlog_leaves").fetchone()[0]
             self._log.boot(size, self._committed_entries)
 
+    # -- witnesses (aics_server.witness_feed) --------------------------------------
+
+    def _start_witness_feeder(self) -> None:
+        """Hand every new checkpoint to the witness threads, starting with the one published now.
+
+        That one is submitted before the server answers requests: this waits
+        (at most :attr:`cosignature_wait_seconds` and a second) for every
+        witness's first answer, so the served note is cosigned from the first
+        request when a witness answers in time, and known to be uncosigned
+        when none does.
+        """
+        feeder = self.witness_feeder
+        if feeder is None:
+            return
+        with self._lock:
+            self._log.on_publish = feeder.offer
+            self._log.witness_outage = feeder.outage
+            published = self._log.published
+            if published is not None:
+                feeder.offer(published.size, published.note)
+        feeder.start()
+        if published is not None:
+            feeder.wait_first_attempts(self.cosignature_wait_seconds + 1.0)
+        self._witnesses_changed()
+
+    def stop_witness_feeder(self, timeout: float = 5.0) -> None:
+        """Stop the witness threads (tests; in production they end with the process).
+
+        Without a feeder the served note is held as it is: a newer
+        publication is served once a cosignature for it is delivered.
+        """
+        feeder = self.witness_feeder
+        if feeder is None:
+            return
+        with self._lock:
+            self._log.on_publish = None
+            self._log.witness_outage = None
+        feeder.stop(timeout)
+        self._served_changed()
+
+    def _witnesses_changed(self) -> None:
+        """A witness answered or failed (the feeder's ``on_change``): the served note may now follow, waiters re-check."""
+        with self._lock:
+            self._log.refresh_served()
+        self._served_changed()
+
+    def _served_changed(self) -> None:
+        """Wake the requests waiting for the served checkpoint (:meth:`await_served`)."""
+        with self._served_cond:
+            self._served_cond.notify_all()
+
+    @property
+    def cosignature_wait_seconds(self) -> float:
+        """How long a request waits for the cosigned checkpoint an entry needs.
+
+        The per-witness bound (``AICS_WITNESS_TIMEOUT_SECONDS``, default 5 s),
+        at most :data:`MAX_COSIGNATURE_WAIT_SECONDS`.
+        """
+        return min(self.witness_settings.timeout_seconds, MAX_COSIGNATURE_WAIT_SECONDS)
+
+    def _cosignature_expected(self, within: float = 0.0) -> bool:
+        """Whether a witness may cosign within ``within`` seconds: the feeder runs, and a witness is not failing or
+        is tried again before then.
+
+        A failed submission is tried again after the feeder's backoff (under a
+        second after a first failure, doubling to 30 s while it keeps failing),
+        so one refused or timed-out submission does not mean that no
+        cosignature can come within a request's wait.
+        """
+        feeder = self.witness_feeder
+        if feeder is None or not feeder.running or self._log.witness_outage is None:
+            return False
+        return feeder.outage() is None or feeder.next_attempt_in() < within
+
+    def await_served(self, size: int, timeout: float) -> bool:
+        """Wait until the served checkpoint covers ``size`` leaves; ``True`` when it does.
+
+        Never holds the writer lock while waiting.  Returns at once when no
+        witness is configured (the served checkpoint is the published one), when
+        no cosignature can come in time (every witness is failing and none is
+        tried again within ``timeout``; one whose retry is due sooner is waited
+        for), or when :data:`SERVED_WAITERS` requests already wait.
+        """
+        if self._log.served_size >= size:
+            return True
+        if not self._log.witness_keys or timeout <= 0 or not self._served_waiters.acquire(blocking=False):
+            return False
+        try:
+            deadline = time.monotonic() + timeout
+            with self._served_cond:
+                while self._log.served_size < size:
+                    left = deadline - time.monotonic()
+                    if left <= 0 or not self._cosignature_expected(left):
+                        return False
+                    self._served_cond.wait(left)
+            return True
+        finally:
+            self._served_waiters.release()
+
+    def _not_yet_cosigned(self, index: int) -> NotYetCosigned:
+        """The answer for a committed entry the served checkpoint does not cover yet, with when to ask again."""
+        feeder = self.witness_feeder
+        with self._lock:
+            served, tree_size = self._log.served_size, self._log.tree.size
+            outage = self._log.witness_outage() if self._log.witness_outage is not None else None
+            grace_left = self._log.grace_seconds - outage if outage is not None and self._log.served_cosigned else None
+        if self._cosignature_expected() or feeder is None:
+            retry = 1.0
+        else:
+            retry = feeder.next_attempt_in()
+            if grace_left is not None:
+                retry = min(retry, max(grace_left, 0.0))
+        return NotYetCosigned(index, served, tree_size, max(1, min(MMD_SECONDS, math.ceil(retry))))
+
+    def served_checkpoint_for(self, index: int, *, wait: float = 0.0) -> tuple[bytes, bool]:
+        """``(note, cosigned)`` of the served checkpoint once it covers leaf ``index`` (waiting up to ``wait`` s).
+
+        Raises :class:`NotYetCosigned` (with when to ask again) when it still
+        does not; ``cosigned`` is whether that note carries a witness
+        cosignature (always false without witnesses).
+        """
+        self.await_served(index + 1, wait)
+        with self._lock:
+            self._log.refresh_served()
+            served = self._log.served
+            if served is not None and index < served.size:
+                return served.note, self._log.served_cosigned
+        raise self._not_yet_cosigned(index)
+
+    def _witness_proof(self, old_size: int, new_size: int) -> list[bytes]:
+        """RFC 6962 consistency proof for a witness, from the tree under the writer lock."""
+        with self._lock:
+            return self._log.tree.consistency_proof(old_size, new_size)
+
+    def _deliver_cosignature(self, endpoint: WitnessEndpoint, size: int, lines: str) -> tuple[bool, str | None]:
+        """A witness's cosignature line(s) for checkpoint ``size``: verified, then merged into the served note."""
+        with self._lock:
+            return self._log.add_cosignature(endpoint.vkey, size, lines)
+
+    def witness_status(self) -> list[dict[str, Any]]:
+        """Per configured witness: feeding state and whether the served note carries its cosignature (``/healthz``)."""
+        feeder = self.witness_feeder
+        if feeder is None:
+            return []
+        with self._lock:
+            served = self._log.served_cosignatures()
+        return feeder.status(served)
+
     def _append_leaf(
         self, envelope: dict[str, Any], *, ts: int, attestation: str | None = None
     ) -> dict[str, Any]:
@@ -2131,7 +2323,18 @@ class SanctuaryDB:
         return {"leaf_index": idx, "leaf_hash_hex": leaf_hash_hex, "created_at": created_at, "entry": entry}
 
     def _proof(self, leaf: dict[str, Any]) -> dict[str, Any]:
-        """Inclusion proof of a committed leaf against the current tree and its signed checkpoint."""
+        """Inclusion proof of a committed leaf against the current tree and its signed checkpoint.
+
+        The ``merkle_proof`` of the JSON write results (owner ``/v2/admin/*``,
+        the keyless notice intake, ``POST /v2/sup/contributions``), given under
+        the writer lock, so it never waits for a witness: ``signed_checkpoint``
+        is the log-signed note of the whole tree at the write, which no witness
+        has cosigned yet.  With witnesses it is newer than the note
+        ``/checkpoint`` serves until one cosigns that publication (a verifier of
+        a quorum-1 card rejects it, and a client must not keep it as the newest
+        served checkpoint); ``GET /v2/entries/{index}`` proves the leaf against
+        the served, cosigned note.
+        """
         with self._lock:
             idx = leaf["leaf_index"]
             tree = self._log.tree
@@ -2231,8 +2434,9 @@ class SanctuaryDB:
 
     #: Shown wherever the API repeats the service keys.
     KEYS_NOTICE = (
-        "A convenience copy. Verify checkpoints and policy leaves only against keys obtained out of band "
-        "(DNS TXT _aics.<domain>, the aics package, the public README), never against this response."
+        "A convenience copy. Verify checkpoints and policy leaves only against keys obtained out of band (DNS TXT "
+        "_aics.<domain>, the aics-cli package on PyPI, the README of https://github.com/petros-poli/AICS-public), never "
+        "against this response."
     )
 
     def tlog_head(self) -> tuple[int, str]:
@@ -2246,17 +2450,34 @@ class SanctuaryDB:
 
         Server-computed values are claims: the note is checked against the
         out-of-band log key, and tiles are verified against the note.
+        ``tree_size`` and ``root_hash_hex`` are the committed tree's;
+        ``checkpoint_size`` is the size of ``signed_checkpoint``.  Without
+        witnesses the two sizes are equal.  With witnesses ``signed_checkpoint``
+        is the served note (the one ``/checkpoint`` serves, the newest cosigned
+        one), so ``checkpoint_size`` may trail ``tree_size`` while a
+        publication waits for its cosignature.
         """
         with self._lock:
             tree = self._log.tree
             size = tree.size
-            note = self._log.checkpoint_note(size).decode("utf-8")
+            published = self._log.published
+            served = self._log.served if self._log.witness_keys else None
+            if served is not None:
+                self._log.refresh_served()
+                served = self._log.served
+                note, noted = served.note.decode("utf-8"), served.size
+            # The published note when it is current: it carries the verified witness cosignatures.
+            elif published is not None and published.size == size:
+                note, noted = published.note.decode("utf-8"), size
+            else:
+                note, noted = self._log.checkpoint_note(size).decode("utf-8"), size
             tiles = self._log.status()
             return {
                 "origin": self.origin,
                 "tree_size": size,
                 "root_hash_hex": tree.root(size).hex(),
                 "signed_checkpoint": note,
+                "checkpoint_size": noted,
                 "log_vkey": self.server_vkey,
                 "log_kid": self.server_kid,
                 "server_vkey": self.server_vkey,
@@ -2282,24 +2503,32 @@ class SanctuaryDB:
             }
 
     def published_checkpoint(self) -> bytes:
-        """The signed note at ``<tiles>/checkpoint`` (the size the tiles serve)."""
+        """The signed note at ``<tiles>/checkpoint``: the served one (``/checkpoint``, ``/tiles/checkpoint``).
+
+        Without witnesses, the one for the size the tiles serve; with
+        witnesses, the newest cosigned one (:attr:`TlogStore.served`).
+        """
         with self._lock:
-            published = self._log.published
-            if published is not None:
-                return published.note
+            self._log.refresh_served()
+            served = self._log.served
+            if served is not None:
+                return served.note
             return self._log.checkpoint_note(self._log.tiles_size)
 
     def stated_checkpoint(self) -> tuple[int, bytes]:
         """``(size, note)``: the signed checkpoint a read projection is stated at (AICS-1 section 12.1).
 
-        The note the tiles publish, so a client can authenticate the
-        projection against the tiles at that size; tiles are written in the
-        commit of every leaf, so it is normally the whole committed tree.
+        The served note, so a client can authenticate the projection against
+        the tiles at that size (with witnesses, under the card's quorum);
+        tiles are written in the commit of every leaf, so it is normally the
+        whole committed tree, or with witnesses the tree as of the newest
+        cosignature.
         """
         with self._lock:
-            published = self._log.published
-            if published is not None:
-                return published.size, published.note
+            self._log.refresh_served()
+            served = self._log.served
+            if served is not None:
+                return served.size, served.note
             size = self._log.tiles_size
             return size, self._log.checkpoint_note(size)
 
@@ -2309,12 +2538,18 @@ class SanctuaryDB:
             return self._log.read_resource(path)
 
     def get_tlog_proof(self, leaf_index: int) -> dict[str, Any] | None:
-        """Entry ``leaf_index`` with its exact bytes and an inclusion proof against the current checkpoint."""
+        """Entry ``leaf_index`` with its exact bytes and an inclusion proof against a signed checkpoint.
+
+        The checkpoint is :meth:`aics_server.tlog_store.TlogStore.proof_checkpoint`: the newest one a witness
+        cosigned that covers the leaf, else the log-signed note of the whole tree.  ``tree_size`` and
+        ``root_hash_hex`` are that checkpoint's, so the bundle of ``GET /v2/entries/{index}`` and the gate's
+        ``read``/``fetch`` verify under a card's positive witness quorum (AICS-1 sections 6.3 and 14.3).
+        """
         with self._lock:
             tree = self._log.tree
-            size = tree.size
-            if leaf_index < 0 or leaf_index >= size:
+            if leaf_index < 0 or leaf_index >= tree.size:
                 return None
+            size, note = self._log.proof_checkpoint(leaf_index)
             row = self._conn.execute("SELECT * FROM tlog_leaves WHERE leaf_index = ?", (leaf_index,)).fetchone()
             if not row:
                 return None
@@ -2330,7 +2565,7 @@ class SanctuaryDB:
                 "leaf_data": json.loads(row["leaf_json"]),
                 "entry_bytes_b64": base64.b64encode(entry_bytes).decode("ascii"),
                 "inclusion_proof_hex": [p.hex() for p in tree.inclusion_proof(leaf_index, size)],
-                "signed_checkpoint": self._log.checkpoint_note(size).decode("utf-8"),
+                "signed_checkpoint": note.decode("utf-8"),
             }
 
     def inclusion_proof(self, index: int, size: int) -> list[bytes]:
@@ -2342,6 +2577,51 @@ class SanctuaryDB:
         """RFC 9162 consistency proof between two tree sizes (``ValueError`` if out of range)."""
         with self._lock:
             return self._log.tree.consistency_proof(old_size, new_size)
+
+    def entry_proof(self, index: int, *, wait: float = 0.0) -> dict[str, Any] | None:
+        """Entry ``index`` (exact bytes) with an inclusion proof against the checkpoint served now; ``None`` if absent.
+
+        What ``GET /v2/entries/{index}``, ``GET /v2/tlog/proof/{index}`` and
+        the gate's ``read``, ``fetch``, ``find`` and ``inbox`` prove against:
+        ``tree_size``, ``root_hash_hex`` and ``signed_checkpoint`` are those of
+        :attr:`TlogStore.served`, byte for byte the note ``/checkpoint``
+        serves, so with witnesses the bundle carries the cosignature a card of
+        quorum 1 requires (AICS-1 sections 6.3 and 14.3).  Without witnesses
+        this is :meth:`get_tlog_proof`, against the whole tree as before.
+
+        With witnesses the served checkpoint trails the tree by the
+        publications still waiting for their cosignature, so a just-appended
+        entry may not be under it yet: then this waits up to ``wait`` seconds
+        for the next cosigned checkpoint (:meth:`await_served`) and, if that
+        does not cover it either, raises :class:`NotYetCosigned` with when to
+        ask again.  Its receipt promises the entry a published checkpoint
+        within 60 s (AICS-1 section 10.1), and the grace of
+        ``AICS_WITNESS_GRACE_SECONDS`` bounds how long a witness outage holds it.
+        """
+        if not self._log.witness_keys:
+            return self.get_tlog_proof(index)
+        with self._lock:
+            if index < 0 or index >= self._log.tree.size:
+                return None
+            self._log.refresh_served()
+            covered = index < self._log.served_size
+        if not covered:
+            self.await_served(index + 1, wait)
+        with self._lock:
+            self._log.refresh_served()
+            served = self._log.served
+            if served is not None and index < served.size:
+                proof = self.get_tlog_proof(index)  # the exact entry bytes; its proof is replaced by the served one
+                if proof is None:
+                    return None
+                proof.update(
+                    tree_size=served.size,
+                    root_hash_hex=served.root.hex(),
+                    inclusion_proof_hex=[p.hex() for p in self._log.tree.inclusion_proof(index, served.size)],
+                    signed_checkpoint=served.note.decode("utf-8"),
+                )
+                return proof
+        raise self._not_yet_cosigned(index)
 
     def index_of_entry(self, entry_hash_hex: str) -> int | None:
         """Index of the committed leaf whose RFC 6962 leaf hash is ``entry_hash_hex``."""
@@ -2491,7 +2771,8 @@ class SanctuaryDB:
         charter = self.charter()
         lines = [
             f"# Keys of the AICS log {self.origin}, written by aics-server at start-up.",
-            "# Publish them away from this server: DNS TXT _aics.<domain>, the aics package, the public README.",
+            "# Publish them away from this server: DNS TXT _aics.<domain>, the aics-cli package, the README of "
+            "https://github.com/petros-poli/AICS-public.",
             "# A verifier must never take them from the API of the server it is checking.",
             "# log: C2SP verifier key of the checkpoint notes. policy: signs the charter, refusals,",
             "# tombstones, suspensions, freezes and the card. owner: signs owner-only actions.",
@@ -2683,7 +2964,7 @@ class SanctuaryDB:
         one exception is an exact resubmission of a submission that already
         has a refusal (the same envelope, or request, byte for byte): it is
         answered with that first refusal and adds no leaf (the card's
-        ``[deviation-refusal-dedup]``).
+        ``[refusal-citation]``).
 
         Reads pass ``log_refusal=False``: their nonces are remembered in memory
         at once and written to the table in batches (:data:`READ_NONCE_BATCH`,
@@ -2773,7 +3054,7 @@ class SanctuaryDB:
 
         The same envelope (or request) bytes refused before get that refusal
         again: its leaf, its code and its conflict.  The card discloses this
-        as ``[deviation-refusal-dedup]``.  Any other submission, a different
+        as ``[refusal-citation]``.  Any other submission, a different
         envelope that reuses a tuple among them, is decided and logged on its own.
         """
         earlier = self._earlier_refusal(self._attempt_of(ctx))
@@ -3568,7 +3849,7 @@ class SanctuaryDB:
                 return None
             return self._actor_from_name(name)
 
-    def name_view(self, identifier: str) -> dict[str, Any] | None:
+    def name_view(self, identifier: str, *, wait: float | None = None) -> dict[str, Any] | None:
         """The key chain of a name through a stated checkpoint (``GET /v2/names/{name_norm}``, AICS-1 section 12.1).
 
         ``indices`` are the claim and every key event naming the name, in log
@@ -3577,12 +3858,39 @@ class SanctuaryDB:
         encryption key and the leaf that set it.  A projection, not an
         authoritative key field: a complete authenticated scan of the tiles up
         to that checkpoint reconstructs the same chain (section 3.2).
+
+        With witnesses the stated checkpoint is the served (cosigned) one,
+        which trails a key event written a moment ago by about one witness
+        round trip.  The view first waits for it to cover the name's newest
+        key event (up to ``wait``, default :attr:`cosignature_wait_seconds`;
+        not at all while every witness fails and none is tried again within
+        the wait; never holding the writer lock), so an agent that claims a
+        name, or rotates a key, finds that event listed when it asks right
+        after.  If none comes in time and the name's claim itself is not under
+        the served checkpoint, :class:`NotYetCosigned` is raised (503
+        ``not_yet_cosigned`` with ``Retry-After``, the gate's ``err busy``): a
+        view stated there would list no key event of a name that exists,
+        which a client takes for evidence against the log.  A later key event
+        not under it yet leaves the view stated at the served checkpoint all
+        the same: its ``indices`` stop before that event, which ``head_index``
+        names.  ``head_index``, ``current``, ``x25519``, ``tree_size`` and
+        ``root_hash_hex`` are the committed state, which may be newer than
+        that checkpoint.
         """
+        if self._log.witness_keys:
+            with self._lock:
+                actor = self.resolve_agent(identifier)
+                newest = actor.get("head_index") if actor is not None else None
+            if isinstance(newest, int) and newest >= self._log.served_size:
+                self.await_served(newest + 1, self.cosignature_wait_seconds if wait is None else wait)
         with self._lock:
             actor = self.resolve_agent(identifier)
             if actor is None:
                 return None
             size, note = self.stated_checkpoint()
+            claimed = actor.get("claim_index")
+            if self._log.witness_keys and isinstance(claimed, int) and claimed >= size:
+                raise self._not_yet_cosigned(claimed)  # the name is committed, its claim not under the served note yet
             events = self._conn.execute(
                 "SELECT * FROM key_events WHERE name_norm = ? AND leaf_index < ? ORDER BY leaf_index ASC",
                 (actor["name"], size),
@@ -7038,10 +7346,13 @@ class SanctuaryDB:
             ).fetchone()
             if not_before < now:
                 raise ValueError("not_before must not lie in the past")
-            if not first_card and order_hash is None and not_before < now + POLICY_NOTICE_SECONDS:
+            # AICS-1 section 6.4: the notice the card in effect advertises, never less than this server's own.
+            notice = self.policy_notice_seconds(now)
+            if not first_card and order_hash is None and not_before < now + notice:
                 raise ValueError(
-                    f"a policy change takes effect at least {POLICY_NOTICE_SECONDS // 86400} days after it is logged "
-                    "(not_before); an order that requires sooner is cited by order_hash"
+                    f"a policy change takes effect at least {notice // 86400} days after it is logged "
+                    f"(not_before, {notice} s: the notice period of the card in effect); an order that requires "
+                    "sooner is cited by order_hash"
                 )
             if effective_after is None:
                 effective_after = own_index
@@ -7085,6 +7396,45 @@ class SanctuaryDB:
                 for k in ("kind", "document_hash", "size", "prev_policy_index", "effective_after", "not_before")
             },
         }
+
+    def policy_notice_seconds(self, now: int | None = None) -> int:
+        """The notice a policy change must give now: ``max(POLICY_NOTICE_SECONDS, the effective card's)``.
+
+        AICS-1 section 6.4: "For card/witness changes, ``not_before`` MUST allow
+        the old card's advertised notice period".  The card in effect is the
+        latest policy leaf of kind ``card`` whose ``not_before`` has passed and
+        whose document is an unexpired card of this origin signed by this
+        policy key (the card :class:`aics_server.card.CardPublisher` serves,
+        and the notice its ``preview`` reports).  Without one, or when it
+        advertises less, this server's own :data:`POLICY_NOTICE_SECONDS`.
+        """
+        from .card import CardError, _parse_strict, _uint, verify_card
+
+        now = int(time.time()) if now is None else now
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT d.leaf_index, d.document, l.leaf_json FROM policy_documents d "
+                "JOIN tlog_leaves l ON l.leaf_index = d.leaf_index "
+                "WHERE d.kind = 'card' AND l.event_type = 'policy' ORDER BY d.leaf_index DESC"
+            ).fetchall()
+        for row in rows:
+            if json.loads(row["leaf_json"])["payload"].get("not_before", 0) > now:
+                continue
+            try:
+                card = _parse_strict(bytes(row["document"]))
+            except CardError:
+                continue
+            if (
+                isinstance(card, dict)
+                and card.get("origin") == self.origin
+                and card.get("policy_kid") == self.policy_did
+                and isinstance(card.get("expires"), int)
+                and now < card["expires"]
+                and verify_card(card, self.policy_pub)
+            ):
+                advertised = card.get("policy_notice_seconds")
+                return max(POLICY_NOTICE_SECONDS, advertised) if _uint(advertised) else POLICY_NOTICE_SECONDS
+        return POLICY_NOTICE_SECONDS
 
     def list_policies(self) -> dict[str, Any]:
         """Every policy leaf in log order (leaf 0, the charter, first)."""
@@ -7722,11 +8072,36 @@ class SanctuaryDB:
         resource exhaustion of AICS-1 section 8.2.  ``status`` is
         ``OPERATIONAL``, ``DEGRADED`` (tiles not written, or ciphertext over
         its budget with nothing evictable) or ``UNAVAILABLE`` (diverged).
+        ``witnesses`` is :meth:`witness_status` (empty without witnesses); a
+        witness that fails does not change ``status``: the log keeps
+        publishing without it.  ``served_size`` is the size of the note
+        ``/checkpoint`` serves: with witnesses the newest cosigned one, which
+        may trail ``published_size`` while a publication waits for its
+        cosignature.  ``serving_uncosigned`` is true when witnesses are
+        configured and that note carries none of their cosignatures (a card of
+        quorum 1 rejects it), ``uncosigned_reason`` says why: no witness has
+        cosigned a served checkpoint yet, or every witness has been failing for
+        longer than ``AICS_WITNESS_GRACE_SECONDS``.  The grace is applied
+        first, as before a ``/checkpoint`` read (its one checkpoint write, when
+        the grace has just run out, is the only disk write here).
+        ``served_cosignature_age_seconds`` is the age of the newest witness
+        cosignature on that note (``None`` when it carries none): once it is
+        past the card's ``max_checkpoint_age`` (300 s) a verifier of the
+        quorum-1 card rejects the note although ``serving_uncosigned`` is
+        false, as in an idle log, or while a cosigned note is held, when every
+        witness has failed for minutes.
         """
         with self._lock:
+            self._log.refresh_served()
             tiles = self._log.status()
             frozen = self._frozen_index
             held = self._writes_held
+            served_size = self._log.served.size if self._log.served is not None else None
+            uncosigned = bool(self._log.witness_keys) and not self._log.served_cosigned
+            reason = self._log.uncosigned_reason if uncosigned else None
+            stamps = list(self._log.served_cosignatures().values())
+        cosignature_age = max(0, int(time.time()) - max(stamps)) if stamps else None
+        witnesses = self.witness_status()
         exhaustion = self.resource_exhaustion()
         if tiles["diverged"]:
             status = "UNAVAILABLE"
@@ -7744,6 +8119,11 @@ class SanctuaryDB:
             "freeze_index": frozen,
             "agent_writes_held": held,
             "resource_exhaustion": exhaustion,
+            "served_size": served_size,
+            "serving_uncosigned": uncosigned,
+            "uncosigned_reason": reason,
+            "served_cosignature_age_seconds": cosignature_age,
+            "witnesses": witnesses,
         }
 
     def get_db_counts(self) -> dict[str, Any]:

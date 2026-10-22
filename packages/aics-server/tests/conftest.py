@@ -1159,8 +1159,18 @@ def question(text: str, prefix: str = "? Sign this exactly: ") -> str:
 
 
 def command_of(text: str) -> str:
-    """The command a ``? Sign this exactly: <command>[. Reply ...]`` question asks for."""
-    return question(text).split(". Reply with that line")[0]
+    """The command a ``? Sign this exactly: <command>`` question asks for: the rest of that line, exactly.
+
+    The prompt ends at the command (AICS-1 section 11.4, SWARMS R04 to R06): an agent signs the text after the colon.
+    A sentence after it (the former ". Reply with that line, then sig ...") fails here instead of being cut off, so
+    every test that signs a shown command catches it."""
+    command = question(text)
+    words = command.split(" ")
+    # <verb> <U64(J(U))>, or claim <name_norm> <commitment>, or claim-upgrade <name_norm> <commitment>
+    named = len(words) == 3 and words[0] in ("claim", "claim-upgrade")
+    assert all(words) and (len(words) == 2 or named) and not command.endswith("."), (
+        f"the prompt does not end at the command: {command!r}")
+    return command
 
 
 def ok_line(text: str, prefix: str) -> str:
@@ -1874,7 +1884,7 @@ def _build_journey(root: Path) -> Journey:
     card = client.get("/.well-known/aics-card.json").content
     answered(owner.policy_now(card.decode("utf-8")), 201)
     notice = client.post("/notice", json={
-        "kind": "notice", "location": "leaf 5 at api.wesupport-ai.com/tiles",
+        "kind": "notice", "location": f"leaf 5 at {origin}",
         "explanation": "This public post repeats a defamatory claim about a named person.",
         "name": "A notifier", "email": "notifier@example.invalid", "accurate": True,
     })
@@ -1902,9 +1912,16 @@ def _build_journey(root: Path) -> Journey:
     )
 
 
-@pytest.fixture(scope="session")
-def journey(tmp_path_factory: pytest.TempPathFactory, operator_documents: tuple[Path, Path]) -> Journey:
-    """The session's :class:`Journey` (built once; read it, never write to it)."""
+#: A non-production log origin (``AICS_ORIGIN``) for the journey a published verifier reads: the aics CLI on PyPI
+#: pins the real trust bundle of the production origin (:data:`DEFAULT_ORIGIN`) and rightly refuses any other keys
+#: for it, so a log with throwaway test keys is checked by that CLI only under another origin.
+TEST_ORIGIN = "test.example.org/tiles"
+
+
+def _journey_at(
+    tmp_path_factory: pytest.TempPathFactory, operator_documents: tuple[Path, Path], origin: str | None, name: str
+) -> Journey:
+    """A :class:`Journey` on *origin* (``None``: the default, production origin) with its own throwaway keys."""
     with pytest.MonkeyPatch.context() as patch:
         patch.setenv("AICS_DEV_GENESIS", "1")
         patch.setenv("AICS_TERMS_FILE", str(operator_documents[0]))
@@ -1914,4 +1931,20 @@ def journey(tmp_path_factory: pytest.TempPathFactory, operator_documents: tuple[
             "AICS_CHARTER_FILE", "AICS_PUBKEYS_OUT",
         ):
             patch.delenv(var, raising=False)
-        return _build_journey(tmp_path_factory.mktemp("journey"))
+        if origin is not None:
+            patch.setenv("AICS_ORIGIN", origin)
+        built = _build_journey(tmp_path_factory.mktemp(name))
+    assert built.origin == (origin or DEFAULT_ORIGIN) == built.oob.origin, built.origin
+    return built
+
+
+@pytest.fixture(scope="session")
+def journey(tmp_path_factory: pytest.TempPathFactory, operator_documents: tuple[Path, Path]) -> Journey:
+    """The session's :class:`Journey` on the default origin (built once; read it, never write to it)."""
+    return _journey_at(tmp_path_factory, operator_documents, None, "journey")
+
+
+@pytest.fixture(scope="session")
+def test_origin_journey(tmp_path_factory: pytest.TempPathFactory, operator_documents: tuple[Path, Path]) -> Journey:
+    """The same journey on :data:`TEST_ORIGIN`, for verifiers that pin the production origin's real keys (read only)."""
+    return _journey_at(tmp_path_factory, operator_documents, TEST_ORIGIN, "test-origin-journey")

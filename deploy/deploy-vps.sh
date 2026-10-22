@@ -20,7 +20,9 @@
 # and when the TLS gate is on
 # (deploy/gate-tls.yml through COMPOSE_FILE in the remote .env) copy the gate
 # certificate and require that the app's user can read it inside an app
-# container before anything running is replaced; then start the containers,
+# container, and check that the image imports aics_witness.feeder (the
+# checkpoint feeder needs it once AICS_WITNESSES is set), before anything
+# running is replaced; then start the containers,
 # check the app and the text gate from inside its container (plain TCP 7701
 # always, TLS 7700 once deploy/gate-tls.yml is on, with certificate and hostname
 # validation), then check https://wesupport-ai.com/healthz and
@@ -71,19 +73,51 @@ EOF
   exit 1
 fi
 
+# The published documents: deploy/docs-public is gitignored, made in this checkout by ops/sync-docs.sh. The app
+# mounts four of its files with create_host_path false (deploy/docker-compose.yml) and the sync below runs with
+# --delete, so a checkout without the export (a fresh worktree) would delete the VPS's copies and the app could not
+# start. Refuse before anything is sent.
+for published in charter.md terms.md retention.md secret-patterns.json; do
+  if [ ! -s "${SRC_DIR}/deploy/docs-public/legal/${published}" ]; then
+    echo "ERROR: ${SRC_DIR}/deploy/docs-public/legal/${published} is missing. Run bash ops/sync-docs.sh deploy/docs-public in this checkout first; the sync would otherwise delete the VPS's copy, which the app mounts. Nothing was sent." >&2
+    exit 1
+  fi
+done
+
 echo "==> [1/6] Syncing packages/, deploy/, ops/ and .dockerignore from ${SRC_DIR} to ${TARGET}:${REMOTE_DIR} ..."
 ssh "${TARGET}" "sudo mkdir -p ${REMOTE_DIR} && sudo chown -R \$(whoami) ${REMOTE_DIR}"
 # Recovery files are VPS-local and may still be mounted by the running proxy.
 # Excluding them also protects them from --delete; retire them explicitly only
 # after the canonical DNS-01 configuration has been validated and activated.
-rsync -az --delete \
+# The reviewed card body deploy/card/card-unsigned.json is gitignored (card/README.md
+# "Placeholders"): a checkout without it must not delete the VPS's copy (--filter P protects
+# it from --delete; a copy present here still replaces it). --inplace asks rsync to keep the inode of
+# every synced file (openrsync on macOS ignores it, so nothing relies on it); -i lists what changed so
+# the remote step can recreate Caddy and restart the app when only a bind-mounted file changed.
+# Local tool caches and build output (.ruff_cache, .mypy_cache, dist, build, *.egg-info) are never sent:
+# .dockerignore keeps them out of the image too, so the image of a working checkout is the image of a clean
+# worktree of the same commit. Published evidence (deploy/docs-public/docs/evidence/) is added, never removed:
+# a card names it by hash, so a local export that lacks a file (a fresh worktree of an older commit) must not
+# delete the VPS's copy (--filter P), while a file present here still replaces it.
+RSYNC_CHANGES="$(mktemp)"
+trap 'rm -f "${RSYNC_CHANGES}"' EXIT
+rsync -azi --inplace --delete \
   --exclude '.venv/' --exclude '__pycache__/' --exclude '.pytest_cache/' --exclude '.hypothesis/' \
+  --exclude '.ruff_cache/' --exclude '.mypy_cache/' --exclude 'dist/' --exclude 'build/' --exclude '*.egg-info/' \
   --exclude 'data/' --exclude '.DS_Store' --exclude '.zenodo-staging/' \
   --exclude '*.seed' --exclude '*.key' --exclude 'rclone.conf' \
   --exclude '/deploy/Caddyfile.recovery' --exclude '/deploy/docker-compose.recovery.yml' \
+  --filter 'P /deploy/card/card-unsigned.json' \
+  --filter 'P /deploy/docs-public/docs/evidence/**' \
   --include '.env.example' --exclude '.env' --exclude '.env.*' \
   "${SRC_DIR}/packages" "${SRC_DIR}/deploy" "${SRC_DIR}/ops" "${SRC_DIR}/.dockerignore" \
-  "${TARGET}:${REMOTE_DIR}/"
+  "${TARGET}:${REMOTE_DIR}/" > "${RSYNC_CHANGES}"
+# Itemized lines: "<f.st...... path" (GNU rsync, 11 flag characters) or ">f..t.... path" (openrsync
+# on macOS, 9); "*deleting path" for a deletion.
+grep -E '^[<>ch*][^ ]* deploy/(Caddyfile|card/|docs-public/)' "${RSYNC_CHANGES}" || true
+CADDYFILE_CHANGED=0; CARD_CHANGED=0
+grep -qE '^[<>ch]f[^ ]* deploy/Caddyfile$' "${RSYNC_CHANGES}" && CADDYFILE_CHANGED=1
+grep -qE '^[<>ch]f[^ ]* deploy/card/' "${RSYNC_CHANGES}" && CARD_CHANGED=1
 
 echo "==> [2/6] Checking that ${REMOTE_DIR}/deploy/.env exists on the VPS ..."
 if ! ssh "${TARGET}" "test -f ${REMOTE_DIR}/deploy/.env"; then
@@ -100,9 +134,24 @@ EOF
 fi
 
 echo "==> [3/6] Checking configuration; building and validating Caddy; checking the gate certificate; starting ..."
-if ! ssh "${TARGET}" sh -s -- "${REMOTE_DIR}" <<'REMOTE'
+if ! ssh "${TARGET}" sh -s -- "${REMOTE_DIR}" "${CADDYFILE_CHANGED}" "${CARD_CHANGED}" <<'REMOTE'
 set -eu
 cd "$1/deploy" || exit 1
+caddyfile_changed="${2:-0}"; card_changed="${3:-0}"
+# rsync -a keeps the laptop's modes: a worktree made under umask 077 ships directories the app's user cannot
+# traverse (the 2026-10-22 outage: PermissionError on /etc/aics/card). Make the synced tree readable, and keep
+# the env files private.
+chmod -R go+rX "$1/packages" "$1/deploy" "$1/ops" "$1/.dockerignore" 2>/dev/null || true
+chmod 600 .env 2>/dev/null || true
+for envf in .env.*; do [ "$envf" = ".env.example" ] || [ ! -e "$envf" ] || chmod 600 "$envf"; done
+# The reviewed card body: when deploy/.env names AICS_CARD_FILE (runbook step 5), the file it
+# names must exist under deploy/card (mounted as /etc/aics/card), or the app would stop at start
+# (FileNotFoundError) and crash-loop. Check before anything is built or replaced.
+card_file="$(sed -n 's/^AICS_CARD_FILE=//p' .env 2>/dev/null | tail -n 1)"
+if [ -n "${card_file}" ] && [ ! -s "card/$(basename "${card_file}")" ]; then
+  echo "deploy/.env sets AICS_CARD_FILE=${card_file} but deploy/card/$(basename "${card_file}") is missing or empty on the VPS; restore the reviewed card body (card/README.md \"Placeholders\") before deploying. Nothing was built or replaced." >&2
+  exit 1
+fi
 # Inspect the effective configuration without ever printing it: it contains secrets.
 # Fail before building or replacing a running container when DNS-01 cannot start.
 docker compose config --format json 2>/dev/null | python3 -c '
@@ -139,7 +188,31 @@ if docker compose config --services </dev/null | grep -qx gate-cert; then
     exit 1
   fi
 fi
+# The checkpoint feeder (aics_server.witness_feed) imports aics_witness.feeder as soon as
+# AICS_WITNESSES names a witness, and a server that cannot import it refuses to start: check the
+# built image, and that the setting parses, before the running service is replaced.
+if ! docker compose run --rm --no-deps --name "aics-witness-check-$$" --entrypoint python aics-server -c \
+    'import os, aics_witness.feeder; from aics_server.witness_feed import parse_witnesses; parse_witnesses(os.environ.get("AICS_WITNESSES", ""))' \
+    </dev/null >/dev/null; then
+  echo "the built aics-server image cannot import aics_witness.feeder (packages/aics-witness, deploy/Dockerfile), or AICS_WITNESSES does not parse; running containers were not replaced" >&2
+  exit 1
+fi
+app_before="$(docker compose ps -q aics-server </dev/null 2>/dev/null || true)"
 docker compose up -d </dev/null
+# A changed bind-mounted file does not recreate its container: reload Caddy gracefully when the
+# Caddyfile changed, and restart the app when the card body changed but up -d kept the container.
+if [ "${caddyfile_changed}" = 1 ]; then
+  # The Caddyfile is a read-only bind mount of one file: rsync may give the host path a new inode (openrsync
+  # on macOS ignores --inplace), and the container keeps the old one, so a reload would re-read the old
+  # bytes. Recreating the container mounts the new file (a few seconds without Caddy).
+  echo "deploy/Caddyfile changed: recreating Caddy so it mounts the new file"
+  docker compose up -d --force-recreate --no-deps caddy </dev/null
+fi
+app_after="$(docker compose ps -q aics-server </dev/null 2>/dev/null || true)"
+if [ "${card_changed}" = 1 ] && [ -n "${app_after}" ] && [ "${app_after}" = "${app_before}" ]; then
+  echo "deploy/card changed and the app container was kept: restarting aics-server so it reads the new card"
+  docker compose restart aics-server </dev/null
+fi
 REMOTE
 then
   echo "ERROR: configuration preflight, image build, Caddy validation, gate certificate check, or container startup failed (output above). If the TLS gate is on and Caddy has not issued the gate certificate yet, remove only gate-tls.yml from COMPOSE_FILE in ${REMOTE_DIR}/deploy/.env, preserving any pilot override, and deploy again." >&2

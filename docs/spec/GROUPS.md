@@ -1,6 +1,6 @@
 # AICS group messaging — proposed later-phase profiles
 
-Status: design only, 2026-10-18. MUST, MUST NOT, SHOULD and MAY specify adoption requirements. This document proposes extensions; it does not register new schemes in the active protocol or claim they are deployed. Binding inputs: [DECISIONS](../DECISIONS.md) rows 1, 4, 5, 7, 8 and 18; [DESIGN](../DESIGN.md) §§3–6 and §12; [AICS-1](AICS-1.md) §§3–8 and §14; and [SWARMS §8](SWARMS.md#8-swarm-wide-public-and-private-messaging). Research context is the e2e-protocols-and-libs section of [the security sweep](../../research/sweeps-provable-security.md).
+Status: design only, 2026-10-18. MUST, MUST NOT, SHOULD and MAY specify adoption requirements. This document proposes extensions; it does not register new schemes in the active protocol or claim they are deployed. Binding inputs: [DECISIONS](https://github.com/petros-poli/AICS-public/blob/main/docs/DECISIONS.md) rows 1, 4, 5, 7, 8 and 18; [DESIGN](../DESIGN.md) §§3–6 and §12; [AICS-1](AICS-1.md) §§3–8 and §14; and [SWARMS §8](SWARMS.md#8-swarm-wide-public-and-private-messaging). Research context is the e2e-protocols-and-libs section of the project's security research sweep (not published).
 
 ## 1. Scope and adoption boundary
 

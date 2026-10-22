@@ -44,6 +44,9 @@ The owner of an instance (decision 3) signs its administration with :class:`Owne
 its offline file.  ``owner --key owner.pem stats [--days N] [--json]`` prints the owner stats document
 (``GET /v2/admin/stats``), and ``owner --key owner.pem dashboard [--port 8765]`` serves it as a page on
 127.0.0.1 only, signing a fresh request on every refresh (:class:`OwnerDashboard`).
+``owner --key owner.pem log-card --successor body.json [--dry-run]`` applies a reviewed successor body to the
+logged card, has the server sign and check it (``POST /v2/admin/card/preview``), checks the signed bytes here and
+logs them as a card leaf that takes effect after the notice period (:meth:`OwnerClient.log_successor_card`).
 
 Direct messages and capsules carry ciphertext only, sealed here, on your
 machine, to the X25519 key the recipient's key chain sets, each key-event leaf
@@ -75,11 +78,12 @@ this machine.
 :func:`verify_bundle` checks a bundle locally: the entry's exact JCS bytes,
 its inclusion proof (RFC 9162) against the checkpoint it carries, that
 checkpoint's log signature when you pass the log key you pinned out of band
-(DNS TXT ``_aics``, the ``aics`` package, the public README; never this API
-alone), the envelope's signature by the key its ``did:key`` names, and the
-body against the hash and size the entry commits to.  Whether that key was
-the name's current key at that index needs the name's whole key chain (the
-``aics`` verifier scans the tiles for it).
+(DNS TXT ``_aics``, the ``aics-cli`` package on PyPI, the README of the public
+repository https://github.com/petros-poli/AICS-public; never this API alone),
+the envelope's signature by the key its ``did:key`` names, and the body
+against the hash and size the entry commits to.  Whether that key was the
+name's current key at that index needs the name's whole key chain (the
+``aics`` command of aics-cli scans the tiles for it).
 
 Dependencies: Python 3.12+ and ``cryptography``; PyNaCl to seal and open.
 When the ``aics_identity`` package is installed it is used (it is the
@@ -110,7 +114,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey 
 from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey as _X25519PrivateKey
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF as _HKDF
 
-__version__ = "4.2.0"
+__version__ = "4.3.1"
 
 #: Default API root (DNS-only host: requests go straight to the service, not through a proxy).
 DEFAULT_BASE_URL = "https://api.wesupport-ai.com"
@@ -1192,7 +1196,8 @@ def _checkpoint_text(text: str) -> tuple[str, int, bytes]:
 
 #: Raised for a check that needs the log key pinned out of band and was not given it.
 _NO_LOG_KEY = (
-    "pin the log key (log_vkey) from out of band (DNS TXT _aics, the aics package, the public README): "
+    "pin the log key (log_vkey) from out of band (DNS TXT _aics, the aics-cli package on PyPI, the README of the "
+    "public repository https://github.com/petros-poli/AICS-public): "
     "without it nothing here is checked against the log; pass allow_unverified=True to read unchecked data knowingly"
 )
 
@@ -1832,9 +1837,10 @@ class AICSClient:
     name:
         The name this identity holds, if it already claimed one.
     log_vkey:
-        The log key, pinned out of band (DNS TXT ``_aics``, the ``aics``
-        package, the public README): receipts, bundles and key chains are
-        checked against it.  Never take it from this API alone.  Reading a
+        The log key, pinned out of band (DNS TXT ``_aics``, the ``aics-cli``
+        package on PyPI, the README of the public repository
+        https://github.com/petros-poli/AICS-public): receipts, bundles and key
+        chains are checked against it.  Never take it from this API alone.  Reading a
         bundle (:meth:`entry`), sealing to anyone (:meth:`send_sealed`,
         :meth:`send_message`, :meth:`store_sealed`, :meth:`put_capsule`),
         opening a capsule and an upgrade need it; a write without it still
@@ -2670,6 +2676,37 @@ def sup_asset_hash(origin: str) -> str:
     return hashlib.sha256(_canonical(descriptor)).hexdigest()
 
 
+#: Seconds added to the notice period when the owner tool picks a successor card's ``not_before``: the server
+#: measures the notice from its own clock when it appends the leaf (AICS-1 section 6.4).
+CARD_NOTICE_MARGIN_SECONDS = 600
+
+
+def verify_card_signature(card: dict, policy_kid: "str | None" = None) -> bool:
+    """Whether *card* carries exactly one AICS-1 section 13.2 signature by *policy_kid* (default: its own
+    ``policy_kid``): ``{protected, signature}``, protected ``U64(J({alg: EdDSA, kid, typ: JOSE}))``, Ed25519 over
+    ``ASCII(protected || "." || U64(J(card without signatures)))``.  Pin *policy_kid* from the trust bundle when
+    the card is not your own."""
+    signatures = card.get("signatures") if isinstance(card, dict) else None
+    if not isinstance(signatures, list) or len(signatures) != 1:
+        return False
+    sig = signatures[0]
+    if not isinstance(sig, dict) or set(sig) != {"protected", "signature"}:
+        return False
+    body = {k: v for k, v in card.items() if k != "signatures"}
+    kid = body.get("policy_kid") if policy_kid is None else policy_kid
+    if not isinstance(kid, str) or body.get("policy_kid") != kid:
+        return False
+    if sig["protected"] != b64u_encode(_canonical({"alg": "EdDSA", "kid": kid, "typ": "JOSE"})):
+        return False
+    try:
+        public = _keys.parse_did_key(kid)
+        signing_input = f"{sig['protected']}.{b64u_encode(_canonical(body))}".encode("ascii")
+        public.verify(b64u_decode(sig["signature"]), signing_input)
+    except Exception:  # an invalid signature, a malformed did:key or signature: not verified
+        return False
+    return True
+
+
 class OwnerClient(AICSClient):
     """The owner login of decision 3: requests signed by the owner key, no token, no envelope (AICS-1 section 12.1).
 
@@ -2764,6 +2801,121 @@ class OwnerClient(AICSClient):
                     raise
         raise last  # type: ignore[misc]
 
+    # -- a successor card (card/README.md "Successor card") ---------------------------
+
+    def preview_card(self, body: "dict | str") -> dict:
+        """``POST /v2/admin/card/preview``: the server signs the unsigned card *body* and checks it as a card leaf
+        would be checked; nothing is logged.  The answer's ``document`` is ``J(card)``, null while ``problems``
+        lists anything."""
+        text = body if isinstance(body, str) else json.dumps(body, ensure_ascii=False)
+        return self._admin("POST", "/v2/admin/card/preview", {"body": text})
+
+    def successor_body(self, overlay: dict, *, issued_at: int | None = None, expires: int | None = None) -> dict:
+        """The unsigned successor of the card in effect: its body with the members of *overlay* replaced.
+
+        The card in effect is fetched (``/.well-known/aics-card.json``) and must be a logged card: its
+        ``hexH(J(card))`` is the ``document_hash`` of a policy leaf of kind card, and no later card is waiting for
+        its notice period.  The keys stay the same (``origin``, ``log_vkey``, ``policy_kid``, ``owner_kid``);
+        ``issued_at`` is *issued_at* or now, ``policy_parent_index`` the latest policy leaf, and ``expires``
+        *expires*, else the overlay's, else ``issued_at`` plus the current card's validity period.  Answers
+        ``{body, base, replaced}``: ``base`` names the logged card's leaf and hash, ``replaced`` the overlay
+        values this method set otherwise.
+        """
+        if not isinstance(overlay, dict) or "signatures" in overlay:
+            raise AICSClientError("a successor body is a JSON object of unsigned card members (no signatures)")
+        current = self._request("GET", "/.well-known/aics-card.json")
+        listing = self._request("GET", "/v2/policies")
+        policies = [p for p in listing.get("policies") or [] if isinstance(p, dict)]
+        cards = [p for p in policies if p.get("kind") == "card"]
+        if not isinstance(current, dict) or not cards:
+            raise AICSClientError("no card is logged yet: log the bootstrap card first (owner log-card --document-file)")
+        digest = hashlib.sha256(_canonical(current)).hexdigest()
+        base_leaf = next((p for p in cards if p.get("document_hash") == digest), None)
+        if base_leaf is None:
+            raise AICSClientError("the served card is not a logged card (no card leaf carries its hash): log the "
+                                  "bootstrap card first, or wait until the served card is the logged one")
+        if cards[-1]["leaf_index"] != base_leaf["leaf_index"]:
+            raise AICSClientError(f"card leaf {cards[-1]['leaf_index']} is already waiting for its notice period: "
+                                  "its successor is built once it is in effect")
+        base = {k: v for k, v in current.items() if k != "signatures"}
+        for pinned in ("origin", "log_vkey", "policy_kid", "owner_kid"):
+            if pinned in overlay and overlay[pinned] != base.get(pinned):
+                raise AICSClientError(f"a successor card keeps the same keys: {pinned} differs from the logged card's")
+        body = {**base, **overlay}
+        replaced: dict = {}
+        now = int(time.time()) if issued_at is None else int(issued_at)
+        lifetime = int(base["expires"]) - int(base["issued_at"])
+        settings = {"issued_at": now, "policy_parent_index": policies[-1]["leaf_index"]}
+        if expires is not None:
+            settings["expires"] = int(expires)
+        elif "expires" not in overlay:
+            settings["expires"] = now + lifetime
+        for member, value in settings.items():
+            if member in overlay and overlay[member] != value:
+                replaced[member] = overlay[member]
+            body[member] = value
+        return {"body": body, "base": {"leaf_index": base_leaf["leaf_index"], "document_hash": digest},
+                "replaced": replaced}
+
+    def log_successor_card(
+        self, overlay: dict, *, issued_at: int | None = None, expires: int | None = None,
+        not_before: int | None = None, dry_run: bool = False,
+    ) -> dict:
+        """Log a successor card (AICS-1 sections 6.4 and 13): :meth:`successor_body`, the server's signature and
+        checks (:meth:`preview_card`), then a policy leaf of kind card naming exactly the signed ``J(card)``.
+
+        The signed bytes are checked here before they are logged: they are the JCS bytes of exactly the body
+        sent plus one signature by the body's ``policy_kid`` under the section 13.2 protected header.
+        ``not_before`` defaults to now + the notice period the server states (the card in effect's
+        ``policy_notice_seconds``, 30 days under the charter) + :data:`CARD_NOTICE_MARGIN_SECONDS`, so the card
+        takes effect only after the notice; an earlier one is refused here and by the server.  *dry_run* stops
+        before logging and answers the preview.
+        """
+        built = self.successor_body(overlay, issued_at=issued_at, expires=expires)
+        body = built["body"]
+        preview = self.preview_card(body)
+        problems = preview.get("problems")
+        if not isinstance(problems, list):
+            raise AICSClientError("the preview answer has no problems list")
+        summary = {"base": built["base"], "replaced": built["replaced"],
+                   "changed_members": preview.get("changed_members"), "policy_parent_index": body["policy_parent_index"],
+                   "notice_seconds": preview.get("notice_seconds"), "problems": problems}
+        if problems:
+            raise AICSClientError("the server would not log this successor card: " + "; ".join(map(str, problems)))
+        document = preview.get("document")
+        if not isinstance(document, str):
+            raise AICSClientError("the preview answer carries no document")
+        raw = document.encode("utf-8")
+        try:
+            card = _strict_json(raw, "the signed successor card")
+        except BundleError as exc:
+            raise AICSClientError(str(exc)) from None
+        if not isinstance(card, dict) or _canonical(card) != raw:
+            raise AICSClientError("the signed successor card is not the JCS bytes of one JSON object")
+        if {k: v for k, v in card.items() if k != "signatures"} != body:
+            raise AICSClientError("the server signed another body than the one sent")
+        if not verify_card_signature(card):
+            raise AICSClientError("the successor card does not carry one section 13.2 signature by its policy_kid")
+        digest = hashlib.sha256(raw).hexdigest()
+        if preview.get("document_hash") != digest:
+            raise AICSClientError("the preview's document_hash is not the hash of its document")
+        summary.update(document_hash=digest, document=document)
+        notice = preview.get("notice_seconds")
+        if not isinstance(notice, int) or isinstance(notice, bool) or notice < 0:
+            raise AICSClientError("the preview answer has no notice period")
+        earliest = int(time.time()) + notice
+        when = earliest + CARD_NOTICE_MARGIN_SECONDS if not_before is None else int(not_before)
+        if when < earliest or (isinstance(preview.get("not_before_min"), int) and when < preview["not_before_min"]):
+            raise AICSClientError(f"not_before {when} lies inside the notice period ({notice} seconds from now)")
+        summary["not_before"] = when
+        if dry_run:
+            return {"dry_run": True, **summary}
+        logged = self.publish_policy("card", document, not_before=when)
+        policy = logged.get("policy") or {}
+        if policy.get("document_hash") != digest or policy.get("prev_policy_index") != body["policy_parent_index"]:
+            raise AICSClientError("the logged policy leaf does not name the successor card under its parent")
+        return {**logged, "successor": summary}
+
     def notices(self, status: str | None = None) -> dict:
         """``GET /v2/admin/notices``: the notice register (personal data: keep the answer off any public place)."""
         path = "/v2/admin/notices" + (f"?status={urllib.parse.quote(status)}" if status else "")
@@ -2851,7 +3003,13 @@ def _owner_main(args: Any) -> int:
             result = owner.audit(read(args.document_file), args.outcome)
         elif action == "policy":
             result = owner.publish_policy(args.kind, read(args.document_file), not_before=args.not_before)
+        elif action == "log-card" and args.successor:
+            overlay = _strict_json(open(args.successor, "rb").read(), args.successor)
+            result = owner.log_successor_card(overlay, expires=args.expires, not_before=args.not_before,
+                                              dry_run=args.dry_run)
         elif action == "log-card":
+            if args.expires is not None or args.not_before is not None or args.dry_run:
+                raise AICSClientError("--expires, --not-before and --dry-run go with --successor")
             result = owner.log_card(read(args.document_file))
         elif action == "notices":
             result = owner.notices(args.status)
@@ -3851,8 +4009,19 @@ def main(argv: list[str] | None = None) -> int:
     c.add_argument("--kind", required=True, choices=["change", "card"])
     c.add_argument("--document-file", required=True)
     c.add_argument("--not-before", type=int, default=None, help="Unix time; default now + 30 days")
-    c = commands.add_parser("log-card", help="log the bootstrap card (exactly the served J(card)), effective at once")
-    c.add_argument("--document-file", required=True)
+    c = commands.add_parser("log-card", help="log the bootstrap card (exactly the served J(card)), effective at once, "
+                                             "or a successor card after the notice period")
+    which = c.add_mutually_exclusive_group(required=True)
+    which.add_argument("--document-file", help="the bootstrap card: exactly the served J(card)")
+    which.add_argument("--successor", metavar="BODY_JSON",
+                       help="a reviewed successor body: the card members to change (witness_policy, assurances, ...) or "
+                            "a whole unsigned body; applied to the logged card, signed and checked by the server, then "
+                            "logged with the notice period (card/README.md 'Successor card')")
+    c.add_argument("--expires", type=int, default=None, help="--successor: Unix time the successor expires "
+                                                             "(default: the body's, else its validity period again)")
+    c.add_argument("--not-before", type=int, default=None, help="--successor: Unix time it takes effect "
+                                                                "(default: now + the notice period + 600 s)")
+    c.add_argument("--dry-run", action="store_true", help="--successor: print the server's preview, log nothing")
     c = commands.add_parser("notices", help="the notice register (personal data)")
     c.add_argument("--status", default=None, choices=["open", "closed"])
     days = _int_range(STATS_DAYS[0], STATS_DAYS[1], "--days")

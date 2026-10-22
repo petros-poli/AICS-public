@@ -1,0 +1,135 @@
+# Staging override: a DISPOSABLE second instance beside production on the same VPS, for agent
+# trials (ops/RUNBOOK-first-deploy.md step 4, "Staging origin").
+#
+# It adds one service, aics-staging, built from the same image as aics-server, with its own
+# volumes, its own origin (test.wesupport-ai.com/tiles), its own keys and no shared state:
+# every leaf, checkpoint and card of its log names the staging origin, so nothing from it is a
+# production artefact and nothing from it may be put into a trust bundle, a witness, a mirror,
+# a package or a public archive. Caddy serves it at https://test.wesupport-ai.com (pages, API,
+# HTTPS text gate /t and tiles /tiles/, one DNS-only host; deploy/Caddyfile). It never touches
+# the production service, its volumes, Caddy's certificate store or the gate certificate.
+#
+# Activate on the VPS by adding this file to COMPOSE_FILE in deploy/.env, for instance
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.staging.yml
+#   COMPOSE_FILE=docker-compose.yml:gate-tls.yml:docker-compose.staging.yml
+# and, for staging's TLS gate on 7800 (the test.* certificate, deploy/gate-tls-staging.yml),
+#   COMPOSE_FILE=docker-compose.yml:gate-tls.yml:docker-compose.staging.yml:gate-tls-staging.yml
+# then start it ALONE on the VPS with deploy/staging.sh up (deploy-vps.sh would also redeploy
+# production from the local tree; it is only for an intended production deploy).
+# Wipe it (allowed: the origin is test.*, never the production origin):
+#   docker compose rm -sfv aics-staging
+#   docker volume rm aics_staging_data aics_staging_tiles
+# (and aics_staging_gate_tls, the copy of the test.* certificate, when gate-tls-staging.yml was on)
+# and remove it from COMPOSE_FILE, or the next deploy starts a fresh one.
+services:
+  aics-staging:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    container_name: aics-staging
+    restart: unless-stopped
+    labels:
+      wesupport-ai.instance: "staging"
+      wesupport-ai.disposable: "true"
+      wesupport-ai.origin: "test.wesupport-ai.com/tiles"
+    # No env_file, as for aics-server: exactly the variables listed here reach the app. None of
+    # production's secrets (AICS_SERVER_SEED_HEX, AICS_OWNER_PUBKEY, CLOUDFLARE_API_TOKEN,
+    # AICS_INDEXNOW_KEY, the contribution addresses) is passed through.
+    environment:
+      # Not the production host: leaf 0 of this origin is written without the production
+      # owner key, and the log can be wiped.
+      - AICS_PRODUCTION=
+      - AICS_ORIGIN=test.wesupport-ai.com/tiles
+      # Pages, API, HTTPS gate, connectivity check and tiles are all on the one staging host;
+      # no tile mirror (tiles.wesupport-ai.com belongs to production).
+      - AICS_BASE_URL=https://test.wesupport-ai.com
+      - AICS_API_URL=https://test.wesupport-ai.com
+      - AICS_IP_URL=https://test.wesupport-ai.com/ip
+      - AICS_TILE_MIRRORS=
+      # The TCP gate of this instance is published on host ports 7800/7801 (below); on this
+      # single-IP VPS, 7700/7701 are PRODUCTION's gate. The banner, discovery texts, gate hints and
+      # the card's gate member (AICS-1 section 13.1) name the advertised ports, so every staging
+      # text points at test.wesupport-ai.com:7800/7801 and https://test.wesupport-ai.com/t, never at
+      # a production address. (Trial sandboxes deny 7700/7701 as well.)
+      - AICS_GATE_HOSTNAME=test.wesupport-ai.com
+      - AICS_GATE_PUBLIC_TLS_PORT=7800
+      - AICS_GATE_PUBLIC_PLAIN_PORT=7801
+      - AICS_DB_PATH=/data/aics.db
+      - AICS_TILES_DIR=/data/tiles
+      - AICS_PUBKEYS_OUT=/data/pubkeys.txt
+      # Signed requests without an envelope origin are bound to the staging host, so a request
+      # signed for staging is refused (421) by production and the other way round.
+      - AICS_ALLOWED_HOSTS=test.wesupport-ai.com
+      - AICS_WORKERS=1
+      # The same reviewed charter, terms, retention text and secret patterns as production
+      # (read-only mounts below); no reviewed card (the server serves its unlogged skeleton).
+      - AICS_CHARTER_FILE=/etc/aics/charter.md
+      - AICS_TERMS_FILE=/etc/aics/terms.md
+      - AICS_PRIVACY_FILE=/etc/aics/retention.md
+      - AICS_SECRET_PATTERNS_FILE=/etc/aics/secret-patterns.json
+      # A separate staging owner key (optional; empty disables the owner login on staging).
+      # Never the production owner key.
+      - AICS_OWNER_PUBKEY=${AICS_STAGING_OWNER_PUBKEY:-}
+      # Optional distinct master seed (empty: /data/server_master.seed is generated once in the
+      # staging volume). Never production's AICS_SERVER_SEED_HEX.
+      - AICS_SERVER_SEED_HEX=${AICS_STAGING_SEED_HEX:-}
+      # The TLS gate: deploy/gate-tls-staging.yml sets AICS_GATE_TLS_CERT/KEY to a copy of the
+      # test.wesupport-ai.com certificate; without that override 7700 inside (host 7800) stays dark.
+    volumes:
+      - aics_staging_data:/data
+      - type: bind
+        source: ./docs-public/legal/charter.md
+        target: /etc/aics/charter.md
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./docs-public/legal/terms.md
+        target: /etc/aics/terms.md
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./docs-public/legal/retention.md
+        target: /etc/aics/retention.md
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./docs-public/legal/secret-patterns.json
+        target: /etc/aics/secret-patterns.json
+        read_only: true
+        bind:
+          create_host_path: false
+      - aics_staging_tiles:/data/tiles
+    expose:
+      - "8080"
+    ports:
+      # The staging text gate, on host ports of its own (open TCP 7800/7801 in the OVH firewall
+      # to reach it from outside): 7800 TLS (with deploy/gate-tls-staging.yml; dark without it),
+      # 7801 plain TCP, as production's 7700 TLS / 7701 plain.
+      - "7800:7700"
+      - "7801:7701"
+    deploy:
+      resources:
+        # Smaller than production's share, so a trial cannot starve the production service.
+        limits:
+          cpus: "0.50"
+          memory: 768M
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  # Fixed names (no project prefix), so the wipe command above names exactly these two and
+  # can never match production's volumes.
+  aics_staging_data:
+    name: aics_staging_data
+    labels:
+      wesupport-ai.disposable: "true"
+  aics_staging_tiles:
+    name: aics_staging_tiles
+    labels:
+      wesupport-ai.disposable: "true"

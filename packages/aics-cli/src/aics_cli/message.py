@@ -334,6 +334,30 @@ def _proof(proof: Any, public: Any, data: bytes) -> bool:
     return True
 
 
+def check_policy_event(i: int, q: dict[str, Any], *, log_kid: str, policy_kid: str | None, owner_kid: str | None,
+                       previous: int | None) -> None:
+    """AICS-1 §6.4 for the policy event at leaf ``i`` with envelope payload ``q``, whose preceding policy event is
+    leaf ``previous`` (None: ``i`` must be the charter at leaf 0, countersigned by the log key).  The pinned service
+    keys are ``log_kid``, ``policy_kid`` and ``owner_kid`` (did:key).  :class:`ReplayProblem` with rule ``policy``
+    when a rule is broken; a missing or mistyped member raises KeyError or TypeError."""
+    _require(q["log_kid"] != q["policy_kid"] and q["owner_kid"] not in (q["log_kid"], q["policy_kid"]), i,
+             "policy", "the service keys of a policy event are not distinct (AICS-1 §3.1)")
+    _require((q["log_kid"], q["policy_kid"], q["owner_kid"]) == (log_kid, policy_kid, owner_kid),
+             i, "policy", "a policy event names other service keys than the pinned ones (AICS-1 §6.4)")
+    _require(q["prev_policy_index"] == previous, i, "policy", "prev_policy_index is not the previous policy event")
+    if previous is None:
+        _require(i == 0 and q["kind"] == "charter" and q["effective_after"] == 0, i, "policy",
+                 "the first policy event is the charter at leaf 0 (AICS-1 §6.4)")
+        data = POLICY_CONTEXT + canonicalize({k: v for k, v in q.items() if k != "log_sig"})
+        try:
+            idkeys.parse_did_key(q["log_kid"]).verify(u64d(q["log_sig"], "log_sig"), data)
+        except (InvalidSignature, ValueError):
+            raise ReplayProblem(i, "policy", f"leaf {i}: the log key's countersignature of the charter does not "
+                                             "verify (AICS-1 §6.4)") from None
+    else:
+        _require(q["log_sig"] is None, i, "policy", "only the charter carries the log key's countersignature")
+
+
 def sup_asset_hash(origin: str) -> str:
     """AICS-1 §20.2."""
     return hexH(canonicalize({"asset": "SUP", "buys": ["owner_action", "hosting", "storage"], "decimals": 0,
@@ -554,23 +578,8 @@ class Replay:
             self.nonces.setdefault((q["attempt_kid"], q["attempt_nonce"]), i)  # used for good, as an envelope's
 
     def _policy(self, i, e, p, q, kid, ts, secret) -> None:
-        _require(q["log_kid"] != q["policy_kid"] and q["owner_kid"] not in (q["log_kid"], q["policy_kid"]), i,
-                 "policy", "the service keys of a policy event are not distinct (AICS-1 §3.1)")
-        _require((q["log_kid"], q["policy_kid"], q["owner_kid"]) == (self.log_kid, self.policy_kid, self.owner_kid),
-                 i, "policy", "a policy event names other service keys than the pinned ones (AICS-1 §6.4)")
-        _require(q["prev_policy_index"] == (self.policy_events[-1] if self.policy_events else None), i, "policy",
-                 "prev_policy_index is not the previous policy event")
-        if not self.policy_events:
-            _require(i == 0 and q["kind"] == "charter" and q["effective_after"] == 0, i, "policy",
-                     "the first policy event is the charter at leaf 0 (AICS-1 §6.4)")
-            data = POLICY_CONTEXT + canonicalize({k: v for k, v in q.items() if k != "log_sig"})
-            try:
-                idkeys.parse_did_key(q["log_kid"]).verify(u64d(q["log_sig"], "log_sig"), data)
-            except (InvalidSignature, ValueError):
-                raise ReplayProblem(i, "policy", f"leaf {i}: the log key's countersignature of the charter does not "
-                                                 "verify (AICS-1 §6.4)") from None
-        else:
-            _require(q["log_sig"] is None, i, "policy", "only the charter carries the log key's countersignature")
+        check_policy_event(i, q, log_kid=self.log_kid, policy_kid=self.policy_kid, owner_kid=self.owner_kid,
+                           previous=self.policy_events[-1] if self.policy_events else None)
         self.policy_events.append(i)
 
     # -- SUP-1 (§20.3): signers above, the asset here ------------------------------------------------------------

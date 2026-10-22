@@ -1,0 +1,4 @@
+# Host-only files of the witness host: .env (public WITNESS_DOMAIN, written by
+# bootstrap-witness-host.sh) and site/ (the generated public page).
+.env
+site/

@@ -5,4 +5,4 @@ band (docs/spec/AICS-1.md §6.4), never taken from the server being checked.
 Entry point: ``aics`` (:func:`aics_cli.cli.main`).
 """
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"

@@ -31,3 +31,6 @@ node_modules/
 deploy/docs-public/
 ops/discovery/.zenodo-staging/
 
+
+# Agent trial transcripts (tools/agent-trials): local only
+tools/agent-trials/runs/

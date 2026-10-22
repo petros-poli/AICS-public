@@ -104,18 +104,35 @@ def vkey(name: str, key_type: int, k: Ed25519PrivateKey) -> str:
 LOG_KEY, POLICY_KEY, OWNER_KEY, WITNESS_KEY = key(2), key(3), key(4), key(6)
 WITNESS_NAME = "witness1.example.org/w1"
 FOUNDER_WITNESS_STATEMENT = (
-    "[founder-witness] The listed witness is run by the operator on a second provider: trust_domain founder, "
-    "independent false. It stays in the log's trust domain, so its cosignatures do not make G5 proven.")
+    "[founder-witness] A founder-run witness proves freshness, not independence. The listed witness is run by the "
+    "operator on a second provider: trust_domain founder, independent false. It stays in the log's trust domain, so "
+    "its cosignatures do not make G5 proven.")
+
+
+def launch_witness_policy(card: dict[str, Any]) -> dict[str, Any]:
+    """A quorum-0 witness policy on *card*: no witness, with the G5 statements of the bootstrap card of genesis 1
+    (2026-10-19, a log since discarded).  card-content.json, the first card of genesis v2, lists the founder-run
+    witness from the start."""
+    card["witness_policy"] = {"quorum": 0, "witnesses": []}
+    replace_statement(card, "G5", "witness-policy", "[witness-policy] Witness policy at launch: quorum 0, and no "
+                      "witness is listed (charter commitment 6).")
+    replace_statement(card, "G5", "founder-witness", None)
+    replace_statement(card, "G5", "witness-verification", None)
+    return card
 
 
 def add_founder_witness(card: dict[str, Any], *, statement_too: bool = True) -> dict[str, Any]:
-    """List the founder-run witness, as a successor card would once the server feeds it (quorum unchanged)."""
-    card["witness_policy"]["witnesses"].append({
-        "name": WITNESS_NAME, "vkey": vkey(WITNESS_NAME, 0x04, WITNESS_KEY), "trust_domain": "founder",
-        "independent": False})
-    if statement_too:
-        assurance(card, "G5")["assumptions"].append(FOUNDER_WITNESS_STATEMENT)
-    return card["witness_policy"]["witnesses"][-1]
+    """The founder-run witness of card-content.json, listed at quorum 1 with its statements; on a launch-policy card
+    (:func:`launch_witness_policy`) it is listed again, with the quorum unchanged."""
+    witnesses = card["witness_policy"]["witnesses"]
+    if not witnesses:
+        witnesses.append({"name": WITNESS_NAME, "vkey": vkey(WITNESS_NAME, 0x04, WITNESS_KEY),
+                          "trust_domain": "founder", "independent": False})
+        if statement_too:
+            assurance(card, "G5")["assumptions"].append(FOUNDER_WITNESS_STATEMENT)
+    elif not statement_too:
+        replace_statement(card, "G5", "founder-witness", None)
+    return witnesses[-1]
 
 
 #: Test contribution addresses in each network's canonical form (public test values, nobody's wallet).
@@ -123,6 +140,34 @@ BASE_ADDRESS = "0x" + "ab" * 20
 SOLANA_ADDRESS = vc.b58encode(bytes(range(1, 33)))
 #: The ciphertext budget the server applies (DEFAULT_LIMITS, decision 22: 8 GiB), which the G3 statement names.
 CIPHERTEXT_BUDGET_BYTES = 8 * 1024**3
+#: The AICS-1 0.2-draft conformance reports the proven rows G1, G4, G6, G8 and G9 name, in their evidence order: the
+#: relaunch build at quorum 0 and at the card's quorum 1, run on the discarded first log before the wipe (card/README.md
+#: "Genesis v2", step 0).  The main session adds them to docs/evidence, so this checkout may not hold them yet
+#: (tests/test_sources.py's launch test requires them); the filled test cards use test hashes for them.
+CONFORMANCE_REPORTS = ("docs/evidence/conformance-2026-10-20-relaunch-build.json",
+                       "docs/evidence/conformance-2026-10-20-relaunch-build-quorum1.json")
+#: The witness quorum each of those runs required (its run policy, docs/evidence/<name>.policy.toml).
+CONFORMANCE_QUORUMS = (0, 1)
+TEST_REPORT_SHA256 = {rel: hashlib.sha256(f"a test stand-in for {rel}".encode()).hexdigest()
+                      for rel in CONFORMANCE_REPORTS}
+
+
+def conformance_report(*, fmt: str = "aics-conformance/v1", mode: str = "instance", failing: tuple[str, ...] = (),
+                       spec: str = "AICS-1 0.2-draft") -> dict[str, Any]:
+    """A conformance report shaped like the harness's (public test data): every G row passes but *failing*."""
+    verdicts = {f"G{i}": ("fail" if f"G{i}" in failing else "pass") for i in range(1, 11)}
+    checks = [{"id": g, "title": g, "spec_ref": "AICS-1", "verdict": v, "details": {}} for g, v in verdicts.items()]
+    if fmt == "aics-interop-server-conformance/v1":
+        return {"format": fmt, "spec": spec, "guarantees": verdicts, "verdicts": verdicts, "checks": checks}
+    return {"format": fmt, "spec": spec, "mode": mode, "started_at": 1.5, "finished_at": 2.5,
+            "counts": {"pass": 10 - len(failing), "fail": len(failing), "skip": 0}, "checks": checks}
+
+
+def run_policy(quorum: int) -> str:
+    """An aics-conformance run policy (TOML, public test values) at *quorum*, shaped like docs/evidence's."""
+    vkeys = '["witness1.example.org/w1+00000000+BAAA"]' if quorum else "[]"
+    return (f'trust_file = "trust-bundle.json"\npages = "https://wesupport-ai.com"\nquorum = {quorum}\n'
+            f"witness_vkeys = {vkeys}\nmax_checkpoint_age = 300\n")
 
 
 def with_networks(card: dict[str, Any]) -> dict[str, Any]:
@@ -135,7 +180,8 @@ def with_networks(card: dict[str, Any]) -> dict[str, Any]:
 
 
 def fill_values() -> dict[str, str]:
-    """``--set`` values for every placeholder except the hashes (``--fill-hashes`` and ``--patterns`` fill those)."""
+    """``--set`` values for every placeholder except the document and pattern hashes (``--fill-hashes`` and
+    ``--patterns`` fill those); the conformance reports' hashes are test values (:data:`CONFORMANCE_REPORTS`)."""
     return {
         "ISSUED_AT": str(ISSUED_AT),
         "EXPIRES": str(ISSUED_AT + ONE_YEAR),
@@ -143,8 +189,11 @@ def fill_values() -> dict[str, str]:
         "POLICY_KID": did_key(POLICY_KEY),
         "OWNER_KID": did_key(OWNER_KEY),
         "CIPHERTEXT_BUDGET_BYTES": str(CIPHERTEXT_BUDGET_BYTES),
+        "WITNESS_NAME": WITNESS_NAME,
+        "WITNESS_VKEY": vkey(WITNESS_NAME, 0x04, WITNESS_KEY),
         "CUSTODIAN_NAME": "Test Custodian",
         "CUSTODIAN_HOLDS": "an offline copy of the server seed",
+        **{f"SHA256:{rel}": digest for rel, digest in TEST_REPORT_SHA256.items()},
     }
 
 

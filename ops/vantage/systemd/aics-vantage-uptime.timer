@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the AICS vantage uptime probe every 5 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+AccuracySec=30s
+Unit=aics-vantage-uptime.service
+
+[Install]
+WantedBy=timers.target

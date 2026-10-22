@@ -114,16 +114,19 @@ def test_a_poisoned_saved_note_still_counts_for_consistency(h):
 
 
 def test_repin_with_an_older_bootstrap_card_after_a_newer_card_is_refused(h):
+    from conftest import DAY, Site
+
     w = Witness("witness.test/w1")
-    inst = Instance(Log(5))
-    inst.publish(h)
-    assert h.run("policy", "init", "--from-dns", DOMAIN, *ONE)[0] == 0
-    newer = inst.make_card(witnesses=[w], quorum=1, issued_at=NOW - 60)
-    h.fetcher.set(CARD_URL, json.dumps(newer))
-    assert h.run("verify", "card")[0] == 1  # signature-valid, not current: stored, exit 1
-    h.fetcher.set(CARD_URL, json.dumps(inst.card))  # the older bootstrap card again
-    code, out = h.run("policy", "init", "--from-dns", DOMAIN, *ONE, "--force")
-    assert code == 2 and out["evidence"]["reason"] == "superseded"
+    site = Site()
+    site.publish(h)
+    assert site.pin(h)[0] == 0
+    newer = site.successor(witnesses=[w], quorum=1)
+    h.clock[0] = NOW + 7 * DAY
+    site.publish(h, served=newer)
+    assert h.run("verify", "card")[0] == 0  # proven in force by the policy leaves: stored
+    site.publish(h, listing=False)  # the older bootstrap card again, and no policy leaves to read
+    code, out = site.pin(h, force=True)
+    assert code == 2 and out["evidence"]["reason"] == "superseded", out
 
 
 def test_repin_with_weaker_manual_terms_needs_allow_weaker(h):
@@ -230,23 +233,41 @@ def test_text_output_never_carries_control_characters():
     assert printable_line('{"a": "\\n"}') == '{"a": "\\n"}'  # JSON text stays JSON
 
 
-def test_the_card_history_is_per_policy_key_not_per_host(h, inst):
-    newer = inst.make_card(issued_at=NOW - 60)
-    h.fetcher.set("https://mirror.example/.well-known/aics-card.json", json.dumps(newer))
-    assert h.run("verify", "card", "mirror.example")[0] == 1  # stored for the policy key
-    h.fetcher.set(CARD_URL, json.dumps(inst.card))  # the older card through the pinned URL
+def _card_index(h):
+    path = h.home / "cards" / "index.jsonl"
+    return [json.loads(x) for x in path.read_text().splitlines()] if path.exists() else []
+
+
+def test_the_card_history_is_per_policy_key_not_per_host(h):
+    from conftest import DAY, Site
+
+    site = Site()
+    newer = site.successor()
+    h.clock[0] = NOW + 7 * DAY
+    site.publish(h)
+    site.policy(h)
+    h.fetcher.set("https://mirror.example/.well-known/aics-card.json", json.dumps(site.card_of(newer)))
+    assert h.run("verify", "card", "mirror.example")[0] == 0  # in force: stored for the policy key
+    assert _card_index(h)[-1]["host"] == "mirror.example"
+    site.publish(h, listing=False)  # the older card through the pinned URL; no policy leaves to read
     code, out = h.run("verify", "card")
-    assert code == 2 and out["evidence"]["reason"] == "superseded"
+    assert code == 2 and out["evidence"]["reason"] == "superseded", out
 
 
-def test_two_cards_for_one_moment_are_equivocation(h, inst):
-    first = inst.make_card(issued_at=NOW - 60)
-    second = inst.make_card(issued_at=NOW - 60, mutate=lambda b: b.update(policy_notice_seconds=1))
-    h.fetcher.set(CARD_URL, json.dumps(first))
-    assert h.run("verify", "card")[0] == 1
+def test_two_cards_for_one_moment_are_equivocation(h):
+    from conftest import DAY, Site
+
+    site = Site()
+    first = site.successor()
+    h.clock[0] = NOW + 7 * DAY
+    site.publish(h, served=first)
+    site.policy(h)
+    assert h.run("verify", "card")[0] == 0  # in force: stored
+    second = site.make_card(issued_at=site.card_of(first)["issued_at"], mutate=lambda b: b.update(
+        policy_notice_seconds=1))
     h.fetcher.set(CARD_URL, json.dumps(second))
     code, out = h.run("verify", "card")
-    assert code == 2 and out["evidence"]["reason"] == "equivocation"
+    assert code == 2 and out["evidence"]["reason"] == "equivocation", out
     assert out["evidence"]["saved_card"]["policy_notice_seconds"] != 1
 
 

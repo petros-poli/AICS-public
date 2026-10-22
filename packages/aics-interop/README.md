@@ -292,12 +292,15 @@ override-dependencies` makes every requirement on `aics-tlog` and `aics-identity
 resolve to those sources; it was introduced for [F15](#f15) (retired) and is kept
 so the suite keeps importing the source trees.
 
-CI: [`.github/workflows/interop.yml`](../../.github/workflows/interop.yml) runs
-this suite (`uv run --locked pytest -q -rsx`, with
-`AICS_INTEROP_REQUIRE_TOOLS=1`) and the fixture check on every push and pull
-request, on Python 3.12, 3.13 and 3.14. The generic `ci.yml` also discovers
-this package and runs its tests (without `--locked` and without the tool
-requirement).
+Verification: the `interop` check of
+[`scripts/verify.sh`](../../scripts/verify.sh) runs this suite
+(`AICS_INTEROP_REQUIRE_TOOLS=1 uv run --locked --all-extras pytest -q -rsx`)
+and then the fixture check (`uv run --locked aics-interop-fixtures --check`).
+`scripts/verify.sh --full` runs it locally and in the release's Verify job
+(`ci.yml`, Python 3.12.12); the release calls
+[`interop.yml`](../../.github/workflows/interop.yml) once per `v*` tag, which
+runs the same check on Python 3.13.15 and 3.14.7. Pushes and pull requests start
+no Actions jobs (CONTRIBUTING.md).
 
 ## Findings
 

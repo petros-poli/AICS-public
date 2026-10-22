@@ -160,8 +160,17 @@ witness identity that every verifier has to be told about.
 
 ## Deploy on a second host
 
-Oracle Always Free (Ampere A1, arm64) or any small VPS (amd64). Docker builds
-the image natively on either. The steps assume Ubuntu 24.04.
+Oracle Always Free (Ampere A1, arm64, or the 1 GB AMD micro shape) or any small
+VPS (amd64). Docker builds the image natively on either. The steps assume
+Ubuntu 24.04.
+
+wesupport-ai.com's own founder-run witness does not follow these steps by hand:
+it runs from [ops/witness](../../ops/witness/README.md), a compose project with
+the same image, project, volume and container names, a Caddy with a public
+vkey page, loopback-only 7380, memory limits for a 1 GB host shared with other
+containers, an optional daily evidence backup, and a bootstrap script that
+does steps 1 to 6 below (runbook step 6). The steps below are the generic
+deployment, for example for an external witness (docs/WITNESS-CUSTODIANS.md).
 
 **1. Host.** Oracle: create a `VM.Standard.A1.Flex` instance (1 OCPU, 6 GB is
 plenty) with Ubuntu 24.04 and your SSH key. Then:
@@ -204,7 +213,7 @@ It prints the witness vkey (`name+keyid+base64`); this is the line you publish
 
 **5. Trust the log.** Origin and log vkey come from the log operator's
 out-of-band publication (for AICS: `_aics.<domain>` TXT, the README trust block,
-the `aics` package), never from the log's own API:
+the `aics-cli` package), never from the log's own API:
 
 ```sh
 docker compose -f compose.witness.yml run --rm aics-witness add-log \
@@ -271,7 +280,7 @@ The log then submits to `$W/add-checkpoint` (see *Log side* below).
    AICS-1 §6.3–6.4): add the witness to `witness_policy.witnesses` as
    `{"name": "<name>", "vkey": "<vkey>", "trust_domain": "founder", "independent": false}`,
    set `quorum` (1 with this witness alone), and keep G5 `promised`.
-3. **Public repository README**: a witness block with name, vkey, URL, operator
+3. **Public repository README** (https://github.com/petros-poli/AICS-public): a witness block with name, vkey, URL, operator
    and trust domain, next to the log key.
 4. **DNS TXT** on the witness's own name, e.g. `_aics-witness.witness1.example.org`
    with the value `aics-witness-vkey <vkey>` (one line, no spaces inside the vkey).

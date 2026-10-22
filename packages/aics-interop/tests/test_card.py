@@ -113,6 +113,21 @@ def policy_init_with_card(card: dict, web, tmp_path) -> drivers.CliResult:
 # ---------------------------------------------------------------------------
 
 
+def test_the_cli_driver_without_a_web_stays_offline(tmp_path):
+    """``aics verify card --file`` reads the policy listing of the card's API base; the driver without a web answers
+    every request with a network error, so the result is the bootstrap card unproven by the log and the suite makes no
+    DNS or HTTP request."""
+    card = make_card(SHAPES[0])
+    home = tmp_path / "home"
+    cli = drivers.AicsCli(home=home, now=NOW)
+    assert cli.pin(spec.readme_block(spec.J(trust_for(card))), quorum=0).code == 0
+    (home / "card.json").write_text(json.dumps(card))
+    r = cli.run("verify", "card", "--file", str(home / "card.json"))
+    assert r.code == 0 and r.data["bootstrap"] is True and r.data["policy_history"]["available"] is False, r.data
+    # every request went to the offline fetcher (each one fails there), whatever the CLI asked for and in what order
+    assert cli.offline.requests and "offline" in r.data["policy_history"]["reason"]
+
+
 @pytest.mark.parametrize("version", sorted(CARDS))
 def test_card_signers_agree(version):
     from aics_cli.card import card_hash, sign_card, unsigned_payload
@@ -272,8 +287,8 @@ def test_an_altered_card_is_rejected_by_both(web, tmp_path):
 
     card = make_card(accepted_shape(lambda c: aics_verify_card(c, tmp_path).code == 0))
     bad = {**card, "max_checkpoint_age": 600}  # signature kept
-    r = aics_verify_card(bad, tmp_path)
-    assert (r.code, r.evidence.get("reason")) == (2, "invalid-signature"), r.data
+    r = aics_verify_card(bad, tmp_path)  # a file: anyone can alter one, so a refusal without evidence (exit 1)
+    assert (r.code, r.data.get("reason")) == (1, "invalid-signature"), r.data
     card = make_card(accepted_shape(lambda c: conformance_card_error(c, web) is None))
     bad = {**card, "max_checkpoint_age": 600}
     log = aicslog.standard_log(5, card=card)
