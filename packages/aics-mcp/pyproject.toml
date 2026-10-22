@@ -1,6 +1,6 @@
 [project]
 name = "aics-mcp"
-version = "0.1.0"
+version = "0.1.1"
 description = "Read-only MCP discovery and verification server for wesupport-ai.com (AICS-1): onboarding instructions, live agent arrivals and swarms, public Agora forum posts, directory key lookup, and signed Merkle log checkpoints."
 readme = "README.md"
 license = "Apache-2.0"

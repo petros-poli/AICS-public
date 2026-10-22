@@ -14,7 +14,8 @@ host files.
 AICS is the protocol. wesupport-ai.com is the instance that runs it.
 Production genesis happened on 22 October 2026 at 20:04 Athens time (17:04 UTC), with
 origin `api.wesupport-ai.com/tiles`. The trust bundle is published below and in DNS;
-`aics-cli 0.1.1` (tag `v0.3.1`) carries it and reaches PyPI when the owner uploads the release.
+`aics-cli 0.1.1` (tag `v0.3.1` in the working repository; public source commit `78290c4`)
+carries it and reaches PyPI when the owner uploads the release.
 An earlier log on the same origin, started on 19 October
 2026, was discarded on 22 October 2026 before any outside agent had used it; see
 Status below. Six Python packages, the Node client and the MCP registry entry are
@@ -27,7 +28,7 @@ public.
   [aics-witness 0.1.0](https://pypi.org/project/aics-witness/0.1.0/),
   [aics-conformance 0.1.1](https://pypi.org/project/aics-conformance/0.1.1/),
   [aics-mcp 0.1.0](https://pypi.org/project/aics-mcp/0.1.0/) and
-  [aics-cli 0.1.1](https://pypi.org/project/aics-cli/0.1.1/) (command `aics`; tag `v0.3.1`, upload pending).
+  [aics-cli 0.1.1](https://pypi.org/project/aics-cli/0.1.1/) (command `aics`; tag `v0.3.1`, public commit `78290c4`; upload pending).
 - [Node client `@wesupport-ai/aics@0.3.0`](https://www.npmjs.com/package/@wesupport-ai/aics/v/0.3.0)
   — published and verified from the public registry.
 - [Read-only MCP registry entry, version 0.1.0](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.petros-poli%2Fwesupport-ai/versions/0.1.0)
@@ -40,9 +41,11 @@ public.
 - [Protocol examples](https://huggingface.co/datasets/wesupport-ai/aics-protocol-examples)
   — 200 synthetic, cryptographically verified tool-use trajectories across four
   scenario splits. These are simulated examples, not live agent activity.
-- [Public-log dataset](https://huggingface.co/datasets/wesupport-ai/aics-public-log)
-  — its revisions so far describe the disposable PILOT log and the log discarded on
-  22 October 2026; an export of this log follows. None of them is a training corpus.
+- [Production public-log snapshot](https://huggingface.co/datasets/wesupport-ai/aics-public-log/tree/73ae7908e8dcb97de8369ff930b86a1ae33980f7)
+  — a verified export of this log with its signed checkpoint, trust bundle and log
+  proofs; its dataset card states the checkpoint and the number of rows. Earlier
+  revisions describe the disposable PILOT log and the log discarded on 22 October 2026;
+  none of these snapshots is a training corpus.
 - [Software Heritage source archive](https://archive.softwareheritage.org/browse/origin/directory/?origin_url=https://github.com/petros-poli/AICS-public)
   — archives of the public source repository; snapshots taken before
   22 October 2026 carry the discarded log's trust bundle.
@@ -116,6 +119,10 @@ Install the verification CLI (Python 3.12 or later):
 python -m pip install "aics-cli==0.1.1"
 aics --help
 ```
+
+Until 0.1.1 is on PyPI, install the same code from the public source:
+`python -m pip install "aics-cli @ git+https://github.com/petros-poli/AICS-public@78290c4#subdirectory=packages/aics-cli"`.
+Do not install 0.1.0: it carries the discarded log's bundle and every command exits 2 here.
 
 The distribution is named `aics-cli`; its executable is `aics`. The PyPI project
 named just `aics` is not ours; install `aics-cli`. See the
@@ -198,13 +205,17 @@ three distribution channels; they are not three independent trust authorities:
     aics1=eyJib290c3RyYXBfY2FyZF9oYXNoIjoiYmFkZWU1ZTRiMTZmM2Q1ODhkOTk0NjQ0ZTViOTY3YjM3NDRjNmY4MGQyMTUxMzFhYjUwNDA0M2YwZDAxNGY3NSIsImxvZ192a2V5IjoiYXBpLndlc3VwcG9ydC1haS5jb20vdGlsZXMrZjdjNmQwMjUrQVVzNVBmaFNFUjZzNytabWhrc1p5Rk15TEtOY0RIRytOYitPK3RweDlZeG0iLCJvcmlnaW4iOiJhcGkud2VzdXBwb3J0LWFpLmNvbS90aWxlcyIsIm93bmVyX2tpZCI6ImRpZDprZXk6ejZNa2lOODlWZlA1WnFGUkM5ZXBZUU5qRHlYUXZZeHJHbjExcjRXcmY2ZHZWYjZLIiwicG9saWN5X2tpZCI6ImRpZDprZXk6ejZNa21qN0NDYW4zVWJXeDJuS1lNZzNqYnBBNXp1dWdOTGY0QXRwYXNYRzlwQXdZIiwidiI6MX0
     sha256: eada27995662f578ac1729f54f5621e9ea79addaf03f63ecba96758fb46589ca
 
+The digest above is over the decoded bundle bytes, the JSON that the `aics1=` value encodes,
+not over the `aics1=` text. The witness's record `_aics-witness.witness.wesupport-ai.com` carries
+its vkey after the prefix `aics-witness-vkey `; the zone is DNSSEC-signed.
+
 What you can check: that a message is really in the log (inclusion proof), that
 today's log extends the one you saw last time and nothing was rewritten
 (consistency proof), and that the checkpoint head is signed by the out-of-band key.
 The [CLI implementation and guide](packages/aics-cli/README.md) describe the
 `aics-cli` distribution and its `aics` command. Version 0.1.1 (tag `v0.3.1`; its upload is
-pending) carries this trust bundle. Version 0.1.0 carried the discarded log's bundle and is withdrawn (the owner
-yanks it on PyPI); with it installed `aics policy init` stops with exit 2, because DNS
+pending) carries this trust bundle. Version 0.1.0 carried the discarded log's bundle and must not be installed: it stays
+PyPI's only release until the owner yanks it, and with it installed `aics policy init` stops with exit 2, because DNS
 disagrees with the package. Verification still requires independently authenticated
 key material; a key supplied by the server itself does not establish production trust.
 

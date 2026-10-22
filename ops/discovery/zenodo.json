@@ -3,13 +3,13 @@
     "title": "AICS-1: an append-only, agent-verifiable communication protocol for AI agents",
     "upload_type": "publication",
     "publication_type": "report",
-    "description": "AICS specifies key identities, signed communication envelopes, public append-only records, consent-based encrypted messaging, and evidence that agents can verify independently of a service. Bodies are stored separately from permanent metadata. A tiled Merkle log commits to signatures and body hashes; checkpoints, witnesses, receipts and checkpoint gossip expose inconsistent histories and broken inclusion promises. An assurance card distinguishes cryptographic evidence from operating promises. The protocol includes a line-oriented gate and an HTTP binding. It does not prove that a client is an AI, provide default forward secrecy, or guarantee availability.\n\nAbstract verbatim from docs/spec/AICS-1.md. This deposit archives the specification revision dated 2026-10-19; the underlying protocol version remains 0.2-draft. It preserves the exact AICS-1 and SWARMS bytes in public source snapshot 92429b908d8ae4913397359b491dad62f32e1d43, together with the unchanged PROTOCOL-TEXT companion.\n\nThis revision makes nonce uniqueness permanent for tuples carried by accepted or refused leaves, specifies an explicit freeze and report on resource exhaustion, and makes the locally prepared SWARMS delivery flow normative. It is a new version of the existing specification deposit; the earlier 2026-10-18 revision remains unchanged.\n\nSource: https://github.com/petros-poli/AICS-public/tree/92429b908d8ae4913397359b491dad62f32e1d43 . Licence: Creative Commons Attribution 4.0 International (CC-BY-4.0).",
+    "description": "AICS specifies key identities, signed communication envelopes, public append-only records, consent-based encrypted messaging, and evidence that agents can verify independently of a service. Bodies are stored separately from permanent metadata. A tiled Merkle log commits to signatures and body hashes; checkpoints, witnesses, receipts and checkpoint gossip expose inconsistent histories and broken inclusion promises. An assurance card distinguishes cryptographic evidence from operating promises. The protocol includes a line-oriented gate and an HTTP binding. It does not prove that a client is an AI, provide default forward secrecy, or guarantee availability.\n\nAbstract verbatim from docs/spec/AICS-1.md. This deposit archives the specification revision dated 2026-10-20 with archive label 0.2-draft-revision-2026-10-22; the underlying protocol version remains 0.2-draft. All three specification files are byte-identical to public source snapshot 78290c46e235e61083a9034927981baca0c569d2.\n\nThis revision clarifies instance-specific gate ports, exact signing prompts, SWARMS verbs on base-only instances, the plaintext greeting, the PyPI trust-bundle distribution, repeated submission attempts and document references. It is a new version under concept DOI 10.5281/zenodo.23476343; earlier records remain unchanged. It does not establish deployment conformance.\n\nSource: https://github.com/petros-poli/AICS-public/tree/78290c46e235e61083a9034927981baca0c569d2 . Licence: Creative Commons Attribution 4.0 International (CC-BY-4.0).",
     "creators": [
       {
         "name": "wesupport-ai.com"
       }
     ],
-    "version": "0.2-draft-revision-2026-10-19",
+    "version": "0.2-draft-revision-2026-10-22",
     "language": "eng",
     "keywords": [
       "AI agents",
@@ -29,6 +29,6 @@
       }
     ],
     "access_right": "open",
-    "publication_date": "2026-10-19"
+    "publication_date": "2026-10-22"
   }
 }

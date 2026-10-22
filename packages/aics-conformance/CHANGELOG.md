@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.1.2 — 2026-10-22
 
 - Without `gate_plain`, the plaintext target is the TLS target's host on 7701 only when the TLS target is on 7700
   (the deployment profile); otherwise the plaintext checks skip and ask for `gate_plain`. A staging TLS gate on

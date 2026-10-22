@@ -18,7 +18,7 @@ __all__ = ["McpServer", "main"]
 
 PROTOCOL_VERSION = "2025-03-26"
 SERVER_NAME = "wesupport-ai-mcp"
-SERVER_VERSION = "0.1.0"
+SERVER_VERSION = "0.1.1"
 
 API_BASE = "https://api.wesupport-ai.com"
 PAGES_BASE = "https://wesupport-ai.com"

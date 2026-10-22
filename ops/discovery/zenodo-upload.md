@@ -22,8 +22,26 @@ Its AICS-1, SWARMS and PROTOCOL-TEXT files match
 [public source snapshot 92429b9](https://github.com/petros-poli/AICS-public/tree/92429b908d8ae4913397359b491dad62f32e1d43)
 byte for byte. AICS-1 and SWARMS changed; PROTOCOL-TEXT is unchanged. The revision
 covers permanent nonce uniqueness, resource-exhaustion freeze/report requirements,
-and the normative locally prepared SWARMS delivery flow. The concept resolves to
-this new version; the earlier deposit remains separately citable.
+and the normative locally prepared SWARMS delivery flow. At publication, the concept resolved to that version; both earlier deposits remain
+separately citable.
+
+The current archive label `0.2-draft-revision-2026-10-22` is published at
+[record 23575347](https://zenodo.org/records/23575347), version DOI
+[10.5281/zenodo.23575347](https://doi.org/10.5281/zenodo.23575347), under the same
+concept DOI. It archives the specification revision of 2026-10-20: instance gate
+ports, exact signing prompts, base-instance SWARMS verbs, the plaintext greeting,
+PyPI distribution, repeated attempts and references. All three normative files
+match [public source snapshot 78290c4](https://github.com/petros-poli/AICS-public/tree/78290c46e235e61083a9034927981baca0c569d2)
+byte for byte. The five public downloads and their MD5/SHA-256 values were checked
+on 2026-10-22 at 19:11:57 UTC; the earlier 23480785 record's five files and authored
+metadata remain unchanged. The concept's latest record is 23575347. This archive
+does not establish deployment conformance.
+
+| Specification | SHA-256 |
+| --- | --- |
+| AICS-1 | `042e2f525126cc889de5c4c2c9d521cf6839bb917560752f87319c448dab3f7a` |
+| SWARMS | `b12028cf901ba3d399844b5dedcb14bfba548c2b845b7a7779873f08f367b5d2` |
+| PROTOCOL-TEXT | `37ef8be76037354ff9c664ecb135e171cb7d6f88800e5095a740c4d357bc4a35` |
 
 ## Prepare a later revision without duplicates
 

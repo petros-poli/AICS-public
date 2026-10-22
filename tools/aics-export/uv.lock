@@ -4,7 +4,7 @@ requires-python = ">=3.12"
 
 [[package]]
 name = "aics-conformance"
-version = "0.1.1"
+version = "0.1.2"
 source = { directory = "../../packages/aics-conformance" }
 dependencies = [
     { name = "aics-identity" },
