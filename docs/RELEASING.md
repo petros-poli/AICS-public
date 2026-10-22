@@ -224,6 +224,27 @@ that originally published them; a later rebuild can have different bytes.
 Clear both selectors before the next release intended to publish all six
 projects, and give every selected package a new unused version.
 
+### Releasing without GitHub Actions (the way 0.1.1 ships, 2026-10-22)
+
+The private repository's free Actions minutes are used up and paid usage is not approved
+(owner, 2026-10-22), so the Release workflow does not run for `v0.3.1`. The distributions
+are built on the owner's machine from the tag and uploaded with the owner's PyPI account:
+
+```sh
+git worktree add --detach /tmp/aics-v0.3.1 v0.3.1
+(cd /tmp/aics-v0.3.1/packages/aics-cli && uv build --no-sources && shasum -a 256 dist/*)
+# build twice, from two copies: the wheel and sdist SHA-256 must agree (reproducible builds)
+uv publish --token <the owner's PyPI API token> /tmp/aics-v0.3.1/packages/aics-cli/dist/*
+python3 -m venv /tmp/aics-cli-0.1.1 && /tmp/aics-cli-0.1.1/bin/pip download --no-deps -d /tmp/aics-cli-0.1.1/dl "aics-cli==0.1.1"
+shasum -a 256 /tmp/aics-cli-0.1.1/dl/*   # must equal the built files' digests
+```
+
+What this path lacks, and the README says so for 0.1.1: the GitHub Release page, the
+Sigstore signatures and the SLSA provenance that the workflow attaches. The source is the
+tag `v0.3.1` in the public repository, and the reproducible build lets anyone check the
+uploaded files against it. Actions remain reserved for `v*` tags; they run only when the
+owner approves paid minutes or a public repository runs them.
+
 ### The relaunch of 2026-10-20: aics-cli 0.1.1
 
 The relaunch (docs/DECISIONS.md, "Relaunch: a second genesis before any outside
